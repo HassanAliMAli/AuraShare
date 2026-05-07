@@ -1,22 +1,29 @@
-# Project Instructions
+# AuraShare Project Instructions
 
 ## Tech Stack
-- Frontend: Vanilla HTML/JS with Tailwind CSS (CDN)
-- Icons: Font Awesome
-- Fonts: Inter, Space Grotesk (Google Fonts)
+- **Framework**: React 19 (TypeScript)
+- **Build Tool**: Vite 8
+- **Styling**: Tailwind CSS 4.0 (Vite Plugin)
+- **Animation**: Framer Motion 12
+- **Utilities**: clsx, tailwind-merge
 
 ## Code Style
-- Use camelCase for JavaScript functions and variables.
-- Use Tailwind CSS for styling; avoid adding more embedded CSS unless necessary.
-- Maintain the single-file structure for now, or suggest a refactor to a proper build system if complexity increases.
+- Use functional components and hooks.
+- Use `cn()` utility for dynamic tailwind classes.
+- Follow "Liquid Cloud" aesthetic: morphing SVG blobs, twilight background, organic motion.
+- Avoid generic "AI-generated" UI tropes (no clinical minimalism, no rigid bento grids).
 
 ## Build & Run
-- This is a static project. Open `index.html` directly in a browser to run.
-- No build or lint commands currently configured.
+- Dev: `npm run dev`
+- Build: `npm run build`
+- Preview: `npm run preview`
 
 ## Project Structure
-- `index.html`: Main application entry point, containing all logic and styles.
+- `src/components/`: UI components (AuraDropzone, Constellation, CustomCursor).
+- `src/hooks/`: Custom React hooks (useDiscovery).
+- `src/lib/`: Shared utilities (utils.ts).
+- `src/index.css`: Tailwind v4 imports and base styles.
 
 ## Conventions
-- **Mock Logic**: Most functionality is currently simulated. Future real implementations should use WebRTC for P2P sharing as hinted in the UI.
-- **Error Handling**: Currently minimal due to mock nature. Implement Zod validation if moving to a backend-backed system.
+- **Mock Logic**: Discovery and file transfers are currently simulated with `setTimeout` and `setInterval`.
+- **Aesthetics**: Maintain the deep twilight background (#0c0c0e) and bioluminescent gradients.

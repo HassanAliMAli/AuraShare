@@ -13,14 +13,11 @@ export const useSignaling = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ offer })
       });
-      
       const data = await res.json();
-      
       if (!res.ok) {
         setError(data.message || 'Failed to create room');
         return null;
       }
-      
       setRoomId(data.roomId);
       return data.roomId;
     } catch (e) {
@@ -34,22 +31,14 @@ export const useSignaling = () => {
     while (attempts < maxAttempts) {
       try {
         const res = await fetch(`${API_URL}/room/${id}/answer`);
-        if (!res.ok) {
-          const data = await res.json();
-          setError(data.message || 'Room expired');
-          return null;
-        }
         const data = await res.json();
-        if (data.answer) {
-          return data.answer;
-        }
+        if (data.answer) return data.answer;
       } catch (e) {
         console.error(e);
       }
       await new Promise(r => setTimeout(r, 2000));
       attempts++;
     }
-    setError('Timeout waiting for peer');
     return null;
   }, []);
 
@@ -57,13 +46,9 @@ export const useSignaling = () => {
     try {
       const res = await fetch(`${API_URL}/room/${id}`);
       const data = await res.json();
-      if (!res.ok) {
-        setError(data.message || 'Invalid room code');
-        return null;
-      }
+      if (!res.ok) return null;
       return data.offer;
     } catch (e) {
-      setError('Failed to fetch offer');
       return null;
     }
   }, []);
@@ -75,15 +60,31 @@ export const useSignaling = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ answer })
       });
-      if (!res.ok) {
-        const data = await res.json();
-        setError(data.message || 'Failed to establish link');
-        return false;
-      }
-      return true;
+      return res.ok;
     } catch (e) {
-      setError('Network disruption');
       return false;
+    }
+  }, []);
+
+  const addCandidate = useCallback(async (id: string, type: 'sender' | 'receiver', candidate: any) => {
+    try {
+      await fetch(`${API_URL}/room/${id}/candidates/${type}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ candidate })
+      });
+    } catch (e) {
+      console.error('Failed to send candidate');
+    }
+  }, []);
+
+  const getCandidates = useCallback(async (id: string, type: 'sender' | 'receiver') => {
+    try {
+      const res = await fetch(`${API_URL}/room/${id}/candidates/${type}`);
+      const data = await res.json();
+      return data.candidates || [];
+    } catch (e) {
+      return [];
     }
   }, []);
 
@@ -96,6 +97,8 @@ export const useSignaling = () => {
     pollForAnswer,
     getOffer,
     postAnswer,
+    addCandidate,
+    getCandidates,
     clearError
   };
 };

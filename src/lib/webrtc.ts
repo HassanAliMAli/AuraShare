@@ -5,6 +5,7 @@ type WebRTCEvents = {
   onFileReceived: (file: File) => void;
   onFileSent: () => void;
   onError: (err: string) => void;
+  onCandidate: (candidate: RTCIceCandidate) => void;
 };
 
 export class WebRTCManager {
@@ -12,7 +13,6 @@ export class WebRTCManager {
   private dc?: RTCDataChannel;
   private events: WebRTCEvents;
   
-  // State for receiving
   private receiveBuffer: ArrayBuffer[] = [];
   private receivedSize = 0;
   private expectedSize = 0;
@@ -31,6 +31,12 @@ export class WebRTCManager {
       ]
     });
 
+    this.pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        this.events.onCandidate(event.candidate);
+      }
+    };
+
     this.pc.onconnectionstatechange = () => {
       console.log('RTC State:', this.pc.connectionState);
       if (this.pc.connectionState === 'connected') {
@@ -41,44 +47,20 @@ export class WebRTCManager {
     };
   }
 
-  private async waitForICE() {
-    return new Promise<void>((resolve) => {
-      if (this.pc.iceGatheringState === 'complete') {
-        resolve();
-        return;
-      }
-
-      const checkState = () => {
-        if (this.pc.iceGatheringState === 'complete') {
-          this.pc.removeEventListener('icegatheringstatechange', checkState);
-          resolve();
-        }
-      };
-
-      this.pc.addEventListener('icegatheringstatechange', checkState);
-      
-      // Safety timeout: if gathering takes too long, just proceed with what we have
-      setTimeout(() => {
-        this.pc.removeEventListener('icegatheringstatechange', checkState);
-        resolve();
-      }, 5000);
-    });
+  async addCandidate(candidate: RTCIceCandidateInit) {
+    try {
+      await this.pc.addIceCandidate(new RTCIceCandidate(candidate));
+    } catch (e) {
+      console.error('Error adding candidate', e);
+    }
   }
 
-  // Sender methods
   async createOffer(): Promise<RTCSessionDescriptionInit> {
-    this.dc = this.pc.createDataChannel('fileTransfer', {
-      ordered: true
-    });
+    this.dc = this.pc.createDataChannel('fileTransfer', { ordered: true });
     this.setupDataChannel(this.dc);
     
     const offer = await this.pc.createOffer();
     await this.pc.setLocalDescription(offer);
-    
-    console.log('Gathering ICE candidates...');
-    await this.waitForICE();
-    console.log('ICE gathering complete');
-
     return this.pc.localDescription!;
   }
 
@@ -86,10 +68,8 @@ export class WebRTCManager {
     await this.pc.setRemoteDescription(new RTCSessionDescription(answer));
   }
 
-  // Receiver methods
   async handleOffer(offer: RTCSessionDescriptionInit): Promise<RTCSessionDescriptionInit> {
     this.pc.ondatachannel = (event) => {
-      console.log('Data channel received');
       this.dc = event.channel;
       this.setupDataChannel(this.dc);
     };
@@ -97,21 +77,16 @@ export class WebRTCManager {
     await this.pc.setRemoteDescription(new RTCSessionDescription(offer));
     const answer = await this.pc.createAnswer();
     await this.pc.setLocalDescription(answer);
-
-    console.log('Gathering ICE candidates for answer...');
-    await this.waitForICE();
-    console.log('ICE gathering for answer complete');
-
     return this.pc.localDescription!;
   }
 
   private setupDataChannel(dc: RTCDataChannel) {
     dc.binaryType = 'arraybuffer';
-    dc.bufferedAmountLowThreshold = 1024 * 1024; // 1MB
+    dc.bufferedAmountLowThreshold = 1024 * 1024;
 
     dc.onopen = () => {
-      console.log('Data channel open state:', dc.readyState);
-      this.events.onConnected(); // Trigger connected UI on channel open
+      console.log('Data channel open');
+      this.events.onConnected();
     };
     
     dc.onmessage = (e) => {
@@ -140,33 +115,19 @@ export class WebRTCManager {
       }
     };
     
-    dc.onclose = () => {
-      console.log('Data channel closed');
-      this.events.onDisconnected();
-    };
-
-    dc.onerror = (_e) => {
-      console.error('Data channel error');
-      this.events.onError('Data channel error');
-    };
+    dc.onclose = () => this.events.onDisconnected();
+    dc.onerror = () => this.events.onError('Data channel error');
   }
 
   async sendFile(file: File) {
     if (!this.dc || this.dc.readyState !== 'open') {
-      console.error('Data channel not ready:', this.dc?.readyState);
       this.events.onError('Connection not ready');
       return;
     }
 
-    // Send metadata
-    this.dc.send(JSON.stringify({
-      name: file.name,
-      size: file.size,
-      type: file.type
-    }));
+    this.dc.send(JSON.stringify({ name: file.name, size: file.size, type: file.type }));
 
-    // Send chunks
-    const chunkSize = 16 * 1024; // 16KB for better stability
+    const chunkSize = 16 * 1024;
     let offset = 0;
 
     const readChunk = (o: number, size: number): Promise<ArrayBuffer> => {

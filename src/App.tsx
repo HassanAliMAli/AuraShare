@@ -134,8 +134,8 @@ function App() {
           className="flex items-center gap-4 cursor-pointer"
           onClick={reset}
         >
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-            <span className="text-2xl">✨</span>
+          <div className="w-10 h-10 rounded-2xl overflow-hidden flex items-center justify-center shadow-lg shadow-indigo-500/20">
+            <img src="/logo.svg" alt="AuraShare" className="w-full h-full object-cover" />
           </div>
           <h1 className="text-2xl font-bold tracking-tighter text-white logo-font">
             AuraShare

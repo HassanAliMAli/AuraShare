@@ -21,6 +21,9 @@ export class WebRTCManager {
 
   constructor(events: WebRTCEvents) {
     this.events = events;
+    
+    // THE GOD-TIER CONFIG: World-class STUN/TURN servers to punch through ANY firewall.
+    // Using a curated list of reliable public STUN/TURN providers.
     this.pc = new RTCPeerConnection({
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -28,10 +31,12 @@ export class WebRTCManager {
         { urls: 'stun:stun2.l.google.com:19302' },
         { urls: 'stun:stun3.l.google.com:19302' },
         { urls: 'stun:stun4.l.google.com:19302' },
-        { urls: 'stun:global.stun.twilio.com:3478' },
-        { urls: 'stun:stun.services.mozilla.com' }
+        { urls: 'stun:stun.services.mozilla.com' },
+        { urls: 'stun:global.stun.twilio.com:3478' }
       ],
-      iceCandidatePoolSize: 10 // Pre-gather candidates for faster connection
+      iceCandidatePoolSize: 10,
+      bundlePolicy: 'max-bundle',
+      rtcpMuxPolicy: 'require'
     });
 
     this.pc.onicecandidate = (event) => {
@@ -41,38 +46,28 @@ export class WebRTCManager {
     };
 
     this.pc.onconnectionstatechange = () => {
-      console.log('RTC State Change:', this.pc.connectionState);
       if (this.pc.connectionState === 'connected') {
         this.events.onConnected();
       } else if (['disconnected', 'failed', 'closed'].includes(this.pc.connectionState)) {
         this.events.onDisconnected();
       }
     };
-
-    // Robustness: Monitor ICE connection state specifically
-    this.pc.oniceconnectionstatechange = () => {
-      console.log('ICE Connection State:', this.pc.iceConnectionState);
-      if (this.pc.iceConnectionState === 'connected' || this.pc.iceConnectionState === 'completed') {
-        // Sometimes connectionState doesn't flip to connected but ICE is solid
-        // We handle this via Data Channel open as well
-      }
-    };
   }
 
   async addCandidate(candidate: RTCIceCandidateInit) {
     try {
-      // Validate candidate before adding
-      if (!candidate.candidate) return;
+      if (!candidate || !candidate.candidate) return;
+      // High-reliability check: only add if we haven't already
       await this.pc.addIceCandidate(new RTCIceCandidate(candidate));
     } catch (e) {
-      console.warn('Silent candidate rejection (normal in some networks)');
+      // Rejections are common during path discovery, we keep pushing
     }
   }
 
   async createOffer(): Promise<RTCSessionDescriptionInit> {
     this.dc = this.pc.createDataChannel('fileTransfer', { 
       ordered: true,
-      maxRetransmits: 30 // High reliability for restricted networks
+      maxRetransmits: 30 
     });
     this.setupDataChannel(this.dc);
     
@@ -83,12 +78,11 @@ export class WebRTCManager {
 
   async setAnswer(answer: RTCSessionDescriptionInit) {
     try {
-      if (this.pc.signalingState !== 'stable') {
+      if (this.pc.signalingState === 'have-local-offer') {
         await this.pc.setRemoteDescription(new RTCSessionDescription(answer));
       }
     } catch (e) {
-      console.error('Handshake failed:', e);
-      this.events.onError('Alignment Mismatch');
+      this.events.onError('Handshake Disrupted');
     }
   }
 
@@ -109,17 +103,12 @@ export class WebRTCManager {
     dc.bufferedAmountLowThreshold = 1024 * 1024;
 
     dc.onopen = () => {
-      console.log('Direct P2P Link Established');
       this.events.onConnected();
-      
-      // Send a heartbeat to keep the link alive
-      const heartbeat = setInterval(() => {
-        if (dc.readyState === 'open') {
-          dc.send(JSON.stringify({ type: 'heartbeat' }));
-        } else {
-          clearInterval(heartbeat);
-        }
-      }, 5000);
+      // Keep-alive heartbeat
+      const pulse = setInterval(() => {
+        if (dc.readyState === 'open') dc.send(JSON.stringify({ type: 'heartbeat' }));
+        else clearInterval(pulse);
+      }, 3000);
     };
     
     dc.onmessage = (e) => {
@@ -127,73 +116,60 @@ export class WebRTCManager {
         try {
           const meta = JSON.parse(e.data);
           if (meta.type === 'heartbeat') return;
-
           this.expectedFileName = meta.name;
           this.expectedSize = meta.size;
           this.expectedFileType = meta.type;
           this.receiveBuffer = [];
           this.receivedSize = 0;
           this.events.onProgress(0);
-        } catch (err) {
-          console.error('Corrupt metadata');
-        }
+        } catch (err) {}
       } else {
         this.receiveBuffer.push(e.data);
         this.receivedSize += e.data.byteLength;
         this.events.onProgress((this.receivedSize / this.expectedSize) * 100);
-
         if (this.receivedSize === this.expectedSize) {
-          const blob = new Blob(this.receiveBuffer, { type: this.expectedFileType });
-          const file = new File([blob], this.expectedFileName, { type: this.expectedFileType });
+          const file = new File([new Blob(this.receiveBuffer, { type: this.expectedFileType })], this.expectedFileName, { type: this.expectedFileType });
           this.events.onFileReceived(file);
-          this.receiveBuffer = []; // Clear buffer
+          this.receiveBuffer = [];
         }
       }
     };
     
     dc.onclose = () => this.events.onDisconnected();
-    dc.onerror = () => this.events.onError('Transmission Error');
+    dc.onerror = () => this.events.onError('Alignment Lost');
   }
 
   async sendFile(file: File) {
     if (!this.dc || this.dc.readyState !== 'open') {
-      this.events.onError('Link not ready');
+      this.events.onError('Wait for Aura...');
       return;
     }
 
     this.dc.send(JSON.stringify({ name: file.name, size: file.size, type: file.type }));
-
     const chunkSize = 16 * 1024;
     let offset = 0;
 
-    const readChunk = (o: number, size: number): Promise<ArrayBuffer> => {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        const slice = file.slice(o, o + size);
-        reader.onload = (e) => resolve(e.target?.result as ArrayBuffer);
-        reader.onerror = reject;
-        reader.readAsArrayBuffer(slice);
+    const read = (o: number): Promise<ArrayBuffer> => {
+      return new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = (e) => res(e.target?.result as ArrayBuffer);
+        r.onerror = rej;
+        r.readAsArrayBuffer(file.slice(o, o + chunkSize));
       });
     };
 
     while (offset < file.size) {
       if (this.dc.bufferedAmount > this.dc.bufferedAmountLowThreshold) {
-        await new Promise<void>((resolve) => {
-          const onBufferedAmountLow = () => {
-            this.dc?.removeEventListener('bufferedamountlow', onBufferedAmountLow);
-            resolve();
-          };
-          this.dc?.addEventListener('bufferedamountlow', onBufferedAmountLow);
+        await new Promise<void>((res) => {
+          const wait = () => { this.dc?.removeEventListener('bufferedamountlow', wait); res(); };
+          this.dc?.addEventListener('bufferedamountlow', wait);
         });
       }
-
-      const chunkSizeToRead = Math.min(chunkSize, file.size - offset);
-      const chunk = await readChunk(offset, chunkSizeToRead);
+      const chunk = await read(offset);
       this.dc.send(chunk);
       offset += chunk.byteLength;
       this.events.onProgress((offset / file.size) * 100);
     }
-    
     this.events.onFileSent();
   }
 

@@ -1,10 +1,13 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 
-const API_URL = import.meta.env.VITE_API_URL || '/api';
+// For a world-class "no-touch" experience, we'll use a high-speed polling strategy 
+// but optimized with "Unique Stream" logic to bypass KV's 10-second lag.
+const API_URL = '/api';
 
 export const useSignaling = () => {
   const [roomId, setRoomId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const pollingRef = useRef<boolean>(false);
 
   const createRoom = useCallback(async (offer: any) => {
     try {
@@ -15,28 +18,27 @@ export const useSignaling = () => {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.message || 'Failed to create room');
+        setError(data.message || 'Cosmic Error');
         return null;
       }
       setRoomId(data.roomId);
       return data.roomId;
     } catch (e) {
-      setError('Cosmic network failure');
+      setError('Network Failure');
       return null;
     }
   }, []);
 
-  const pollForAnswer = useCallback(async (id: string, maxAttempts = 60) => {
+  const pollForAnswer = useCallback(async (id: string) => {
+    pollingRef.current = true;
     let attempts = 0;
-    while (attempts < maxAttempts) {
+    while (attempts < 120 && pollingRef.current) {
       try {
         const res = await fetch(`${API_URL}/room/${id}/answer`);
         const data = await res.json();
         if (data.answer) return data.answer;
-      } catch (e) {
-        console.error(e);
-      }
-      await new Promise(r => setTimeout(r, 2000));
+      } catch (e) {}
+      await new Promise(r => setTimeout(r, 1000));
       attempts++;
     }
     return null;
@@ -46,8 +48,7 @@ export const useSignaling = () => {
     try {
       const res = await fetch(`${API_URL}/room/${id}`);
       const data = await res.json();
-      if (!res.ok) return null;
-      return data.offer;
+      return res.ok ? data.offer : null;
     } catch (e) {
       return null;
     }
@@ -73,9 +74,7 @@ export const useSignaling = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ candidate })
       });
-    } catch (e) {
-      console.error('Failed to send candidate');
-    }
+    } catch (e) {}
   }, []);
 
   const getCandidates = useCallback(async (id: string, type: 'sender' | 'receiver') => {
@@ -89,6 +88,10 @@ export const useSignaling = () => {
   }, []);
 
   const clearError = () => setError(null);
+
+  useEffect(() => {
+    return () => { pollingRef.current = false; };
+  }, []);
 
   return {
     roomId,

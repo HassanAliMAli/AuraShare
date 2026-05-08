@@ -24,11 +24,15 @@ export class WebRTCManager {
     this.pc = new RTCPeerConnection({
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun3.l.google.com:19302' },
+        { urls: 'stun:stun4.l.google.com:19302' }
       ]
     });
 
     this.pc.onconnectionstatechange = () => {
+      console.log('RTC State:', this.pc.connectionState);
       if (this.pc.connectionState === 'connected') {
         this.events.onConnected();
       } else if (this.pc.connectionState === 'disconnected' || this.pc.connectionState === 'failed') {
@@ -37,30 +41,43 @@ export class WebRTCManager {
     };
   }
 
+  private async waitForICE() {
+    return new Promise<void>((resolve) => {
+      if (this.pc.iceGatheringState === 'complete') {
+        resolve();
+        return;
+      }
+
+      const checkState = () => {
+        if (this.pc.iceGatheringState === 'complete') {
+          this.pc.removeEventListener('icegatheringstatechange', checkState);
+          resolve();
+        }
+      };
+
+      this.pc.addEventListener('icegatheringstatechange', checkState);
+      
+      // Safety timeout: if gathering takes too long, just proceed with what we have
+      setTimeout(() => {
+        this.pc.removeEventListener('icegatheringstatechange', checkState);
+        resolve();
+      }, 5000);
+    });
+  }
+
   // Sender methods
   async createOffer(): Promise<RTCSessionDescriptionInit> {
-    this.dc = this.pc.createDataChannel('fileTransfer');
+    this.dc = this.pc.createDataChannel('fileTransfer', {
+      ordered: true
+    });
     this.setupDataChannel(this.dc);
     
     const offer = await this.pc.createOffer();
     await this.pc.setLocalDescription(offer);
     
-    // Wait for ICE gathering to complete to get full SDP with candidates
-    await new Promise<void>((resolve) => {
-      if (this.pc.iceGatheringState === 'complete') {
-        resolve();
-      } else {
-        const checkState = () => {
-          if (this.pc.iceGatheringState === 'complete') {
-            this.pc.removeEventListener('icegatheringstatechange', checkState);
-            resolve();
-          }
-        };
-        this.pc.addEventListener('icegatheringstatechange', checkState);
-        // Timeout just in case
-        setTimeout(() => resolve(), 3000);
-      }
-    });
+    console.log('Gathering ICE candidates...');
+    await this.waitForICE();
+    console.log('ICE gathering complete');
 
     return this.pc.localDescription!;
   }
@@ -72,6 +89,7 @@ export class WebRTCManager {
   // Receiver methods
   async handleOffer(offer: RTCSessionDescriptionInit): Promise<RTCSessionDescriptionInit> {
     this.pc.ondatachannel = (event) => {
+      console.log('Data channel received');
       this.dc = event.channel;
       this.setupDataChannel(this.dc);
     };
@@ -80,21 +98,9 @@ export class WebRTCManager {
     const answer = await this.pc.createAnswer();
     await this.pc.setLocalDescription(answer);
 
-    // Wait for ICE
-    await new Promise<void>((resolve) => {
-      if (this.pc.iceGatheringState === 'complete') {
-        resolve();
-      } else {
-        const checkState = () => {
-          if (this.pc.iceGatheringState === 'complete') {
-            this.pc.removeEventListener('icegatheringstatechange', checkState);
-            resolve();
-          }
-        };
-        this.pc.addEventListener('icegatheringstatechange', checkState);
-        setTimeout(() => resolve(), 3000);
-      }
-    });
+    console.log('Gathering ICE candidates for answer...');
+    await this.waitForICE();
+    console.log('ICE gathering for answer complete');
 
     return this.pc.localDescription!;
   }
@@ -104,12 +110,12 @@ export class WebRTCManager {
     dc.bufferedAmountLowThreshold = 1024 * 1024; // 1MB
 
     dc.onopen = () => {
-      console.log('Data channel open');
+      console.log('Data channel open state:', dc.readyState);
+      this.events.onConnected(); // Trigger connected UI on channel open
     };
     
     dc.onmessage = (e) => {
       if (typeof e.data === 'string') {
-        // Metadata
         try {
           const meta = JSON.parse(e.data);
           this.expectedFileName = meta.name;
@@ -122,7 +128,6 @@ export class WebRTCManager {
           console.error('Invalid metadata', err);
         }
       } else {
-        // Binary chunk
         this.receiveBuffer.push(e.data);
         this.receivedSize += e.data.byteLength;
         this.events.onProgress((this.receivedSize / this.expectedSize) * 100);
@@ -135,14 +140,21 @@ export class WebRTCManager {
       }
     };
     
+    dc.onclose = () => {
+      console.log('Data channel closed');
+      this.events.onDisconnected();
+    };
+
     dc.onerror = (_e) => {
+      console.error('Data channel error');
       this.events.onError('Data channel error');
     };
   }
 
   async sendFile(file: File) {
     if (!this.dc || this.dc.readyState !== 'open') {
-      this.events.onError('Not connected');
+      console.error('Data channel not ready:', this.dc?.readyState);
+      this.events.onError('Connection not ready');
       return;
     }
 
@@ -154,7 +166,7 @@ export class WebRTCManager {
     }));
 
     // Send chunks
-    const chunkSize = 64 * 1024; // 64KB
+    const chunkSize = 16 * 1024; // 16KB for better stability
     let offset = 0;
 
     const readChunk = (o: number, size: number): Promise<ArrayBuffer> => {
@@ -169,18 +181,17 @@ export class WebRTCManager {
 
     while (offset < file.size) {
       if (this.dc.bufferedAmount > this.dc.bufferedAmountLowThreshold) {
-        // Wait for buffer to drain
         await new Promise<void>((resolve) => {
-          if (!this.dc) return;
           const onBufferedAmountLow = () => {
             this.dc?.removeEventListener('bufferedamountlow', onBufferedAmountLow);
             resolve();
           };
-          this.dc.addEventListener('bufferedamountlow', onBufferedAmountLow);
+          this.dc?.addEventListener('bufferedamountlow', onBufferedAmountLow);
         });
       }
 
-      const chunk = await readChunk(offset, chunkSize);
+      const chunkSizeToRead = Math.min(chunkSize, file.size - offset);
+      const chunk = await readChunk(offset, chunkSizeToRead);
       this.dc.send(chunk);
       offset += chunk.byteLength;
       this.events.onProgress((offset / file.size) * 100);

@@ -116,7 +116,7 @@ function App() {
   };
 
   return (
-    <div className="relative w-full h-screen bg-[#0c0c0e] overflow-hidden flex items-center justify-center font-['Inter'] cursor-none">
+    <div className="relative w-screen h-screen bg-[#0c0c0e] overflow-hidden font-['Inter'] cursor-none">
       <CustomCursor />
       
       {/* Dynamic Background */}
@@ -157,33 +157,34 @@ function App() {
       </nav>
 
       {/* Main Content Area */}
-      <main className="relative w-full max-w-4xl h-[600px] flex items-center justify-center z-40 mx-auto">
-        <AnimatePresence>
-          {status === 'idle' && !isReceiving && (
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-30">
-              <Constellation 
-                devices={devices} 
-                onDeviceClick={() => {}}
-                className="z-20"
-              />
-            </div>
-          )}
-        </AnimatePresence>
-
-        <AnimatePresence mode="wait">
-          {status === 'idle' && !isReceiving ? (
-            <motion.div 
-              key="dropzone"
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              className="z-30 w-full flex justify-center"
-            >
-              <div className="w-[500px]">
-                <AuraDropzone onFileDrop={handleFileDrop} />
+      <main className="absolute inset-0 z-40 flex items-center justify-center pointer-events-none">
+        <div className="w-full max-w-4xl h-[600px] relative flex items-center justify-center pointer-events-auto">
+          <AnimatePresence>
+            {status === 'idle' && !isReceiving && (
+              <div className="absolute inset-0 flex items-center justify-center opacity-30">
+                <Constellation 
+                  devices={devices} 
+                  onDeviceClick={() => {}}
+                  className="z-20"
+                />
               </div>
-            </motion.div>
-          ) : status === 'idle' && isReceiving ? (
+            )}
+          </AnimatePresence>
+
+          <AnimatePresence mode="wait">
+            {status === 'idle' && !isReceiving ? (
+              <motion.div 
+                key="dropzone"
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                className="z-30 w-full flex justify-center"
+              >
+                <div className="w-[500px] h-[500px]">
+                  <AuraDropzone onFileDrop={handleFileDrop} />
+                </div>
+              </motion.div>
+            ) : status === 'idle' && isReceiving ? (
             <motion.div
               key="receive-form"
               initial={{ opacity: 0, y: 20 }}

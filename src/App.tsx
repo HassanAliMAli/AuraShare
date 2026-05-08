@@ -157,14 +157,16 @@ function App() {
       </nav>
 
       {/* Main Content Area */}
-      <main className="relative w-full max-w-6xl h-[600px] flex items-center justify-center z-40">
+      <main className="relative w-full max-w-4xl h-[600px] flex items-center justify-center z-40 mx-auto">
         <AnimatePresence>
           {status === 'idle' && !isReceiving && (
-            <Constellation 
-              devices={devices} 
-              onDeviceClick={() => {}}
-              className="z-20 pointer-events-none opacity-30"
-            />
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-30">
+              <Constellation 
+                devices={devices} 
+                onDeviceClick={() => {}}
+                className="z-20"
+              />
+            </div>
           )}
         </AnimatePresence>
 
@@ -175,9 +177,11 @@ function App() {
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
-              className="z-30 w-full max-w-2xl"
+              className="z-30 w-full flex justify-center"
             >
-              <AuraDropzone onFileDrop={handleFileDrop} />
+              <div className="w-[500px]">
+                <AuraDropzone onFileDrop={handleFileDrop} />
+              </div>
             </motion.div>
           ) : status === 'idle' && isReceiving ? (
             <motion.div

@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AuraDropzone } from './components/AuraDropzone';
+import { AuraTextarea } from './components/AuraTextarea';
 import { CustomCursor } from './components/CustomCursor';
 import { useSignaling } from './hooks/useSignaling';
 import { WebRTCManager } from './lib/webrtc';
@@ -14,10 +15,13 @@ function App() {
   const { roomId, createRoom, pollForAnswer, getOffer, postAnswer } = useSignaling();
   
   const [sharingFiles, setSharingFiles] = useState<FileList | null>(null);
+  const [sharingText, setSharingText] = useState<string | null>(null);
   const [transferProgress, setTransferProgress] = useState(0);
   const [status, setStatus] = useState<'idle' | 'creating' | 'waiting' | 'connecting' | 'transferring' | 'success' | 'error'>('idle');
   const [joinCode, setJoinCode] = useState('');
   const [isReceiving, setIsReceiving] = useState(false);
+  const [shareMode, setShareMode] = useState<'text' | 'files'>('text');
+  const [receivedText, setReceivedText] = useState<string | null>(null);
   
   const rtcManager = useRef<WebRTCManager | null>(null);
 
@@ -32,21 +36,31 @@ function App() {
         if (sharingFiles) {
           setStatus('transferring');
           rtcManager.current?.sendFile(sharingFiles[0]);
+        } else if (sharingText) {
+          setStatus('transferring');
+          const blob = new Blob([sharingText], { type: 'text/plain' });
+          const file = new File([blob], 'aura-text-msg.txt', { type: 'text/plain' });
+          rtcManager.current?.sendFile(file);
         }
       },
       onDisconnected: () => setStatus('error'),
       onFileSent: () => setStatus('success'),
-      onFileReceived: (file) => {
+      onFileReceived: async (file) => {
         setStatus('success');
-        // Auto download
-        const url = URL.createObjectURL(file);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = file.name;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        if (file.name === 'aura-text-msg.txt') {
+          const text = await file.text();
+          setReceivedText(text);
+        } else {
+          // Auto download for normal files
+          const url = URL.createObjectURL(file);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = file.name;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }
       },
       onError: (err) => {
         console.error(err);
@@ -55,11 +69,8 @@ function App() {
     });
   };
 
-  const handleFileDrop = async (files: FileList) => {
-    if (files.length === 0) return;
-    setSharingFiles(files);
+  const startSharingFlow = async () => {
     setStatus('creating');
-    
     initRTC();
     try {
       const offer = await rtcManager.current!.createOffer();
@@ -69,7 +80,6 @@ function App() {
         const answer = await pollForAnswer(newRoomId);
         if (answer) {
           await rtcManager.current!.setAnswer(answer);
-          // RTC Connection will trigger onConnected
         } else {
           setStatus('error');
         }
@@ -79,6 +89,19 @@ function App() {
     } catch (e) {
       setStatus('error');
     }
+  };
+
+  const handleFileDrop = async (files: FileList) => {
+    if (files.length === 0) return;
+    setSharingFiles(files);
+    setSharingText(null);
+    await startSharingFlow();
+  };
+
+  const handleTextShare = async (text: string) => {
+    setSharingText(text);
+    setSharingFiles(null);
+    await startSharingFlow();
   };
 
   const handleJoin = async (e: React.FormEvent) => {
@@ -93,11 +116,7 @@ function App() {
       if (offer) {
         const answer = await rtcManager.current!.handleOffer(offer);
         const success = await postAnswer(joinCode.toUpperCase(), answer);
-        if (success) {
-          // Waiting for RTC to connect and trigger onConnected
-        } else {
-          setStatus('error');
-        }
+        if (!success) setStatus('error');
       } else {
         setStatus('error');
       }
@@ -109,14 +128,20 @@ function App() {
   const reset = () => {
     if (rtcManager.current) rtcManager.current.close();
     setSharingFiles(null);
+    setSharingText(null);
     setTransferProgress(0);
     setStatus('idle');
     setJoinCode('');
     setIsReceiving(false);
+    setReceivedText(null);
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
   };
 
   return (
-    <div className="relative w-screen h-screen bg-[#0c0c0e] overflow-hidden font-['Inter'] cursor-none">
+    <div className="relative w-screen h-screen bg-[#0c0c0e] overflow-hidden font-['Inter'] cursor-none text-white">
       <CustomCursor />
       
       {/* Dynamic Background */}
@@ -151,14 +176,44 @@ function App() {
             onClick={() => setIsReceiving(true)}
             className="text-sm font-medium text-white/80 hover:text-white transition-colors"
           >
-            Receive File
+            Receive Aura
           </button>
         </motion.div>
       </nav>
 
       {/* Main Content Area */}
-      <main className="absolute inset-0 z-40 flex items-center justify-center pointer-events-none">
-        <div className="w-full max-w-4xl h-[600px] relative flex items-center justify-center pointer-events-auto">
+      <main className="absolute inset-0 z-40 flex flex-col items-center justify-center pointer-events-none p-4">
+        
+        {/* Toggle (Smaller Rounded Rectangle) */}
+        <AnimatePresence>
+          {status === 'idle' && !isReceiving && (
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="pointer-events-auto bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-1.5 flex gap-1 mb-12 shadow-xl"
+            >
+              {(['text', 'files'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => setShareMode(mode)}
+                  className={`relative px-8 py-2.5 rounded-2xl text-sm font-bold uppercase tracking-[0.1em] transition-colors duration-300 ${shareMode === mode ? 'text-[#0c0c0e]' : 'text-white/40 hover:text-white/60'}`}
+                >
+                  {shareMode === mode && (
+                    <motion.div
+                      layoutId="activeTab"
+                      className="absolute inset-0 bg-white rounded-2xl z-0"
+                      transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                    />
+                  )}
+                  <span className="relative z-10">{mode}</span>
+                </button>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <div className="w-full max-w-4xl min-h-[500px] relative flex items-center justify-center pointer-events-auto">
           <AnimatePresence>
             {status === 'idle' && !isReceiving && (
               <div className="absolute inset-0 flex items-center justify-center opacity-30">
@@ -174,14 +229,18 @@ function App() {
           <AnimatePresence mode="wait">
             {status === 'idle' && !isReceiving ? (
               <motion.div 
-                key="dropzone"
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.9 }}
+                key={shareMode}
+                initial={{ opacity: 0, scale: 0.9, filter: 'blur(10px)' }}
+                animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+                exit={{ opacity: 0, scale: 1.1, filter: 'blur(10px)' }}
                 className="z-30 w-full flex justify-center"
               >
-                <div className="w-[500px] h-[500px]">
-                  <AuraDropzone onFileDrop={handleFileDrop} />
+                <div className="w-full max-w-xl">
+                  {shareMode === 'files' ? (
+                    <AuraDropzone onFileDrop={handleFileDrop} />
+                  ) : (
+                    <AuraTextarea onTextShare={handleTextShare} />
+                  )}
                 </div>
               </motion.div>
             ) : status === 'idle' && isReceiving ? (
@@ -190,32 +249,32 @@ function App() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -20 }}
-                className="z-40 bg-white/5 backdrop-blur-xl p-8 rounded-3xl border border-white/10 w-full max-w-md"
+                className="z-40 bg-white/5 backdrop-blur-3xl p-10 rounded-[40px] border border-white/10 w-full max-w-md shadow-2xl"
               >
-                <h2 className="text-2xl text-white font-semibold mb-2">Receive File</h2>
-                <p className="text-white/60 text-sm mb-6">Enter the 6-digit Aura code from the sender.</p>
-                <form onSubmit={handleJoin} className="flex gap-4 relative z-50">
+                <h2 className="text-3xl text-white font-bold mb-2 tracking-tight">Receive Aura</h2>
+                <p className="text-white/40 text-sm mb-8 leading-relaxed">Enter the 6-digit connection code to pull the data from the cosmos.</p>
+                <form onSubmit={handleJoin} className="flex flex-col gap-4 relative z-50">
                   <input
                     type="text"
                     maxLength={6}
                     value={joinCode}
                     onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-                    placeholder="e.g. A1B2C3"
-                    className="flex-1 bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white text-lg tracking-[0.2em] uppercase focus:outline-none focus:border-indigo-500 transition-colors"
+                    placeholder="A1B2C3"
+                    className="w-full bg-white/5 border border-white/10 rounded-2xl px-6 py-4 text-white text-3xl font-bold tracking-[0.4em] text-center uppercase focus:outline-none focus:border-indigo-500 transition-colors"
                   />
                   <button 
                     type="submit"
                     disabled={joinCode.length !== 6}
-                    className="px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-medium disabled:opacity-50 hover:shadow-lg hover:shadow-indigo-500/25 transition-all"
+                    className="w-full py-4 rounded-2xl bg-white text-[#0c0c0e] font-black uppercase tracking-widest disabled:opacity-20 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg"
                   >
-                    Join
+                    Establish Link
                   </button>
                 </form>
                 <button 
                   onClick={reset}
-                  className="mt-6 text-sm text-white/40 hover:text-white transition-colors relative z-50"
+                  className="w-full mt-6 text-xs text-white/20 hover:text-white/40 font-bold uppercase tracking-widest transition-colors relative z-50"
                 >
-                  Cancel
+                  Cancel Connection
                 </button>
               </motion.div>
             ) : (
@@ -228,25 +287,25 @@ function App() {
               >
                 {status === 'waiting' && roomId && (
                   <div className="text-center mb-8 relative z-50">
-                    <div className="text-orange-400 font-mono text-sm tracking-widest mb-4">
-                      SHARE THIS CODE
+                    <div className="text-orange-400 font-mono text-sm tracking-[0.3em] mb-6 font-bold">
+                      TRANSMISSION CODE
                     </div>
-                    <div className="text-6xl text-white font-bold tracking-[0.2em] bg-white/5 border border-white/10 rounded-2xl py-4 px-8 mb-4">
+                    <div className="text-7xl text-white font-black tracking-[0.3em] bg-white/5 border border-white/10 rounded-[40px] py-8 px-12 mb-6 shadow-2xl backdrop-blur-xl">
                       {roomId}
                     </div>
-                    <p className="text-white/40">Waiting for receiver to join...</p>
+                    <p className="text-white/20 uppercase tracking-widest text-xs font-bold">Waiting for cosmic alignment...</p>
                   </div>
                 )}
 
                 {['connecting', 'transferring'].includes(status) && (
                   <div className="relative flex flex-col items-center z-50">
                     <div className="mt-8 text-center">
-                      <div className="text-orange-400 font-mono text-sm tracking-widest mb-2">
-                        {status === 'connecting' ? 'ESTABLISHING AURA...' : `RESONATING... ${Math.round(transferProgress)}%`}
+                      <div className="text-indigo-400 font-mono text-sm tracking-[0.3em] mb-4 font-bold uppercase">
+                        {status === 'connecting' ? 'Establishing Aura...' : `Resonating... ${Math.round(transferProgress)}%`}
                       </div>
-                      <div className="w-64 h-1 bg-white/10 rounded-full overflow-hidden">
+                      <div className="w-80 h-1.5 bg-white/5 rounded-full overflow-hidden">
                         <motion.div 
-                          className="h-full bg-gradient-to-r from-indigo-500 to-orange-500"
+                          className="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-orange-500"
                           initial={{ width: 0 }}
                           animate={{ width: `${transferProgress}%` }}
                         />
@@ -256,28 +315,48 @@ function App() {
                 )}
 
                 {status === 'success' && (
-                  <div className="text-center relative z-50">
-                    <div className="text-emerald-400 font-mono text-sm tracking-widest mb-4">
+                  <div className="text-center relative z-50 max-w-lg">
+                    <div className="text-emerald-400 font-mono text-sm tracking-[0.3em] mb-6 font-bold">
                       HARMONY ACHIEVED
                     </div>
-                    <div className="w-24 h-24 rounded-full bg-emerald-500/20 border border-emerald-500/50 flex items-center justify-center mx-auto mb-6">
-                      <i className="fa-solid fa-check text-4xl text-emerald-400" />
-                    </div>
-                    <p className="text-white">Transfer completed successfully.</p>
-                    <button onClick={reset} className="mt-6 px-6 py-2 rounded-xl bg-white/10 text-white hover:bg-white/20 transition-colors">
-                      Share Another
+                    
+                    {receivedText ? (
+                      <div className="bg-white/5 border border-white/10 p-8 rounded-[40px] backdrop-blur-xl mb-8">
+                        <p className="text-white/80 text-lg leading-relaxed mb-6 text-left max-h-60 overflow-y-auto scrollbar-hide font-light italic">
+                          "{receivedText}"
+                        </p>
+                        <button 
+                          onClick={() => copyToClipboard(receivedText)}
+                          className="flex items-center gap-3 px-6 py-3 bg-white/10 hover:bg-white/20 rounded-2xl transition-colors mx-auto text-xs uppercase tracking-widest font-bold"
+                        >
+                          <i className="fa-solid fa-copy" />
+                          Copy to Universe
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="w-32 h-32 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mx-auto mb-8 shadow-[0_0_40px_rgba(52,211,153,0.1)]">
+                        <i className="fa-solid fa-check text-5xl text-emerald-400" />
+                      </div>
+                    )}
+                    
+                    <p className="text-white/40 uppercase tracking-widest text-[10px] font-black mb-8">The energy has been successfully balanced.</p>
+                    <button onClick={reset} className="px-10 py-4 rounded-2xl bg-white text-[#0c0c0e] font-black uppercase tracking-widest hover:scale-105 transition-transform shadow-xl">
+                      Begin New Cycle
                     </button>
                   </div>
                 )}
 
                 {status === 'error' && (
                   <div className="text-center relative z-50">
-                    <div className="text-red-400 font-mono text-sm tracking-widest mb-4">
-                      CONNECTION LOST
+                    <div className="text-red-400 font-mono text-sm tracking-[0.3em] mb-6 font-bold">
+                      COSMOS DISRUPTED
                     </div>
-                    <p className="text-white/60 mb-6">The aura was disrupted. Please try again.</p>
-                    <button onClick={reset} className="px-6 py-2 rounded-xl bg-white/10 text-white hover:bg-white/20 transition-colors">
-                      Reset
+                    <div className="w-32 h-32 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto mb-8">
+                      <i className="fa-solid fa-bolt-lightning text-5xl text-red-400" />
+                    </div>
+                    <p className="text-white/40 uppercase tracking-widest text-[10px] font-black mb-8">A cosmic storm has broken the link.</p>
+                    <button onClick={reset} className="px-10 py-4 rounded-2xl bg-white text-[#0c0c0e] font-black uppercase tracking-widest hover:scale-105 transition-transform">
+                      Try Re-Alignment
                     </button>
                   </div>
                 )}
@@ -292,16 +371,16 @@ function App() {
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex items-center gap-8 text-[10px] uppercase tracking-[0.2em] text-white/20 font-bold"
+          className="flex items-center gap-8 text-[10px] uppercase tracking-[0.3em] text-white/20 font-black"
         >
           <div className="flex items-center gap-2">
-             <div className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
+             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
              P2P DIRECT
           </div>
-          <div>•</div>
+          <div className="opacity-50">•</div>
           <div>E2E ENCRYPTED</div>
-          <div>•</div>
-          <div>NO SIZE LIMIT</div>
+          <div className="opacity-50">•</div>
+          <div>INFINITE CAPACITY</div>
         </motion.div>
       </footer>
     </div>

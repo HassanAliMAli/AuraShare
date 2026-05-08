@@ -1,0 +1,28 @@
+name: Deploy to Cloudflare
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy-worker:
+    runs-on: ubuntu-latest
+    name: Deploy Signaling Worker
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          workingDirectory: 'worker'
+
+  deploy-pages:
+    runs-on: ubuntu-latest
+    name: Deploy Frontend to Pages
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and Deploy
+        # Note: Cloudflare Pages usually manages its own CI when linked to GitHub.
+        # This job is a placeholder to remind the user to link the repo in the CF Dashboard.
+        run: echo "Cloudflare Pages will automatically deploy from the main branch once linked in the Cloudflare Dashboard."

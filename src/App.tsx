@@ -1,50 +1,125 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AuraDropzone } from './components/AuraDropzone';
-import { Constellation } from './components/Constellation';
 import { CustomCursor } from './components/CustomCursor';
-import { useDiscovery } from './hooks/useDiscovery';
+import { useSignaling } from './hooks/useSignaling';
+import { WebRTCManager } from './lib/webrtc';
 import { cn } from './lib/utils';
+
+// We'll keep the constellation as a decorative background
+import { Constellation } from './components/Constellation';
+import { useDiscovery } from './hooks/useDiscovery';
 
 function App() {
   const { devices } = useDiscovery();
+  const { roomId, createRoom, pollForAnswer, getOffer, postAnswer } = useSignaling();
+  
   const [sharingFiles, setSharingFiles] = useState<FileList | null>(null);
-  const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
   const [transferProgress, setTransferProgress] = useState(0);
+  const [status, setStatus] = useState<'idle' | 'creating' | 'waiting' | 'connecting' | 'transferring' | 'success' | 'error'>('idle');
+  const [joinCode, setJoinCode] = useState('');
+  const [isReceiving, setIsReceiving] = useState(false);
+  
+  const rtcManager = useRef<WebRTCManager | null>(null);
 
-  const handleFileDrop = (files: FileList) => {
-    setSharingFiles(files);
-    console.log('Files dropped:', files);
+  const initRTC = () => {
+    if (rtcManager.current) {
+      rtcManager.current.close();
+    }
+    rtcManager.current = new WebRTCManager({
+      onProgress: (p) => setTransferProgress(p),
+      onConnected: () => {
+        setStatus('connecting');
+        if (sharingFiles) {
+          setStatus('transferring');
+          rtcManager.current?.sendFile(sharingFiles[0]);
+        }
+      },
+      onDisconnected: () => setStatus('error'),
+      onFileSent: () => setStatus('success'),
+      onFileReceived: (file) => {
+        setStatus('success');
+        // Auto download
+        const url = URL.createObjectURL(file);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = file.name;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      },
+      onError: (err) => {
+        console.error(err);
+        setStatus('error');
+      }
+    });
   };
 
-  const handleDeviceClick = (deviceId: string) => {
-    setSelectedDeviceId(deviceId);
-    if (sharingFiles) {
-      startSimulatedTransfer();
+  const handleFileDrop = async (files: FileList) => {
+    if (files.length === 0) return;
+    setSharingFiles(files);
+    setStatus('creating');
+    
+    initRTC();
+    try {
+      const offer = await rtcManager.current!.createOffer();
+      const newRoomId = await createRoom(offer);
+      if (newRoomId) {
+        setStatus('waiting');
+        const answer = await pollForAnswer(newRoomId);
+        if (answer) {
+          await rtcManager.current!.setAnswer(answer);
+          // RTC Connection will trigger onConnected
+        } else {
+          setStatus('error');
+        }
+      } else {
+        setStatus('error');
+      }
+    } catch (e) {
+      setStatus('error');
     }
   };
 
-  const startSimulatedTransfer = () => {
-    setTransferProgress(1);
-    const interval = setInterval(() => {
-      setTransferProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setTimeout(() => {
-            setSharingFiles(null);
-            setSelectedDeviceId(null);
-            setTransferProgress(0);
-          }, 2000);
-          return 100;
+  const handleJoin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!joinCode || joinCode.length !== 6) return;
+    
+    setStatus('connecting');
+    initRTC();
+    
+    try {
+      const offer = await getOffer(joinCode.toUpperCase());
+      if (offer) {
+        const answer = await rtcManager.current!.handleOffer(offer);
+        const success = await postAnswer(joinCode.toUpperCase(), answer);
+        if (success) {
+          // Waiting for RTC to connect and trigger onConnected
+        } else {
+          setStatus('error');
         }
-        return prev + Math.random() * 5;
-      });
-    }, 100);
+      } else {
+        setStatus('error');
+      }
+    } catch (e) {
+      setStatus('error');
+    }
+  };
+
+  const reset = () => {
+    if (rtcManager.current) rtcManager.current.close();
+    setSharingFiles(null);
+    setTransferProgress(0);
+    setStatus('idle');
+    setJoinCode('');
+    setIsReceiving(false);
   };
 
   return (
     <div className="relative w-full h-screen bg-[#0c0c0e] overflow-hidden flex items-center justify-center font-['Inter'] cursor-none">
       <CustomCursor />
+      
       {/* Dynamic Background */}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-500/10 blur-[120px] rounded-full" />
@@ -52,12 +127,13 @@ function App() {
         <div className="absolute top-[20%] right-[10%] w-[30%] h-[30%] bg-orange-500/5 blur-[100px] rounded-full" />
       </div>
 
-      {/* Navigation / Header */}
+      {/* Navigation */}
       <nav className="absolute top-0 left-0 right-0 p-8 flex justify-between items-center z-50">
         <motion.div 
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
-          className="flex items-center gap-4"
+          className="flex items-center gap-4 cursor-pointer"
+          onClick={reset}
         >
           <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
             <span className="text-2xl">✨</span>
@@ -70,88 +146,144 @@ function App() {
         <motion.div 
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
-          className="flex items-center gap-6"
+          className="flex items-center gap-6 z-50"
         >
-          <a href="#" className="text-sm font-medium text-white/40 hover:text-white transition-colors">Safety</a>
-          <a href="#" className="text-sm font-medium text-white/40 hover:text-white transition-colors">Manifesto</a>
-          <button className="px-5 py-2.5 rounded-2xl bg-white/5 border border-white/10 text-sm font-medium text-white hover:bg-white/10 transition-all">
-            Get App
+          <button 
+            onClick={() => setIsReceiving(true)}
+            className="text-sm font-medium text-white/80 hover:text-white transition-colors"
+          >
+            Receive File
           </button>
         </motion.div>
       </nav>
 
       {/* Main Content Area */}
-      <main className="relative w-full max-w-6xl h-[600px] flex items-center justify-center">
-        {/* Background Constellation (Always visible if no active transfer) */}
+      <main className="relative w-full max-w-6xl h-[600px] flex items-center justify-center z-40">
         <AnimatePresence>
-          {!selectedDeviceId && (
+          {status === 'idle' && !isReceiving && (
             <Constellation 
               devices={devices} 
-              onDeviceClick={handleDeviceClick}
-              className="z-20"
+              onDeviceClick={() => {}}
+              className="z-20 pointer-events-none opacity-30"
             />
           )}
         </AnimatePresence>
 
-        {/* Central Aura Dropzone */}
-        <AuraDropzone 
-          onFileDrop={handleFileDrop}
-          className={cn(
-            "z-30 transition-transform duration-700",
-            selectedDeviceId ? "scale-110" : "scale-100"
-          )}
-        />
-
-        {/* Transfer Progress / Success UI */}
-        <AnimatePresence>
-          {selectedDeviceId && (
+        <AnimatePresence mode="wait">
+          {status === 'idle' && !isReceiving ? (
+            <motion.div 
+              key="dropzone"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="z-30 w-full max-w-2xl"
+            >
+              <AuraDropzone onFileDrop={handleFileDrop} />
+            </motion.div>
+          ) : status === 'idle' && isReceiving ? (
             <motion.div
+              key="receive-form"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="z-40 bg-white/5 backdrop-blur-xl p-8 rounded-3xl border border-white/10 w-full max-w-md"
+            >
+              <h2 className="text-2xl text-white font-semibold mb-2">Receive File</h2>
+              <p className="text-white/60 text-sm mb-6">Enter the 6-digit Aura code from the sender.</p>
+              <form onSubmit={handleJoin} className="flex gap-4 relative z-50">
+                <input
+                  type="text"
+                  maxLength={6}
+                  value={joinCode}
+                  onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                  placeholder="e.g. A1B2C3"
+                  className="flex-1 bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white text-lg tracking-[0.2em] uppercase focus:outline-none focus:border-indigo-500 transition-colors"
+                />
+                <button 
+                  type="submit"
+                  disabled={joinCode.length !== 6}
+                  className="px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-medium disabled:opacity-50 hover:shadow-lg hover:shadow-indigo-500/25 transition-all"
+                >
+                  Join
+                </button>
+              </form>
+              <button 
+                onClick={reset}
+                className="mt-6 text-sm text-white/40 hover:text-white transition-colors relative z-50"
+              >
+                Cancel
+              </button>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="transfer-status"
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 1.2 }}
-              className="absolute inset-0 z-40 flex items-center justify-center pointer-events-none"
+              className="z-40 flex flex-col items-center"
             >
-              <div className="relative flex flex-col items-center">
-                {/* Connection Energy Path */}
-                <svg className="absolute w-[800px] h-[800px] pointer-events-none">
-                   <motion.path
-                    d="M 400 400 Q 500 300 600 200" // This would be dynamic in real impl
-                    fill="none"
-                    stroke="url(#energyGradient)"
-                    strokeWidth="4"
-                    strokeDasharray="10,10"
-                    initial={{ strokeDashoffset: 100 }}
-                    animate={{ strokeDashoffset: 0 }}
-                    transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                   />
-                   <defs>
-                    <linearGradient id="energyGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#6366f1" />
-                      <stop offset="100%" stopColor="#ff6b00" />
-                    </linearGradient>
-                   </defs>
-                </svg>
-
-                <div className="mt-[420px] text-center">
-                  <div className="text-orange-400 font-mono text-sm tracking-widest mb-2">
-                    {transferProgress < 100 ? `RESONATING... ${Math.round(transferProgress)}%` : 'HARMONY ACHIEVED'}
+              {status === 'waiting' && roomId && (
+                <div className="text-center mb-8 relative z-50">
+                  <div className="text-orange-400 font-mono text-sm tracking-widest mb-4">
+                    SHARE THIS CODE
                   </div>
-                  <div className="w-64 h-1 bg-white/10 rounded-full overflow-hidden">
-                    <motion.div 
-                      className="h-full bg-gradient-to-r from-indigo-500 to-orange-500"
-                      initial={{ width: 0 }}
-                      animate={{ width: `${transferProgress}%` }}
-                    />
+                  <div className="text-6xl text-white font-bold tracking-[0.2em] bg-white/5 border border-white/10 rounded-2xl py-4 px-8 mb-4">
+                    {roomId}
+                  </div>
+                  <p className="text-white/40">Waiting for receiver to join...</p>
+                </div>
+              )}
+
+              {['connecting', 'transferring'].includes(status) && (
+                <div className="relative flex flex-col items-center z-50">
+                  <div className="mt-8 text-center">
+                    <div className="text-orange-400 font-mono text-sm tracking-widest mb-2">
+                      {status === 'connecting' ? 'ESTABLISHING AURA...' : `RESONATING... ${Math.round(transferProgress)}%`}
+                    </div>
+                    <div className="w-64 h-1 bg-white/10 rounded-full overflow-hidden">
+                      <motion.div 
+                        className="h-full bg-gradient-to-r from-indigo-500 to-orange-500"
+                        initial={{ width: 0 }}
+                        animate={{ width: `${transferProgress}%` }}
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
+
+              {status === 'success' && (
+                <div className="text-center relative z-50">
+                  <div className="text-emerald-400 font-mono text-sm tracking-widest mb-4">
+                    HARMONY ACHIEVED
+                  </div>
+                  <div className="w-24 h-24 rounded-full bg-emerald-500/20 border border-emerald-500/50 flex items-center justify-center mx-auto mb-6">
+                    <i className="fa-solid fa-check text-4xl text-emerald-400" />
+                  </div>
+                  <p className="text-white">Transfer completed successfully.</p>
+                  <button onClick={reset} className="mt-6 px-6 py-2 rounded-xl bg-white/10 text-white hover:bg-white/20 transition-colors">
+                    Share Another
+                  </button>
+                </div>
+              )}
+
+              {status === 'error' && (
+                <div className="text-center relative z-50">
+                  <div className="text-red-400 font-mono text-sm tracking-widest mb-4">
+                    CONNECTION LOST
+                  </div>
+                  <p className="text-white/60 mb-6">The aura was disrupted. Please try again.</p>
+                  <button onClick={reset} className="px-6 py-2 rounded-xl bg-white/10 text-white hover:bg-white/20 transition-colors">
+                    Reset
+                  </button>
+                </div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
       </main>
 
-      {/* Footer Branding / Info */}
-      <footer className="absolute bottom-12 left-0 right-0 flex justify-center z-50">
+      {/* Footer */}
+      <footer className="absolute bottom-12 left-0 right-0 flex justify-center z-50 pointer-events-none">
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -159,10 +291,10 @@ function App() {
         >
           <div className="flex items-center gap-2">
              <div className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
-             2.4K SHARING
+             P2P DIRECT
           </div>
           <div>•</div>
-          <div>P2P ENCRYPTED</div>
+          <div>E2E ENCRYPTED</div>
           <div>•</div>
           <div>NO SIZE LIMIT</div>
         </motion.div>

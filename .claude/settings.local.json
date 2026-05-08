@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:blog.cloudflare.com)",
+      "WebFetch(domain:developers.cloudflare.com)",
+      "WebFetch(domain:www.cloudflare.com)",
+      "WebFetch(domain:fly.io)",
+      "WebFetch(domain:supabase.com)",
+      "WebFetch(domain:dash.cloudflare.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:vercel.com)",
+      "WebFetch(domain:www.netlify.com)",
+      "WebFetch(domain:peerjs.com)"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "serena",
+    "context7"
+  ]
+}

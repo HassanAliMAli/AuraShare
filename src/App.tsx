@@ -185,105 +185,106 @@ function App() {
                 </div>
               </motion.div>
             ) : status === 'idle' && isReceiving ? (
-            <motion.div
-              key="receive-form"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              className="z-40 bg-white/5 backdrop-blur-xl p-8 rounded-3xl border border-white/10 w-full max-w-md"
-            >
-              <h2 className="text-2xl text-white font-semibold mb-2">Receive File</h2>
-              <p className="text-white/60 text-sm mb-6">Enter the 6-digit Aura code from the sender.</p>
-              <form onSubmit={handleJoin} className="flex gap-4 relative z-50">
-                <input
-                  type="text"
-                  maxLength={6}
-                  value={joinCode}
-                  onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-                  placeholder="e.g. A1B2C3"
-                  className="flex-1 bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white text-lg tracking-[0.2em] uppercase focus:outline-none focus:border-indigo-500 transition-colors"
-                />
-                <button 
-                  type="submit"
-                  disabled={joinCode.length !== 6}
-                  className="px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-medium disabled:opacity-50 hover:shadow-lg hover:shadow-indigo-500/25 transition-all"
-                >
-                  Join
-                </button>
-              </form>
-              <button 
-                onClick={reset}
-                className="mt-6 text-sm text-white/40 hover:text-white transition-colors relative z-50"
+              <motion.div
+                key="receive-form"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="z-40 bg-white/5 backdrop-blur-xl p-8 rounded-3xl border border-white/10 w-full max-w-md"
               >
-                Cancel
-              </button>
-            </motion.div>
-          ) : (
-            <motion.div
-              key="transfer-status"
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 1.2 }}
-              className="z-40 flex flex-col items-center"
-            >
-              {status === 'waiting' && roomId && (
-                <div className="text-center mb-8 relative z-50">
-                  <div className="text-orange-400 font-mono text-sm tracking-widest mb-4">
-                    SHARE THIS CODE
-                  </div>
-                  <div className="text-6xl text-white font-bold tracking-[0.2em] bg-white/5 border border-white/10 rounded-2xl py-4 px-8 mb-4">
-                    {roomId}
-                  </div>
-                  <p className="text-white/40">Waiting for receiver to join...</p>
-                </div>
-              )}
-
-              {['connecting', 'transferring'].includes(status) && (
-                <div className="relative flex flex-col items-center z-50">
-                  <div className="mt-8 text-center">
-                    <div className="text-orange-400 font-mono text-sm tracking-widest mb-2">
-                      {status === 'connecting' ? 'ESTABLISHING AURA...' : `RESONATING... ${Math.round(transferProgress)}%`}
-                    </div>
-                    <div className="w-64 h-1 bg-white/10 rounded-full overflow-hidden">
-                      <motion.div 
-                        className="h-full bg-gradient-to-r from-indigo-500 to-orange-500"
-                        initial={{ width: 0 }}
-                        animate={{ width: `${transferProgress}%` }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {status === 'success' && (
-                <div className="text-center relative z-50">
-                  <div className="text-emerald-400 font-mono text-sm tracking-widest mb-4">
-                    HARMONY ACHIEVED
-                  </div>
-                  <div className="w-24 h-24 rounded-full bg-emerald-500/20 border border-emerald-500/50 flex items-center justify-center mx-auto mb-6">
-                    <i className="fa-solid fa-check text-4xl text-emerald-400" />
-                  </div>
-                  <p className="text-white">Transfer completed successfully.</p>
-                  <button onClick={reset} className="mt-6 px-6 py-2 rounded-xl bg-white/10 text-white hover:bg-white/20 transition-colors">
-                    Share Another
+                <h2 className="text-2xl text-white font-semibold mb-2">Receive File</h2>
+                <p className="text-white/60 text-sm mb-6">Enter the 6-digit Aura code from the sender.</p>
+                <form onSubmit={handleJoin} className="flex gap-4 relative z-50">
+                  <input
+                    type="text"
+                    maxLength={6}
+                    value={joinCode}
+                    onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                    placeholder="e.g. A1B2C3"
+                    className="flex-1 bg-black/20 border border-white/10 rounded-xl px-4 py-3 text-white text-lg tracking-[0.2em] uppercase focus:outline-none focus:border-indigo-500 transition-colors"
+                  />
+                  <button 
+                    type="submit"
+                    disabled={joinCode.length !== 6}
+                    className="px-6 py-3 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-medium disabled:opacity-50 hover:shadow-lg hover:shadow-indigo-500/25 transition-all"
+                  >
+                    Join
                   </button>
-                </div>
-              )}
-
-              {status === 'error' && (
-                <div className="text-center relative z-50">
-                  <div className="text-red-400 font-mono text-sm tracking-widest mb-4">
-                    CONNECTION LOST
+                </form>
+                <button 
+                  onClick={reset}
+                  className="mt-6 text-sm text-white/40 hover:text-white transition-colors relative z-50"
+                >
+                  Cancel
+                </button>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="transfer-status"
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 1.2 }}
+                className="z-40 flex flex-col items-center"
+              >
+                {status === 'waiting' && roomId && (
+                  <div className="text-center mb-8 relative z-50">
+                    <div className="text-orange-400 font-mono text-sm tracking-widest mb-4">
+                      SHARE THIS CODE
+                    </div>
+                    <div className="text-6xl text-white font-bold tracking-[0.2em] bg-white/5 border border-white/10 rounded-2xl py-4 px-8 mb-4">
+                      {roomId}
+                    </div>
+                    <p className="text-white/40">Waiting for receiver to join...</p>
                   </div>
-                  <p className="text-white/60 mb-6">The aura was disrupted. Please try again.</p>
-                  <button onClick={reset} className="px-6 py-2 rounded-xl bg-white/10 text-white hover:bg-white/20 transition-colors">
-                    Reset
-                  </button>
-                </div>
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
+                )}
+
+                {['connecting', 'transferring'].includes(status) && (
+                  <div className="relative flex flex-col items-center z-50">
+                    <div className="mt-8 text-center">
+                      <div className="text-orange-400 font-mono text-sm tracking-widest mb-2">
+                        {status === 'connecting' ? 'ESTABLISHING AURA...' : `RESONATING... ${Math.round(transferProgress)}%`}
+                      </div>
+                      <div className="w-64 h-1 bg-white/10 rounded-full overflow-hidden">
+                        <motion.div 
+                          className="h-full bg-gradient-to-r from-indigo-500 to-orange-500"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${transferProgress}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {status === 'success' && (
+                  <div className="text-center relative z-50">
+                    <div className="text-emerald-400 font-mono text-sm tracking-widest mb-4">
+                      HARMONY ACHIEVED
+                    </div>
+                    <div className="w-24 h-24 rounded-full bg-emerald-500/20 border border-emerald-500/50 flex items-center justify-center mx-auto mb-6">
+                      <i className="fa-solid fa-check text-4xl text-emerald-400" />
+                    </div>
+                    <p className="text-white">Transfer completed successfully.</p>
+                    <button onClick={reset} className="mt-6 px-6 py-2 rounded-xl bg-white/10 text-white hover:bg-white/20 transition-colors">
+                      Share Another
+                    </button>
+                  </div>
+                )}
+
+                {status === 'error' && (
+                  <div className="text-center relative z-50">
+                    <div className="text-red-400 font-mono text-sm tracking-widest mb-4">
+                      CONNECTION LOST
+                    </div>
+                    <p className="text-white/60 mb-6">The aura was disrupted. Please try again.</p>
+                    <button onClick={reset} className="px-6 py-2 rounded-xl bg-white/10 text-white hover:bg-white/20 transition-colors">
+                      Reset
+                    </button>
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </main>
 
       {/* Footer */}

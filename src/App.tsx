@@ -9,8 +9,6 @@ import { WebRTCManager } from './lib/webrtc';
 function App() {
   const { roomId, error: signalingError, createRoom, pollForAnswer, getOffer, postAnswer, addCandidate, getCandidates, clearError } = useSignaling();
   
-  const [sharingFiles, setSharingFiles] = useState<FileList | null>(null);
-  const [sharingText, setSharingText] = useState<string | null>(null);
   const [transferProgress, setTransferProgress] = useState(0);
   const [status, setStatus] = useState<'idle' | 'creating' | 'waiting' | 'connecting' | 'transferring' | 'success' | 'error'>('idle');
   const [joinCode, setJoinCode] = useState('');
@@ -64,7 +62,7 @@ function App() {
         
         candidatePollingInterval.current = setInterval(async () => {
             const candidates = await getCandidates(newRoomId, 'sender');
-            candidates.forEach(c => manager.addCandidate(c));
+            candidates.forEach((c: any) => manager.addCandidate(c));
         }, 3000);
 
         const answer = await pollForAnswer(newRoomId);
@@ -116,7 +114,7 @@ function App() {
 
         candidatePollingInterval.current = setInterval(async () => {
             const candidates = await getCandidates(code, 'receiver');
-            candidates.forEach(c => manager.addCandidate(c));
+            candidates.forEach((c: any) => manager.addCandidate(c));
         }, 3000);
 
         const answer = await manager.handleOffer(offer);
@@ -134,8 +132,6 @@ function App() {
     if (rtcManager.current) rtcManager.current.close();
     if (candidatePollingInterval.current) clearInterval(candidatePollingInterval.current);
     currentRoomIdRef.current = null;
-    setSharingFiles(null);
-    setSharingText(null);
     setTransferProgress(0);
     setStatus('idle');
     setJoinCode('');
@@ -189,7 +185,7 @@ function App() {
             {status === 'idle' && !isReceiving ? (
               <motion.div key={shareMode} initial={{ opacity: 0, scale: 0.9, filter: 'blur(10px)' }} animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }} exit={{ opacity: 0, scale: 1.1, filter: 'blur(10px)' }} className="z-30 w-full flex justify-center">
                 <div className="w-full max-w-xl">
-                  {shareMode === 'files' ? <AuraDropzone onFileDrop={(f) => { setSharingFiles(f); startNewSharingFlow(f, undefined); }} /> : <AuraTextarea onTextShare={(t) => { setSharingText(t); startNewSharingFlow(undefined, t); }} />}
+                  {shareMode === 'files' ? <AuraDropzone onFileDrop={(f) => startNewSharingFlow(f, undefined)} /> : <AuraTextarea onTextShare={(t) => startNewSharingFlow(undefined, t)} />}
                 </div>
               </motion.div>
             ) : status === 'idle' && isReceiving ? (

@@ -6,11 +6,7 @@ import { CustomCursor } from './components/CustomCursor';
 import { useSignaling } from './hooks/useSignaling';
 import { WebRTCManager } from './lib/webrtc';
 
-import { Constellation } from './components/Constellation';
-import { useDiscovery } from './hooks/useDiscovery';
-
 function App() {
-  const { devices } = useDiscovery();
   const { roomId, error: signalingError, createRoom, pollForAnswer, getOffer, postAnswer, addCandidate, getCandidates, clearError } = useSignaling();
   
   const [sharingFiles, setSharingFiles] = useState<FileList | null>(null);
@@ -25,148 +21,21 @@ function App() {
   
   const rtcManager = useRef<WebRTCManager | null>(null);
   const candidatePollingInterval = useRef<any>(null);
-  const processedCandidates = useRef(new Set<string>());
-
-  const initRTC = (type: 'sender' | 'receiver', targetRoomId: string) => {
-    if (rtcManager.current) rtcManager.current.close();
-    processedCandidates.current.clear();
-    
-    rtcManager.current = new WebRTCManager({
-      onProgress: (p) => setTransferProgress(p),
-      onConnected: () => {
-        setStatus('transferring');
-        if (sharingFiles) {
-          rtcManager.current?.sendFile(sharingFiles[0]);
-        } else if (sharingText) {
-          const blob = new Blob([sharingText], { type: 'text/plain' });
-          const file = new File([blob], 'aura-text-msg.txt', { type: 'text/plain' });
-          rtcManager.current?.sendFile(file);
-        }
-      },
-      onDisconnected: () => {
-        // Only set error if we were already connected or in a stable state
-        if (status === 'transferring' || status === 'connecting') {
-           setErrorMessage('Cosmic Link Broken');
-           setStatus('error');
-        }
-      },
-      onFileSent: () => setStatus('success'),
-      onFileReceived: async (file) => {
-        setStatus('success');
-        if (file.name === 'aura-text-msg.txt') {
-          const text = await file.text();
-          setReceivedText(text);
-        } else {
-          const url = URL.createObjectURL(file);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = file.name;
-          a.click();
-          URL.revokeObjectURL(url);
-        }
-      },
-      onError: (err) => {
-        setErrorMessage(err);
-        setStatus('error');
-      },
-      onCandidate: (candidate) => {
-        addCandidate(targetRoomId, type, candidate);
-      }
-    });
-
-    // Start polling for candidates from the OTHER side
-    if (candidatePollingInterval.current) clearInterval(candidatePollingInterval.current);
-    candidatePollingInterval.current = setInterval(async () => {
-      const candidates = await getCandidates(targetRoomId, type);
-      candidates.forEach(async (cand: any) => {
-        const candStr = JSON.stringify(cand);
-        if (!processedCandidates.current.has(candStr)) {
-          processedCandidates.current.add(candStr);
-          await rtcManager.current?.addCandidate(cand);
-        }
-      });
-    }, 2000);
-  };
+  const currentRoomIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     return () => {
       if (candidatePollingInterval.current) clearInterval(candidatePollingInterval.current);
+      if (rtcManager.current) rtcManager.current.close();
     };
   }, []);
 
-  const handleFileDrop = async (files: FileList) => {
-    if (files.length === 0) return;
-    setSharingFiles(files);
-    setStatus('creating');
-    
-    // Create SINGLE manager for the whole session
-    initRTC('sender', 'PENDING'); 
-    
-    try {
-      const offer = await rtcManager.current!.createOffer();
-      const newRoomId = await createRoom(offer);
-      
-      if (newRoomId) {
-        // Update the manager with the actual room ID for candidate trickling
-        initRTC('sender', newRoomId); 
-        await rtcManager.current!.createOffer(); // Re-establish with the same PC
-        setStatus('waiting');
-        const answer = await pollForAnswer(newRoomId);
-        if (answer) {
-          await rtcManager.current!.setAnswer(answer);
-        }
-      }
-    } catch (e) {
-      setStatus('error');
-    }
-  };
-
-  const handleTextShare = async (text: string) => {
-    setSharingText(text);
-    setStatus('creating');
-    
-    // Create SINGLE manager
-    initRTC('sender', 'PENDING');
-    
-    try {
-      const offer = await rtcManager.current!.createOffer();
-      const newRoomId = await createRoom(offer);
-      
-      if (newRoomId) {
-        // Re-init with correct ID but preserve the PC state where possible
-        // Actually, let's just use a more direct approach to avoid the dummy problem
-        initRTC('sender', newRoomId);
-        const realOffer = await rtcManager.current!.createOffer();
-        // Since we re-inited, we need to push the REAL offer
-        // I will update createRoom to handle this better
-        await createRoom(realOffer); 
-
-        setStatus('waiting');
-        const answer = await pollForAnswer(newRoomId);
-        if (answer) {
-          await rtcManager.current!.setAnswer(answer);
-        }
-      }
-    } catch (e) {
-      setStatus('error');
-    }
-  };
-
-  // REFACTORED FLOW: One clean initialization
   const startNewSharingFlow = async (files?: FileList, text?: string) => {
     setStatus('creating');
     
-    // 1. Create the manager but don't start signaling yet
     const manager = new WebRTCManager({
         onProgress: (p) => setTransferProgress(p),
-        onConnected: () => {
-          setStatus('transferring');
-          if (files) manager.sendFile(files[0]);
-          else if (text) {
-            const blob = new Blob([text], { type: 'text/plain' });
-            manager.sendFile(new File([blob], 'aura-text-msg.txt', { type: 'text/plain' }));
-          }
-        },
+        onConnected: () => setStatus('transferring'),
         onDisconnected: () => { if (['transferring', 'connecting'].includes(status)) setStatus('error'); },
         onFileSent: () => setStatus('success'),
         onFileReceived: async (file) => {
@@ -193,24 +62,25 @@ function App() {
         currentRoomIdRef.current = newRoomId;
         setStatus('waiting');
         
-        // Start polling for candidates
-        const poll = setInterval(async () => {
+        candidatePollingInterval.current = setInterval(async () => {
             const candidates = await getCandidates(newRoomId, 'sender');
             candidates.forEach(c => manager.addCandidate(c));
         }, 3000);
-        candidatePollingInterval.current = poll;
 
         const answer = await pollForAnswer(newRoomId);
         if (answer) {
           await manager.setAnswer(answer);
+          if (files) manager.sendFile(files[0]);
+          else if (text) {
+            const blob = new Blob([text], { type: 'text/plain' });
+            manager.sendFile(new File([blob], 'aura-text-msg.txt', { type: 'text/plain' }));
+          }
         }
       }
     } catch (e) {
       setStatus('error');
     }
   };
-
-  const currentRoomIdRef = useRef<string | null>(null);
 
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -244,11 +114,10 @@ function App() {
         });
         rtcManager.current = manager;
 
-        const poll = setInterval(async () => {
+        candidatePollingInterval.current = setInterval(async () => {
             const candidates = await getCandidates(code, 'receiver');
             candidates.forEach(c => manager.addCandidate(c));
         }, 3000);
-        candidatePollingInterval.current = poll;
 
         const answer = await manager.handleOffer(offer);
         await postAnswer(code, answer);
@@ -259,16 +128,6 @@ function App() {
     } catch (e) {
       setStatus('error');
     }
-  };
-
-  // Replace existing handlers with the clean one
-  const onFileDropWrapper = (files: FileList) => {
-    setSharingFiles(files);
-    startNewSharingFlow(files, undefined);
-  };
-  const onTextShareWrapper = (text: string) => {
-    setSharingText(text);
-    startNewSharingFlow(undefined, text);
   };
 
   const reset = () => {
@@ -284,6 +143,10 @@ function App() {
     setReceivedText(null);
     setErrorMessage(null);
     clearError();
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
   };
 
   return (
@@ -326,7 +189,7 @@ function App() {
             {status === 'idle' && !isReceiving ? (
               <motion.div key={shareMode} initial={{ opacity: 0, scale: 0.9, filter: 'blur(10px)' }} animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }} exit={{ opacity: 0, scale: 1.1, filter: 'blur(10px)' }} className="z-30 w-full flex justify-center">
                 <div className="w-full max-w-xl">
-                  {shareMode === 'files' ? <AuraDropzone onFileDrop={onFileDropWrapper} /> : <AuraTextarea onTextShare={onTextShareWrapper} />}
+                  {shareMode === 'files' ? <AuraDropzone onFileDrop={(f) => { setSharingFiles(f); startNewSharingFlow(f, undefined); }} /> : <AuraTextarea onTextShare={(t) => { setSharingText(t); startNewSharingFlow(undefined, t); }} />}
                 </div>
               </motion.div>
             ) : status === 'idle' && isReceiving ? (

@@ -1,10 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AuraDropzone } from './components/AuraDropzone';
 import { CustomCursor } from './components/CustomCursor';
 import { useSignaling } from './hooks/useSignaling';
 import { WebRTCManager } from './lib/webrtc';
-import { cn } from './lib/utils';
 
 // We'll keep the constellation as a decorative background
 import { Constellation } from './components/Constellation';

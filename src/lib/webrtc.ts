@@ -135,7 +135,7 @@ export class WebRTCManager {
       }
     };
     
-    dc.onerror = (e) => {
+    dc.onerror = (_e) => {
       this.events.onError('Data channel error');
     };
   }

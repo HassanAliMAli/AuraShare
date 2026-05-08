@@ -1,9 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { motion, useSpring } from 'framer-motion';
 
 export const CustomCursor = () => {
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
-
   const springConfig = { damping: 25, stiffness: 200 };
   const cursorX = useSpring(0, springConfig);
   const cursorY = useSpring(0, springConfig);
@@ -12,7 +10,6 @@ export const CustomCursor = () => {
     const handleMouseMove = (e: MouseEvent) => {
       cursorX.set(e.clientX - 16);
       cursorY.set(e.clientY - 16);
-      setMousePos({ x: e.clientX, y: e.clientY });
     };
 
     window.addEventListener('mousemove', handleMouseMove);

@@ -20,6 +20,7 @@ function App() {
   const rtcManager = useRef<WebRTCManager | null>(null);
   const candidatePollingInterval = useRef<any>(null);
   const currentRoomIdRef = useRef<string | null>(null);
+  const processedCandidates = useRef(new Set<string>());
 
   useEffect(() => {
     return () => {
@@ -30,6 +31,7 @@ function App() {
 
   const startNewSharingFlow = async (files?: FileList, text?: string) => {
     setStatus('creating');
+    processedCandidates.current.clear();
     
     const manager = new WebRTCManager({
         onProgress: (p) => setTransferProgress(p),
@@ -62,8 +64,14 @@ function App() {
         
         candidatePollingInterval.current = setInterval(async () => {
             const candidates = await getCandidates(newRoomId, 'sender');
-            candidates.forEach((c: any) => manager.addCandidate(c));
-        }, 3000);
+            candidates.forEach((c: any) => {
+                const cStr = JSON.stringify(c);
+                if (!processedCandidates.current.has(cStr)) {
+                    processedCandidates.current.add(cStr);
+                    manager.addCandidate(c);
+                }
+            });
+        }, 1000); // 1s polling for ultra-robustness
 
         const answer = await pollForAnswer(newRoomId);
         if (answer) {
@@ -86,6 +94,7 @@ function App() {
     if (code.length !== 6) return;
     setStatus('connecting');
     currentRoomIdRef.current = code;
+    processedCandidates.current.clear();
     
     try {
       const offer = await getOffer(code);
@@ -114,8 +123,14 @@ function App() {
 
         candidatePollingInterval.current = setInterval(async () => {
             const candidates = await getCandidates(code, 'receiver');
-            candidates.forEach((c: any) => manager.addCandidate(c));
-        }, 3000);
+            candidates.forEach((c: any) => {
+                const cStr = JSON.stringify(c);
+                if (!processedCandidates.current.has(cStr)) {
+                    processedCandidates.current.add(cStr);
+                    manager.addCandidate(c);
+                }
+            });
+        }, 1000); // 1s polling for ultra-robustness
 
         const answer = await manager.handleOffer(offer);
         await postAnswer(code, answer);
@@ -132,6 +147,7 @@ function App() {
     if (rtcManager.current) rtcManager.current.close();
     if (candidatePollingInterval.current) clearInterval(candidatePollingInterval.current);
     currentRoomIdRef.current = null;
+    processedCandidates.current.clear();
     setTransferProgress(0);
     setStatus('idle');
     setJoinCode('');

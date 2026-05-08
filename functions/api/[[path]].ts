@@ -17,6 +17,17 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   const url = new URL(request.url);
   const path = url.pathname;
 
+  // Verify KV Binding
+  if (!env.ROOMS) {
+    return new Response(JSON.stringify({ 
+      error: "KV Binding Missing", 
+      message: "Please bind a KV namespace named 'ROOMS' in your Cloudflare Pages settings." 
+    }), { 
+      status: 500, 
+      headers: { ...CORS_HEADERS, "Content-Type": "application/json" } 
+    });
+  }
+
   // Handle CORS preflight
   if (request.method === "OPTIONS") {
     return new Response(null, { headers: CORS_HEADERS });

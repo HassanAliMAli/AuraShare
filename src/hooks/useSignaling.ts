@@ -1,6 +1,5 @@
 import { useState, useCallback } from 'react';
 
-// Using relative path for Vite proxy or direct URL for production
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 export const useSignaling = () => {
@@ -14,11 +13,18 @@ export const useSignaling = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ offer })
       });
+      
       const data = await res.json();
+      
+      if (!res.ok) {
+        setError(data.message || 'Failed to create room');
+        return null;
+      }
+      
       setRoomId(data.roomId);
       return data.roomId;
     } catch (e) {
-      setError('Failed to create room');
+      setError('Cosmic network failure');
       return null;
     }
   }, []);
@@ -28,6 +34,11 @@ export const useSignaling = () => {
     while (attempts < maxAttempts) {
       try {
         const res = await fetch(`${API_URL}/room/${id}/answer`);
+        if (!res.ok) {
+          const data = await res.json();
+          setError(data.message || 'Room expired');
+          return null;
+        }
         const data = await res.json();
         if (data.answer) {
           return data.answer;
@@ -38,18 +49,18 @@ export const useSignaling = () => {
       await new Promise(r => setTimeout(r, 2000));
       attempts++;
     }
-    setError('Timeout waiting for answer');
+    setError('Timeout waiting for peer');
     return null;
   }, []);
 
   const getOffer = useCallback(async (id: string) => {
     try {
       const res = await fetch(`${API_URL}/room/${id}`);
+      const data = await res.json();
       if (!res.ok) {
-        setError('Invalid room code');
+        setError(data.message || 'Invalid room code');
         return null;
       }
-      const data = await res.json();
       return data.offer;
     } catch (e) {
       setError('Failed to fetch offer');
@@ -64,12 +75,19 @@ export const useSignaling = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ answer })
       });
-      return res.ok;
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.message || 'Failed to establish link');
+        return false;
+      }
+      return true;
     } catch (e) {
-      setError('Failed to post answer');
+      setError('Network disruption');
       return false;
     }
   }, []);
+
+  const clearError = () => setError(null);
 
   return {
     roomId,
@@ -77,6 +95,7 @@ export const useSignaling = () => {
     createRoom,
     pollForAnswer,
     getOffer,
-    postAnswer
+    postAnswer,
+    clearError
   };
 };

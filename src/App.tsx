@@ -12,7 +12,7 @@ import { useDiscovery } from './hooks/useDiscovery';
 
 function App() {
   const { devices } = useDiscovery();
-  const { roomId, createRoom, pollForAnswer, getOffer, postAnswer } = useSignaling();
+  const { roomId, error: signalingError, createRoom, pollForAnswer, getOffer, postAnswer, clearError } = useSignaling();
   
   const [sharingFiles, setSharingFiles] = useState<FileList | null>(null);
   const [sharingText, setSharingText] = useState<string | null>(null);
@@ -22,6 +22,7 @@ function App() {
   const [isReceiving, setIsReceiving] = useState(false);
   const [shareMode, setShareMode] = useState<'text' | 'files'>('text');
   const [receivedText, setReceivedText] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   
   const rtcManager = useRef<WebRTCManager | null>(null);
 
@@ -43,7 +44,10 @@ function App() {
           rtcManager.current?.sendFile(file);
         }
       },
-      onDisconnected: () => setStatus('error'),
+      onDisconnected: () => {
+        setErrorMessage('Peer disconnected');
+        setStatus('error');
+      },
       onFileSent: () => setStatus('success'),
       onFileReceived: async (file) => {
         setStatus('success');
@@ -64,6 +68,7 @@ function App() {
       },
       onError: (err) => {
         console.error(err);
+        setErrorMessage(err);
         setStatus('error');
       }
     });
@@ -87,6 +92,7 @@ function App() {
         setStatus('error');
       }
     } catch (e) {
+      setErrorMessage('Failed to start sharing');
       setStatus('error');
     }
   };
@@ -121,6 +127,7 @@ function App() {
         setStatus('error');
       }
     } catch (e) {
+      setErrorMessage('Connection failed');
       setStatus('error');
     }
   };
@@ -134,6 +141,8 @@ function App() {
     setJoinCode('');
     setIsReceiving(false);
     setReceivedText(null);
+    setErrorMessage(null);
+    clearError();
   };
 
   const copyToClipboard = (text: string) => {
@@ -346,20 +355,25 @@ function App() {
                   </div>
                 )}
 
-                {status === 'error' && (
-                  <div className="text-center relative z-50">
-                    <div className="text-red-400 font-mono text-sm tracking-[0.3em] mb-6 font-bold">
-                      COSMOS DISRUPTED
-                    </div>
-                    <div className="w-32 h-32 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto mb-8">
-                      <i className="fa-solid fa-bolt-lightning text-5xl text-red-400" />
-                    </div>
-                    <p className="text-white/40 uppercase tracking-widest text-[10px] font-black mb-8">A cosmic storm has broken the link.</p>
-                    <button onClick={reset} className="px-10 py-4 rounded-2xl bg-white text-[#0c0c0e] font-black uppercase tracking-widest hover:scale-105 transition-transform">
-                      Try Re-Alignment
-                    </button>
+              {status === 'error' && (
+                <div className="text-center relative z-50">
+                  <div className="text-red-400 font-mono text-sm tracking-[0.3em] mb-6 font-bold uppercase">
+                    Cosmos Disrupted
                   </div>
-                )}
+                  <div className="w-32 h-32 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto mb-8">
+                    <i className="fa-solid fa-bolt-lightning text-5xl text-red-400" />
+                  </div>
+                  <p className="text-white font-bold mb-2 uppercase tracking-widest text-xs">
+                    {signalingError || errorMessage || "A cosmic storm has broken the link."}
+                  </p>
+                  <p className="text-white/20 text-[10px] uppercase tracking-widest font-black mb-8">
+                    The energy alignment failed. Please try again.
+                  </p>
+                  <button onClick={reset} className="px-10 py-4 rounded-2xl bg-white text-[#0c0c0e] font-black uppercase tracking-widest hover:scale-105 transition-transform shadow-xl">
+                    Try Re-Alignment
+                  </button>
+                </div>
+              )}
               </motion.div>
             )}
           </AnimatePresence>

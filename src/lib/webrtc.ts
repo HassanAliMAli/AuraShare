@@ -34,7 +34,7 @@ export class P2PManager {
         this.events.onError('Connection Timeout');
         this.close();
       }
-    }, 20000); // 20s grace period for global alignment
+    }, 300000); // 5-minute grace period for global alignment
   }
 
   private clearConnectionSentinel() {

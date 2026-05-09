@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, useSpring, useMotionValue } from 'framer-motion';
 
 export const CustomCursor = () => {
+  const [isTouch, setIsTouch] = useState(false);
   const mouseX = useMotionValue(0);
   const mouseY = useMotionValue(0);
 
@@ -13,6 +14,12 @@ export const CustomCursor = () => {
   const trailY = useSpring(mouseY, { damping: 40, stiffness: 150, mass: 1 });
 
   useEffect(() => {
+    // Disable custom cursor on touch devices to improve responsiveness
+    if (window.matchMedia('(pointer: coarse)').matches) {
+      setIsTouch(true);
+      return;
+    }
+
     const handleMouseMove = (e: MouseEvent) => {
       mouseX.set(e.clientX);
       mouseY.set(e.clientY);
@@ -22,10 +29,12 @@ export const CustomCursor = () => {
     return () => window.removeEventListener('mousemove', handleMouseMove);
   }, [mouseX, mouseY]);
 
+  if (isTouch) return null;
+
   return (
     <>
       <motion.div
-        className="fixed top-0 left-0 w-10 h-10 rounded-full border border-indigo-500/30 pointer-events-none z-[9999] mix-blend-screen"
+        className="fixed top-0 left-0 w-8 h-8 md:w-10 md:h-10 rounded-full border border-indigo-500/30 pointer-events-none z-[9999] mix-blend-screen"
         style={{
           x: trailX,
           y: trailY,
@@ -34,7 +43,7 @@ export const CustomCursor = () => {
         }}
       />
       <motion.div
-        className="fixed top-0 left-0 w-4 h-4 pointer-events-none z-[9999] flex items-center justify-center"
+        className="fixed top-0 left-0 w-3 h-3 md:w-4 md:h-4 pointer-events-none z-[9999] flex items-center justify-center"
         style={{
           x: cursorX,
           y: cursorY,

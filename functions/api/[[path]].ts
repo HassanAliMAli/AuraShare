@@ -51,11 +51,20 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   }
 
   // GET /api/room/:id -> Get offer
-  const roomMatch = path.match(/^\/api\/room\/([A-Z0-9]+)$/);
+  const roomMatch = path.match(/^\/api\/room\/([A-Z0-9]{6})$/);
   if (request.method === "GET" && roomMatch) {
-    const roomId = roomMatch[1];
+    const roomId = roomMatch[1].toUpperCase();
+    console.log(`Looking up offer for room: ${roomId}`);
     const offer = await env.ROOMS.get(`room:${roomId}:offer`);
-    if (!offer) return new Response("Not found", { status: 404, headers: CORS_HEADERS });
+    
+    if (!offer) {
+      console.error(`Offer not found for room: ${roomId}`);
+      return new Response(JSON.stringify({ error: "Room not found", message: "Invalid or expired Aura Code" }), { 
+        status: 404, 
+        headers: { ...CORS_HEADERS, "Content-Type": "application/json" } 
+      });
+    }
+    
     return new Response(JSON.stringify({ offer: JSON.parse(offer) }), {
       headers: { ...CORS_HEADERS, "Content-Type": "application/json" }
     });

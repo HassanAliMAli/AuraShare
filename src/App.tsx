@@ -16,60 +16,69 @@ function App() {
   const [roomId, setRoomId] = useState<string | null>(null);
   
   const p2pManager = useRef<P2PManager | null>(null);
+  const receivedFileUrl = useRef<string | null>(null);
 
   useEffect(() => {
     return () => {
       if (p2pManager.current) p2pManager.current.close();
+      if (receivedFileUrl.current) URL.revokeObjectURL(receivedFileUrl.current);
     };
   }, []);
 
   const startSharingFlow = async (files?: FileList, text?: string) => {
-    setStatus('creating');
-    if (p2pManager.current) p2pManager.current.close();
-
-    const manager = new P2PManager({
-        onProgress: (p) => setTransferProgress(p),
-        onConnected: () => {
-            setStatus('transferring');
-            if (files) manager.sendFile(files[0]);
-            else if (text) {
-              const blob = new Blob([text], { type: 'text/plain' });
-              manager.sendFile(new File([blob], 'aura-text-msg.txt', { type: 'text/plain' }));
-            }
-        },
-        onDisconnected: () => { if (['transferring', 'connecting'].includes(status)) setStatus('error'); },
-        onFileSent: () => setStatus('success'),
-        onFileReceived: async (file) => {
-          setStatus('success');
-          if (file.name === 'aura-text-msg.txt') setReceivedText(await file.text());
-          else {
-            const url = URL.createObjectURL(file);
-            const a = document.createElement('a');
-            a.href = url; a.download = file.name; a.click();
-            URL.revokeObjectURL(url);
-          }
-        },
-        onError: (err) => { setErrorMessage(err); setStatus('error'); }
-    });
-    p2pManager.current = manager;
-
     try {
+      setStatus('creating');
+      if (p2pManager.current) p2pManager.current.close();
+
+      const manager = new P2PManager({
+          onProgress: (p) => setTransferProgress(p),
+          onConnected: () => {
+              setStatus('transferring');
+              if (files) manager.sendFile(files[0]);
+              else if (text) {
+                const blob = new Blob([text], { type: 'text/plain' });
+                manager.sendFile(new File([blob], 'aura-text-msg.txt', { type: 'text/plain' }));
+              }
+          },
+          onDisconnected: () => { if (['transferring', 'connecting'].includes(status)) setStatus('error'); },
+          onFileSent: () => setStatus('success'),
+          onFileReceived: async (file) => {
+            setStatus('success');
+            if (file.name === 'aura-text-msg.txt') setReceivedText(await file.text());
+            else {
+              if (receivedFileUrl.current) URL.revokeObjectURL(receivedFileUrl.current);
+              const url = URL.createObjectURL(file);
+              receivedFileUrl.current = url;
+              const a = document.createElement('a');
+              a.href = url; a.download = file.name; a.click();
+            }
+          },
+          onError: (err) => { 
+            console.error('P2P Error:', err);
+            setErrorMessage(err); 
+            setStatus('error'); 
+          }
+      });
+      p2pManager.current = manager;
+
       const code = await manager.initialize();
       setRoomId(code);
       setStatus('waiting');
     } catch (e) {
+      setErrorMessage('Alignment Failed');
       setStatus('error');
     }
   };
 
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const code = joinCode.toUpperCase();
+    const code = joinCode.toUpperCase().trim();
     if (code.length !== 6) return;
-    setStatus('connecting');
-    if (p2pManager.current) p2pManager.current.close();
     
     try {
+      setStatus('connecting');
+      if (p2pManager.current) p2pManager.current.close();
+      
       const manager = new P2PManager({
           onProgress: (p) => setTransferProgress(p),
           onConnected: () => setStatus('transferring'),
@@ -79,24 +88,32 @@ function App() {
             setStatus('success');
             if (file.name === 'aura-text-msg.txt') setReceivedText(await file.text());
             else {
+              if (receivedFileUrl.current) URL.revokeObjectURL(receivedFileUrl.current);
               const url = URL.createObjectURL(file);
+              receivedFileUrl.current = url;
               const a = document.createElement('a');
               a.href = url; a.download = file.name; a.click();
-              URL.revokeObjectURL(url);
             }
           },
-          onError: (err) => { setErrorMessage(err); setStatus('error'); }
+          onError: (err) => { 
+            setErrorMessage(err); 
+            setStatus('error'); 
+          }
       });
       p2pManager.current = manager;
       await manager.join(code);
     } catch (e) {
-      setErrorMessage('Aura Lost');
+      setErrorMessage('Cosmic Link Broken');
       setStatus('error');
     }
   };
 
   const reset = () => {
     if (p2pManager.current) p2pManager.current.close();
+    if (receivedFileUrl.current) {
+        URL.revokeObjectURL(receivedFileUrl.current);
+        receivedFileUrl.current = null;
+    }
     setTransferProgress(0);
     setStatus('idle');
     setJoinCode('');

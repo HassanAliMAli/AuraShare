@@ -14,9 +14,10 @@ export class P2PManager {
   private conn: any = null;
   private events: P2PEvents;
   
-  private receiveBuffer: ArrayBuffer[] = [];
+  private receiveBuffer: any[] = [];
   private receivedSize = 0;
   private metadata: any = null;
+  private connectionTimeout: any = null;
 
   constructor(events: P2PEvents) {
     this.events = events;
@@ -26,10 +27,25 @@ export class P2PManager {
     return Math.random().toString(36).substring(2, 8).toUpperCase();
   }
 
+  private startConnectionSentinel() {
+    this.clearConnectionSentinel();
+    this.connectionTimeout = setTimeout(() => {
+      if (!this.conn || !this.conn.open) {
+        this.events.onError('Connection Timeout');
+        this.close();
+      }
+    }, 20000); // 20s grace period for global alignment
+  }
+
+  private clearConnectionSentinel() {
+    if (this.connectionTimeout) {
+      clearTimeout(this.connectionTimeout);
+      this.connectionTimeout = null;
+    }
+  }
+
   async initialize(): Promise<string> {
     const id = this.generateId();
-    
-    // Using the official PeerJS global cloud server (100% free & instant)
     this.peer = new Peer(id, {
       debug: 1,
       config: {
@@ -43,9 +59,10 @@ export class P2PManager {
       }
     });
 
+    this.startConnectionSentinel();
+
     return new Promise((resolve, reject) => {
       this.peer!.on('open', (peerId) => {
-        console.log('Cosmic ID Established:', peerId);
         resolve(peerId);
       });
 
@@ -55,12 +72,10 @@ export class P2PManager {
       });
 
       this.peer!.on('error', (err) => {
-        console.error('Peer Error:', err.type);
         if (err.type === 'unavailable-id') {
-            // Retry with a new ID if collision occurs
             this.initialize().then(resolve).catch(reject);
         } else {
-            this.events.onError('Cosmos Busy');
+            this.events.onError('Aura Busy');
             reject(err);
         }
       });
@@ -68,7 +83,6 @@ export class P2PManager {
   }
 
   async join(targetId: string): Promise<void> {
-    // Client-side initialization for joining
     this.peer = new Peer({
         config: {
             iceServers: [
@@ -77,6 +91,8 @@ export class P2PManager {
             ]
           }
     });
+
+    this.startConnectionSentinel();
 
     return new Promise((resolve, reject) => {
       this.peer!.on('open', () => {
@@ -88,7 +104,7 @@ export class P2PManager {
       });
       
       this.peer!.on('error', (err) => {
-        this.events.onError('Portal Closed');
+        this.events.onError('Portal Failed');
         reject(err);
       });
     });
@@ -98,12 +114,11 @@ export class P2PManager {
     if (!this.conn) return;
 
     this.conn.on('open', () => {
-      console.log('Direct Link Balanced');
+      this.clearConnectionSentinel();
       this.events.onConnected();
     });
 
     this.conn.on('data', (data: any) => {
-      // PeerJS handles the binary encoding correctly
       if (typeof data === 'string') {
         try {
           const msg = JSON.parse(data);
@@ -115,7 +130,6 @@ export class P2PManager {
           }
         } catch (e) {}
       } else {
-        // Binary Chunk
         const buffer = data instanceof Uint8Array ? data.buffer : data;
         this.receiveBuffer.push(buffer);
         this.receivedSize += buffer.byteLength;
@@ -133,13 +147,12 @@ export class P2PManager {
     });
 
     this.conn.on('close', () => this.events.onDisconnected());
-    this.conn.on('error', () => this.events.onError('Link Disruption'));
+    this.conn.on('error', () => this.events.onError('Alignment Lost'));
   }
 
   async sendFile(file: File) {
     if (!this.conn || !this.conn.open) return;
 
-    // Send metadata
     this.conn.send(JSON.stringify({
       kind: 'metadata',
       name: file.name,
@@ -147,27 +160,38 @@ export class P2PManager {
       type: file.type
     }));
 
-    // Send in robust 16KB chunks
     const chunkSize = 16 * 1024;
     let offset = 0;
 
+    // WORLD-CLASS BACKPRESSURE: Prevent SCTP buffer overflow
+    const MAX_BUFFER_SIZE = 1024 * 1024; // 1MB
+
     while (offset < file.size) {
+      // Check PeerJS/WebRTC buffer size
+      if (this.conn.dataChannel.bufferedAmount > MAX_BUFFER_SIZE) {
+        // Wait for buffer to drain
+        await new Promise<void>((resolve) => {
+          const checkBuffer = setInterval(() => {
+            if (this.conn.dataChannel.bufferedAmount < MAX_BUFFER_SIZE / 2) {
+              clearInterval(checkBuffer);
+              resolve();
+            }
+          }, 50);
+        });
+      }
+
       const slice = file.slice(offset, offset + chunkSize);
       const buffer = await slice.arrayBuffer();
-      this.conn.send(buffer);
+      this.conn.send(new Uint8Array(buffer));
       offset += buffer.byteLength;
       this.events.onProgress((offset / file.size) * 100);
-      
-      // Momentary pause to prevent browser hang
-      if (offset % (chunkSize * 10) === 0) {
-        await new Promise(r => setTimeout(r, 0));
-      }
     }
     
     this.events.onFileSent();
   }
 
   close() {
+    this.clearConnectionSentinel();
     this.conn?.close();
     this.peer?.destroy();
   }

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { AuraDropzone } from './components/AuraDropzone';
 import { AuraTextarea } from './components/AuraTextarea';
 import { CustomCursor } from './components/CustomCursor';
-import { P2PManager } from './lib/webrtc';
+import { SimpleP2PManager } from './lib/webrtc';
 
 function App() {
   const [transferProgress, setTransferProgress] = useState(0);
@@ -13,20 +13,52 @@ function App() {
   const [shareMode, setShareMode] = useState<'text' | 'files'>('text');
   const [receivedText, setReceivedText] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [currentRoomId, setCurrentRoomId] = useState<string | null>(null);
+  const [roomId, setRoomId] = useState<string | null>(null);
   
-  const p2pManager = useRef<P2PManager | null>(null);
+  const p2pManager = useRef<SimpleP2PManager | null>(null);
+  const eventSource = useRef<EventSource | null>(null);
 
   useEffect(() => {
     return () => {
-      if (p2pManager.current) p2pManager.current.close();
+      p2pManager.current?.close();
+      eventSource.current?.close();
     };
   }, []);
+
+  const createTunnel = (id: string, role: 'sender' | 'receiver') => {
+    eventSource.current?.close();
+    // Connect to the real-time SSE tunnel
+    const es = new EventSource(`/api/relay/tunnel/${id}-${role === 'sender' ? 'receiver' : 'sender'}`);
+    
+    es.onmessage = (e) => {
+      try {
+        const signal = JSON.parse(e.data);
+        console.log('Cosmic Signal Received:', signal);
+        p2pManager.current?.signal(signal);
+      } catch (err) {}
+    };
+
+    eventSource.current = es;
+  };
+
+  const pushSignal = async (id: string, role: 'sender' | 'receiver', signal: any) => {
+    try {
+      await fetch(`/api/relay/push/${id}-${role}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(signal)
+      });
+    } catch (e) {}
+  };
 
   const startSharingFlow = async (files?: FileList, text?: string) => {
     setStatus('creating');
     
-    const manager = new P2PManager({
+    // Generate a random 6-digit code
+    const newRoomId = Math.random().toString(36).substring(2, 8).toUpperCase();
+    setRoomId(newRoomId);
+
+    const manager = new SimpleP2PManager({
         onProgress: (p) => setTransferProgress(p),
         onConnected: () => {
             setStatus('transferring');
@@ -48,17 +80,15 @@ function App() {
             URL.revokeObjectURL(url);
           }
         },
-        onError: (err) => { setErrorMessage(err); setStatus('error'); }
-    });
+        onError: (err) => { setErrorMessage(err); setStatus('error'); },
+        onSignal: (signal) => {
+            pushSignal(newRoomId, 'sender', signal);
+        }
+    }, true);
+    
     p2pManager.current = manager;
-
-    try {
-      const code = await manager.initialize();
-      setCurrentRoomId(code);
-      setStatus('waiting');
-    } catch (e) {
-      setStatus('error');
-    }
+    createTunnel(newRoomId, 'sender');
+    setStatus('waiting');
   };
 
   const handleJoin = async (e: React.FormEvent) => {
@@ -67,41 +97,41 @@ function App() {
     if (code.length !== 6) return;
     setStatus('connecting');
     
-    try {
-      const manager = new P2PManager({
-          onProgress: (p) => setTransferProgress(p),
-          onConnected: () => setStatus('transferring'),
-          onDisconnected: () => { if (['transferring', 'connecting'].includes(status)) setStatus('error'); },
-          onFileSent: () => setStatus('success'),
-          onFileReceived: async (file) => {
-            setStatus('success');
-            if (file.name === 'aura-text-msg.txt') setReceivedText(await file.text());
-            else {
-              const url = URL.createObjectURL(file);
-              const a = document.createElement('a');
-              a.href = url; a.download = file.name; a.click();
-              URL.revokeObjectURL(url);
-            }
-          },
-          onError: (err) => { setErrorMessage(err); setStatus('error'); }
-      });
-      p2pManager.current = manager;
-      await manager.join(code);
-    } catch (e) {
-      setErrorMessage('Aura Expired');
-      setStatus('error');
-    }
+    const manager = new SimpleP2PManager({
+        onProgress: (p) => setTransferProgress(p),
+        onConnected: () => setStatus('transferring'),
+        onDisconnected: () => { if (['transferring', 'connecting'].includes(status)) setStatus('error'); },
+        onFileSent: () => setStatus('success'),
+        onFileReceived: async (file) => {
+          setStatus('success');
+          if (file.name === 'aura-text-msg.txt') setReceivedText(await file.text());
+          else {
+            const url = URL.createObjectURL(file);
+            const a = document.createElement('a');
+            a.href = url; a.download = file.name; a.click();
+            URL.revokeObjectURL(url);
+          }
+        },
+        onError: (err) => { setErrorMessage(err); setStatus('error'); },
+        onSignal: (signal) => {
+            pushSignal(code, 'receiver', signal);
+        }
+    }, false);
+
+    p2pManager.current = manager;
+    createTunnel(code, 'receiver');
   };
 
   const reset = () => {
-    if (p2pManager.current) p2pManager.current.close();
+    p2pManager.current?.close();
+    eventSource.current?.close();
     setTransferProgress(0);
     setStatus('idle');
     setJoinCode('');
     setIsReceiving(false);
     setReceivedText(null);
     setErrorMessage(null);
-    setCurrentRoomId(null);
+    setRoomId(null);
   };
 
   const copyToClipboard = (text: string) => {
@@ -163,10 +193,10 @@ function App() {
               </motion.div>
             ) : (
               <motion.div key="transfer-status" initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 1.2 }} className="z-40 flex flex-col items-center">
-                {status === 'waiting' && currentRoomId && (
+                {status === 'waiting' && roomId && (
                   <div className="text-center mb-8 relative z-50">
                     <div className="text-orange-400 font-mono text-sm tracking-[0.3em] mb-6 font-bold uppercase">Transmission Code</div>
-                    <div className="text-7xl text-white font-black tracking-[0.3em] bg-white/5 border border-white/10 rounded-[40px] py-8 px-12 mb-6 shadow-2xl backdrop-blur-xl">{currentRoomId}</div>
+                    <div className="text-7xl text-white font-black tracking-[0.3em] bg-white/5 border border-white/10 rounded-[40px] py-8 px-12 mb-6 shadow-2xl backdrop-blur-xl">{roomId}</div>
                     <p className="text-white/20 uppercase tracking-widest text-xs font-bold">Waiting for cosmic alignment...</p>
                   </div>
                 )}

@@ -3,12 +3,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { AuraDropzone } from './components/AuraDropzone';
 import { AuraTextarea } from './components/AuraTextarea';
 import { CustomCursor } from './components/CustomCursor';
-import { useSignaling } from './hooks/useSignaling';
-import { WebRTCManager } from './lib/webrtc';
+import { P2PManager } from './lib/webrtc';
 
 function App() {
-  const { roomId, error: signalingError, createRoom, pollForAnswer, getOffer, postAnswer, addCandidate, getCandidates, clearError } = useSignaling();
-  
   const [transferProgress, setTransferProgress] = useState(0);
   const [status, setStatus] = useState<'idle' | 'creating' | 'waiting' | 'connecting' | 'transferring' | 'success' | 'error'>('idle');
   const [joinCode, setJoinCode] = useState('');
@@ -16,26 +13,29 @@ function App() {
   const [shareMode, setShareMode] = useState<'text' | 'files'>('text');
   const [receivedText, setReceivedText] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [currentRoomId, setCurrentRoomId] = useState<string | null>(null);
   
-  const rtcManager = useRef<WebRTCManager | null>(null);
-  const candidatePollingInterval = useRef<any>(null);
-  const currentRoomIdRef = useRef<string | null>(null);
-  const processedCandidates = useRef(new Set<string>());
+  const p2pManager = useRef<P2PManager | null>(null);
 
   useEffect(() => {
     return () => {
-      if (candidatePollingInterval.current) clearInterval(candidatePollingInterval.current);
-      if (rtcManager.current) rtcManager.current.close();
+      if (p2pManager.current) p2pManager.current.close();
     };
   }, []);
 
-  const startNewSharingFlow = async (files?: FileList, text?: string) => {
+  const startSharingFlow = async (files?: FileList, text?: string) => {
     setStatus('creating');
-    processedCandidates.current.clear();
     
-    const manager = new WebRTCManager({
+    const manager = new P2PManager({
         onProgress: (p) => setTransferProgress(p),
-        onConnected: () => setStatus('transferring'),
+        onConnected: () => {
+            setStatus('transferring');
+            if (files) manager.sendFile(files[0]);
+            else if (text) {
+              const blob = new Blob([text], { type: 'text/plain' });
+              manager.sendFile(new File([blob], 'aura-text-msg.txt', { type: 'text/plain' }));
+            }
+        },
         onDisconnected: () => { if (['transferring', 'connecting'].includes(status)) setStatus('error'); },
         onFileSent: () => setStatus('success'),
         onFileReceived: async (file) => {
@@ -48,41 +48,14 @@ function App() {
             URL.revokeObjectURL(url);
           }
         },
-        onError: (err) => { setErrorMessage(err); setStatus('error'); },
-        onCandidate: (candidate) => {
-            if (currentRoomIdRef.current) addCandidate(currentRoomIdRef.current, 'sender', candidate);
-        }
+        onError: (err) => { setErrorMessage(err); setStatus('error'); }
     });
-    rtcManager.current = manager;
+    p2pManager.current = manager;
 
     try {
-      const offer = await manager.createOffer();
-      const newRoomId = await createRoom(offer);
-      if (newRoomId) {
-        currentRoomIdRef.current = newRoomId;
-        setStatus('waiting');
-        
-        candidatePollingInterval.current = setInterval(async () => {
-            const candidates = await getCandidates(newRoomId, 'sender');
-            candidates.forEach((c: any) => {
-                const cStr = JSON.stringify(c);
-                if (!processedCandidates.current.has(cStr)) {
-                    processedCandidates.current.add(cStr);
-                    manager.addCandidate(c);
-                }
-            });
-        }, 1000); // 1s polling for ultra-robustness
-
-        const answer = await pollForAnswer(newRoomId);
-        if (answer) {
-          await manager.setAnswer(answer);
-          if (files) manager.sendFile(files[0]);
-          else if (text) {
-            const blob = new Blob([text], { type: 'text/plain' });
-            manager.sendFile(new File([blob], 'aura-text-msg.txt', { type: 'text/plain' }));
-          }
-        }
-      }
+      const code = await manager.initialize();
+      setCurrentRoomId(code);
+      setStatus('waiting');
     } catch (e) {
       setStatus('error');
     }
@@ -93,68 +66,42 @@ function App() {
     const code = joinCode.toUpperCase();
     if (code.length !== 6) return;
     setStatus('connecting');
-    currentRoomIdRef.current = code;
-    processedCandidates.current.clear();
     
     try {
-      const offer = await getOffer(code);
-      if (offer) {
-        const manager = new WebRTCManager({
-            onProgress: (p) => setTransferProgress(p),
-            onConnected: () => setStatus('transferring'),
-            onDisconnected: () => { if (['transferring', 'connecting'].includes(status)) setStatus('error'); },
-            onFileSent: () => setStatus('success'),
-            onFileReceived: async (file) => {
-              setStatus('success');
-              if (file.name === 'aura-text-msg.txt') setReceivedText(await file.text());
-              else {
-                const url = URL.createObjectURL(file);
-                const a = document.createElement('a');
-                a.href = url; a.download = file.name; a.click();
-                URL.revokeObjectURL(url);
-              }
-            },
-            onError: (err) => { setErrorMessage(err); setStatus('error'); },
-            onCandidate: (candidate) => {
-                addCandidate(code, 'receiver', candidate);
+      const manager = new P2PManager({
+          onProgress: (p) => setTransferProgress(p),
+          onConnected: () => setStatus('transferring'),
+          onDisconnected: () => { if (['transferring', 'connecting'].includes(status)) setStatus('error'); },
+          onFileSent: () => setStatus('success'),
+          onFileReceived: async (file) => {
+            setStatus('success');
+            if (file.name === 'aura-text-msg.txt') setReceivedText(await file.text());
+            else {
+              const url = URL.createObjectURL(file);
+              const a = document.createElement('a');
+              a.href = url; a.download = file.name; a.click();
+              URL.revokeObjectURL(url);
             }
-        });
-        rtcManager.current = manager;
-
-        candidatePollingInterval.current = setInterval(async () => {
-            const candidates = await getCandidates(code, 'receiver');
-            candidates.forEach((c: any) => {
-                const cStr = JSON.stringify(c);
-                if (!processedCandidates.current.has(cStr)) {
-                    processedCandidates.current.add(cStr);
-                    manager.addCandidate(c);
-                }
-            });
-        }, 1000); // 1s polling for ultra-robustness
-
-        const answer = await manager.handleOffer(offer);
-        await postAnswer(code, answer);
-      } else {
-        setErrorMessage('Invalid Aura Code');
-        setStatus('error');
-      }
+          },
+          onError: (err) => { setErrorMessage(err); setStatus('error'); }
+      });
+      p2pManager.current = manager;
+      await manager.join(code);
     } catch (e) {
+      setErrorMessage('Aura Expired');
       setStatus('error');
     }
   };
 
   const reset = () => {
-    if (rtcManager.current) rtcManager.current.close();
-    if (candidatePollingInterval.current) clearInterval(candidatePollingInterval.current);
-    currentRoomIdRef.current = null;
-    processedCandidates.current.clear();
+    if (p2pManager.current) p2pManager.current.close();
     setTransferProgress(0);
     setStatus('idle');
     setJoinCode('');
     setIsReceiving(false);
     setReceivedText(null);
     setErrorMessage(null);
-    clearError();
+    setCurrentRoomId(null);
   };
 
   const copyToClipboard = (text: string) => {
@@ -201,7 +148,7 @@ function App() {
             {status === 'idle' && !isReceiving ? (
               <motion.div key={shareMode} initial={{ opacity: 0, scale: 0.9, filter: 'blur(10px)' }} animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }} exit={{ opacity: 0, scale: 1.1, filter: 'blur(10px)' }} className="z-30 w-full flex justify-center">
                 <div className="w-full max-w-xl">
-                  {shareMode === 'files' ? <AuraDropzone onFileDrop={(f) => startNewSharingFlow(f, undefined)} /> : <AuraTextarea onTextShare={(t) => startNewSharingFlow(undefined, t)} />}
+                  {shareMode === 'files' ? <AuraDropzone onFileDrop={(f) => startSharingFlow(f, undefined)} /> : <AuraTextarea onTextShare={(t) => startSharingFlow(undefined, t)} />}
                 </div>
               </motion.div>
             ) : status === 'idle' && isReceiving ? (
@@ -216,10 +163,10 @@ function App() {
               </motion.div>
             ) : (
               <motion.div key="transfer-status" initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 1.2 }} className="z-40 flex flex-col items-center">
-                {status === 'waiting' && roomId && (
+                {status === 'waiting' && currentRoomId && (
                   <div className="text-center mb-8 relative z-50">
-                    <div className="text-orange-400 font-mono text-sm tracking-[0.3em] mb-6 font-bold">TRANSMISSION CODE</div>
-                    <div className="text-7xl text-white font-black tracking-[0.3em] bg-white/5 border border-white/10 rounded-[40px] py-8 px-12 mb-6 shadow-2xl backdrop-blur-xl">{roomId}</div>
+                    <div className="text-orange-400 font-mono text-sm tracking-[0.3em] mb-6 font-bold uppercase">Transmission Code</div>
+                    <div className="text-7xl text-white font-black tracking-[0.3em] bg-white/5 border border-white/10 rounded-[40px] py-8 px-12 mb-6 shadow-2xl backdrop-blur-xl">{currentRoomId}</div>
                     <p className="text-white/20 uppercase tracking-widest text-xs font-bold">Waiting for cosmic alignment...</p>
                   </div>
                 )}
@@ -250,7 +197,7 @@ function App() {
                 {status === 'error' && (
                   <div className="text-center relative z-50">
                     <div className="text-red-400 font-mono text-sm tracking-[0.3em] mb-6 font-bold uppercase">Cosmos Disrupted</div>
-                    <p className="text-white font-bold mb-8 uppercase tracking-widest text-xs">{signalingError || errorMessage || "A cosmic storm has broken the link."}</p>
+                    <p className="text-white font-bold mb-8 uppercase tracking-widest text-xs">{errorMessage || "A cosmic storm has broken the link."}</p>
                     <button onClick={reset} className="px-10 py-4 rounded-2xl bg-white text-[#0c0c0e] font-black uppercase tracking-widest hover:scale-105 transition-transform shadow-xl">Try Re-Alignment</button>
                   </div>
                 )}

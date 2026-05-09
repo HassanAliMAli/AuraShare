@@ -1,179 +1,178 @@
-type WebRTCEvents = {
+import { Peer } from 'peerjs';
+
+type PeerEvents = {
   onProgress: (progress: number) => void;
   onConnected: () => void;
   onDisconnected: () => void;
   onFileReceived: (file: File) => void;
   onFileSent: () => void;
   onError: (err: string) => void;
-  onCandidate: (candidate: RTCIceCandidate) => void;
 };
 
-export class WebRTCManager {
-  private pc: RTCPeerConnection;
-  private dc?: RTCDataChannel;
-  private events: WebRTCEvents;
+export class P2PManager {
+  private peer: Peer | null = null;
+  private conn: any = null;
+  private events: PeerEvents;
   
-  private receiveBuffer: ArrayBuffer[] = [];
+  private receiveBuffer: any[] = [];
   private receivedSize = 0;
-  private expectedSize = 0;
-  private expectedFileName = '';
-  private expectedFileType = '';
+  private expectedMetadata: { name: string, size: number, type: string } | null = null;
 
-  constructor(events: WebRTCEvents) {
+  constructor(events: PeerEvents) {
     this.events = events;
-    
-    // ADDING PREMIUM TURN RELAY (OpenRelay)
-    // This is the "Nuclear Option" for firewalls. If direct P2P fails, 
-    // it will route through these servers to guarantee a connection.
-    this.pc = new RTCPeerConnection({
-      iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:openrelay.metered.ca:80' },
-        { 
-          urls: 'turn:openrelay.metered.ca:80',
-          username: 'openrelay',
-          credential: 'openrelay'
-        },
-        { 
-          urls: 'turn:openrelay.metered.ca:443',
-          username: 'openrelay',
-          credential: 'openrelay'
-        },
-        { 
-          urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-          username: 'openrelay',
-          credential: 'openrelay'
-        }
-      ],
-      iceCandidatePoolSize: 10
+  }
+
+  // Create a 6-digit room code
+  private generateRoomId() {
+    return Math.random().toString(36).substring(2, 8).toUpperCase();
+  }
+
+  async initialize(): Promise<string> {
+    const id = this.generateRoomId();
+    this.peer = new Peer(id, {
+      debug: 1,
+      config: {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:openrelay.metered.ca:80' },
+          { 
+            urls: 'turn:openrelay.metered.ca:80',
+            username: 'openrelay',
+            credential: 'openrelay'
+          }
+        ]
+      }
     });
 
-    this.pc.onicecandidate = (event) => {
-      if (event.candidate) this.events.onCandidate(event.candidate);
-    };
+    return new Promise((resolve, reject) => {
+      this.peer!.on('open', (peerId) => {
+        console.log('Cosmic ID Established:', peerId);
+        
+        // Listen for incoming connections
+        this.peer!.on('connection', (connection) => {
+          this.conn = connection;
+          this.setupConnection();
+        });
+        
+        resolve(peerId);
+      });
 
-    this.pc.onconnectionstatechange = () => {
-      if (this.pc.connectionState === 'connected') {
-        // We wait for DataChannel to be open for onConnected
-      } else if (['disconnected', 'failed', 'closed'].includes(this.pc.connectionState)) {
-        this.events.onDisconnected();
-      }
-    };
+      this.peer!.on('error', (err) => {
+        console.error('Peer Error:', err);
+        this.events.onError('Alignment Failed');
+        reject(err);
+      });
+    });
   }
 
-  async addCandidate(candidate: RTCIceCandidateInit) {
-    try {
-      if (!candidate || !candidate.candidate) return;
-      await this.pc.addIceCandidate(new RTCIceCandidate(candidate));
-    } catch (e) {}
+  async join(targetId: string): Promise<void> {
+    this.peer = new Peer({
+        config: {
+            iceServers: [
+              { urls: 'stun:stun.l.google.com:19302' },
+              { urls: 'stun:openrelay.metered.ca:80' },
+              { 
+                urls: 'turn:openrelay.metered.ca:80',
+                username: 'openrelay',
+                credential: 'openrelay'
+              }
+            ]
+          }
+    });
+
+    return new Promise((resolve) => {
+      this.peer!.on('open', () => {
+        this.conn = this.peer!.connect(targetId, {
+          reliable: true,
+        });
+        this.setupConnection();
+        resolve();
+      });
+    });
   }
 
-  async createOffer(): Promise<RTCSessionDescriptionInit> {
-    this.dc = this.pc.createDataChannel('fileTransfer', { ordered: true });
-    this.setupDataChannel(this.dc);
-    const offer = await this.pc.createOffer();
-    await this.pc.setLocalDescription(offer);
-    return this.pc.localDescription!;
-  }
+  private setupConnection() {
+    if (!this.conn) return;
 
-  async setAnswer(answer: RTCSessionDescriptionInit) {
-    try {
-      if (this.pc.signalingState === 'have-local-offer') {
-        await this.pc.setRemoteDescription(new RTCSessionDescription(answer));
-      }
-    } catch (e) {
-      this.events.onError('Link Sync Error');
-    }
-  }
-
-  async handleOffer(offer: RTCSessionDescriptionInit): Promise<RTCSessionDescriptionInit> {
-    this.pc.ondatachannel = (event) => {
-      this.dc = event.channel;
-      this.setupDataChannel(this.dc);
-    };
-    await this.pc.setRemoteDescription(new RTCSessionDescription(offer));
-    const answer = await this.pc.createAnswer();
-    await this.pc.setLocalDescription(answer);
-    return this.pc.localDescription!;
-  }
-
-  private setupDataChannel(dc: RTCDataChannel) {
-    dc.binaryType = 'arraybuffer';
-    dc.onopen = () => {
-      console.log('Channel Ready');
+    this.conn.on('open', () => {
+      console.log('Direct Link Balanced');
       this.events.onConnected();
-    };
-    
-    dc.onmessage = (e) => {
-      if (typeof e.data === 'string') {
+    });
+
+    this.conn.on('data', (data: any) => {
+      if (typeof data === 'string') {
         try {
-          const meta = JSON.parse(e.data);
-          if (meta.type === 'heartbeat') return;
-          this.expectedFileName = meta.name;
-          this.expectedSize = meta.size;
-          this.expectedFileType = meta.type;
-          this.receiveBuffer = [];
-          this.receivedSize = 0;
-          this.events.onProgress(0);
-        } catch (err) {}
-      } else {
-        this.receiveBuffer.push(e.data);
-        this.receivedSize += e.data.byteLength;
-        this.events.onProgress((this.receivedSize / this.expectedSize) * 100);
-        if (this.receivedSize === this.expectedSize) {
-          const file = new File([new Blob(this.receiveBuffer, { type: this.expectedFileType })], this.expectedFileName, { type: this.expectedFileType });
-          this.events.onFileReceived(file);
-          this.receiveBuffer = [];
+          const meta = JSON.parse(data);
+          if (meta.kind === 'metadata') {
+            this.expectedMetadata = meta;
+            this.receiveBuffer = [];
+            this.receivedSize = 0;
+            this.events.onProgress(0);
+          }
+        } catch (e) {}
+      } else if (data instanceof ArrayBuffer || data instanceof Uint8Array) {
+        const buffer = data instanceof Uint8Array ? data.buffer : data;
+        this.receiveBuffer.push(buffer);
+        this.receivedSize += buffer.byteLength;
+        
+        if (this.expectedMetadata) {
+          this.events.onProgress((this.receivedSize / this.expectedMetadata.size) * 100);
+          
+          if (this.receivedSize >= this.expectedMetadata.size) {
+            const file = new File(
+              [new Blob(this.receiveBuffer, { type: this.expectedMetadata.type })], 
+              this.expectedMetadata.name, 
+              { type: this.expectedMetadata.type }
+            );
+            this.events.onFileReceived(file);
+            this.receiveBuffer = [];
+            this.expectedMetadata = null;
+          }
         }
       }
-    };
-    
-    dc.onclose = () => this.events.onDisconnected();
-    dc.onerror = () => this.events.onError('Link Lost');
+    });
+
+    this.conn.on('close', () => this.events.onDisconnected());
+    this.conn.on('error', () => this.events.onError('Link Disruption'));
   }
 
   async sendFile(file: File) {
-    // PROTECT: Wait until the channel is truly open
-    if (!this.dc || this.dc.readyState !== 'open') {
-      console.log('Waiting for channel to stabilize...');
-      await new Promise<void>((resolve) => {
-        const check = setInterval(() => {
-          if (this.dc?.readyState === 'open') {
-            clearInterval(check);
-            resolve();
-          }
-        }, 100);
-      });
+    if (!this.conn || !this.conn.open) {
+        this.events.onError('Wait for Link...');
+        return;
     }
 
-    this.dc!.send(JSON.stringify({ name: file.name, size: file.size, type: file.type }));
-    
-    // Give the receiver a moment to process metadata
-    await new Promise(r => setTimeout(r, 200));
+    // Send metadata
+    this.conn.send(JSON.stringify({
+      kind: 'metadata',
+      name: file.name,
+      size: file.size,
+      type: file.type
+    }));
 
+    // Send in stable chunks
     const chunkSize = 16 * 1024;
     let offset = 0;
 
     while (offset < file.size) {
-      if (this.dc!.bufferedAmount > 1024 * 1024) {
-        await new Promise<void>((res) => {
-          const wait = () => { this.dc?.removeEventListener('bufferedamountlow', wait); res(); };
-          this.dc?.addEventListener('bufferedamountlow', wait);
-        });
-      }
-      
       const slice = file.slice(offset, offset + chunkSize);
       const buffer = await slice.arrayBuffer();
-      this.dc!.send(buffer);
+      this.conn.send(buffer);
       offset += buffer.byteLength;
       this.events.onProgress((offset / file.size) * 100);
+      
+      // Artificial delay to prevent buffer bloat
+      if (offset % (chunkSize * 10) === 0) {
+        await new Promise(r => setTimeout(r, 10));
+      }
     }
+    
     this.events.onFileSent();
   }
 
   close() {
-    this.dc?.close();
-    this.pc.close();
+    this.conn?.close();
+    this.peer?.destroy();
   }
 }

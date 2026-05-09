@@ -1,4 +1,4 @@
-import { Peer, DataConnection } from 'peerjs';
+import { Peer } from 'peerjs';
 
 type P2PEvents = {
   onProgress: (progress: number) => void;
@@ -11,7 +11,7 @@ type P2PEvents = {
 
 export class P2PManager {
   private peer: Peer | null = null;
-  private conn: DataConnection | null = null;
+  private conn: any = null;
   private events: P2PEvents;
   
   private receiveBuffer: ArrayBuffer[] = [];

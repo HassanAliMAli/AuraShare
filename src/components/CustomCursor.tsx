@@ -14,7 +14,6 @@ export const CustomCursor = () => {
   const trailY = useSpring(mouseY, { damping: 40, stiffness: 150, mass: 1 });
 
   useEffect(() => {
-    // Disable custom cursor on touch devices to improve responsiveness
     if (window.matchMedia('(pointer: coarse)').matches) {
       setIsTouch(true);
       return;
@@ -33,6 +32,33 @@ export const CustomCursor = () => {
 
   return (
     <>
+      {/* High-Visibility Pointer Arrow - Always at the center */}
+      <motion.div
+        className="fixed top-0 left-0 pointer-events-none z-[10000] mix-blend-difference"
+        style={{
+          x: mouseX,
+          y: mouseY,
+          translateX: '-20%', // Offset to make the tip the exact point
+          translateY: '-20%',
+        }}
+      >
+        <svg 
+          width="24" 
+          height="24" 
+          viewBox="0 0 24 24" 
+          fill="none" 
+          xmlns="http://www.w3.org/2000/svg"
+          className="drop-shadow-[0_0_2px_rgba(255,255,255,0.5)]"
+        >
+          <path 
+            d="M5.65376 12.3673L15.617 19.3473C17.223 20.4715 19.421 19.3248 19.421 17.38V3.42005C19.421 1.47527 17.223 0.328509 15.617 1.45271L5.65376 8.43271C4.19503 9.45381 4.19503 11.3462 5.65376 12.3673Z" 
+            fill="white"
+            transform="rotate(-15 12 12)" 
+          />
+        </svg>
+      </motion.div>
+
+      {/* Magnetic Liquid Aura - Follows with momentum */}
       <motion.div
         className="fixed top-0 left-0 w-8 h-8 md:w-10 md:h-10 rounded-full border border-indigo-500/30 pointer-events-none z-[9999] mix-blend-screen"
         style={{
@@ -42,6 +68,7 @@ export const CustomCursor = () => {
           translateY: '-50%',
         }}
       />
+      
       <motion.div
         className="fixed top-0 left-0 w-3 h-3 md:w-4 md:h-4 pointer-events-none z-[9999] flex items-center justify-center"
         style={{
@@ -51,11 +78,11 @@ export const CustomCursor = () => {
           translateY: '-50%',
         }}
       >
-        <div className="w-full h-full bg-white rounded-full shadow-[0_0_15px_rgba(99,102,241,0.8)] relative">
+        <div className="w-full h-full bg-indigo-500/40 rounded-full blur-[2px] relative">
           <motion.div 
-            animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.6, 0.3] }}
-            transition={{ duration: 2, repeat: Infinity }}
-            className="absolute inset-[-4px] bg-indigo-500 rounded-full blur-[4px]"
+            animate={{ scale: [1, 1.3, 1], opacity: [0.4, 0.7, 0.4] }}
+            transition={{ duration: 3, repeat: Infinity }}
+            className="absolute inset-0 bg-white/20 rounded-full blur-[4px]"
           />
         </div>
       </motion.div>

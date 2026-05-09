@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '../lib/utils';
 
@@ -9,6 +9,7 @@ interface AuraDropzoneProps {
 
 export const AuraDropzone: React.FC<AuraDropzoneProps> = ({ onFileDrop, className }) => {
   const [isDragOver, setIsDragOver] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -27,126 +28,94 @@ export const AuraDropzone: React.FC<AuraDropzoneProps> = ({ onFileDrop, classNam
     }
   };
 
+  const handleButtonClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      onFileDrop(e.target.files);
+    }
+  };
+
   return (
-    <div
-      className={cn(
-        "relative flex items-center justify-center w-full h-full min-h-[400px]",
-        className
-      )}
+    <div 
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
+      onClick={handleButtonClick}
+      className={cn(
+        "relative w-full aspect-square max-w-[400px] md:max-w-[500px] flex items-center justify-center cursor-pointer group mx-auto",
+        className
+      )}
     >
-      {/* Liquid Aura Background */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        <svg className="w-full h-full opacity-60">
-          <defs>
-            <filter id="aura-goo">
-              <feGaussianBlur in="SourceGraphic" stdDeviation="12" result="blur" />
-              <feColorMatrix 
-                in="blur" 
-                mode="matrix" 
-                values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 20 -9" 
-                result="goo" 
-              />
-              <feComposite in="SourceGraphic" in2="goo" operator="atop" />
-            </filter>
-          </defs>
-          <g filter="url(#aura-goo)">
-            <motion.circle
-              cx="50%"
-              cy="50%"
-              animate={{
-                r: isDragOver ? [120, 160, 140] : [90, 110, 90],
-                fill: isDragOver ? ["#f97316", "#d946ef", "#f97316"] : ["#6366f1", "#8b5cf6", "#6366f1"],
-              }}
-              transition={{
-                duration: 5,
-                repeat: Infinity,
-                ease: "easeInOut"
-              }}
-            />
-            <motion.circle
-              cx="48%"
-              cy="46%"
-              animate={{
-                cx: isDragOver ? ["45%", "55%", "45%"] : ["48%", "52%", "48%"],
-                cy: isDragOver ? ["42%", "38%", "42%"] : ["46%", "44%", "46%"],
-                r: isDragOver ? 100 : 70,
-              }}
-              transition={{
-                duration: 7,
-                repeat: Infinity,
-                ease: "easeInOut"
-              }}
-              fill="#ec4899"
-              opacity="0.8"
-            />
-            <motion.circle
-              cx="52%"
-              cy="54%"
-              animate={{
-                cx: isDragOver ? ["55%", "45%", "55%"] : ["52%", "48%", "52%"],
-                cy: isDragOver ? ["58%", "62%", "58%"] : ["54%", "56%", "54%"],
-                r: isDragOver ? 90 : 60,
-              }}
-              transition={{
-                duration: 8,
-                repeat: Infinity,
-                ease: "easeInOut"
-              }}
-              fill="#06b6d4"
-              opacity="0.8"
-            />
-          </g>
-        </svg>
-      </div>
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        onChange={handleFileChange} 
+        className="hidden" 
+        multiple
+      />
 
-      {/* Main Interactive Blob */}
-      <motion.div
-        layout
+      {/* Pulsing Outer Ring */}
+      <motion.div 
         animate={{
-          scale: isDragOver ? 1.2 : 1,
-          rotate: isDragOver ? 5 : 0,
+          scale: isDragOver ? 1.1 : [1, 1.05, 1],
+          opacity: isDragOver ? 0.8 : [0.2, 0.4, 0.2],
         }}
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
+        transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+        className="absolute inset-0 rounded-full border-2 border-indigo-500/30 blur-[2px]"
+      />
+
+      {/* Main Liquid Blob */}
+      <motion.div
+        animate={{
+          borderRadius: isDragOver ? "40%" : ["60% 40% 30% 70%", "30% 60% 70% 40%", "50% 60% 30% 60%", "60% 40% 30% 70%"],
+          rotate: [0, 90, 180, 360],
+          scale: isDragOver ? 1.05 : 1
+        }}
+        transition={{
+          duration: 20,
+          repeat: Infinity,
+          ease: "linear"
+        }}
         className={cn(
-          "z-10 cursor-pointer p-12 rounded-full bg-white/10 backdrop-blur-md border border-white/20 shadow-2xl transition-all duration-500",
-          isDragOver ? "border-orange-500 bg-orange-500/10 shadow-orange-500/20" : "hover:border-white/40"
+          "w-[85%] h-[85%] bg-gradient-to-br from-indigo-500/20 via-purple-500/20 to-orange-500/20 backdrop-blur-2xl border border-white/10 shadow-2xl flex flex-col items-center justify-center text-center p-8 transition-colors duration-500",
+          isDragOver ? "from-indigo-500/40 via-purple-500/40 to-orange-500/40" : ""
         )}
       >
-        <div className="flex flex-col items-center text-center max-w-xs">
-          <motion.div
-            animate={{
-              y: isDragOver ? [0, -10, 0] : 0
-            }}
-            transition={{ duration: 2, repeat: Infinity }}
-            className="mb-6"
-          >
-            <i className={cn(
-              "fa-solid text-5xl transition-colors duration-500",
-              isDragOver ? "fa-cloud-arrow-up text-orange-400" : "fa-wand-magic-sparkles text-white/80"
-            )} />
-          </motion.div>
-          <h2 className="text-2xl font-semibold tracking-tight text-white mb-2">
-            {isDragOver ? "Drop into the Aura" : "Release your files"}
-          </h2>
-          <p className="text-white/60 text-sm leading-relaxed">
-            Drag here or click to let them float to anyone, anywhere.
-          </p>
+        <motion.div
+          animate={{ y: [0, -10, 0] }}
+          transition={{ duration: 4, repeat: Infinity }}
+          className="mb-6"
+        >
+          <div className="w-16 h-16 md:w-20 md:h-20 rounded-3xl bg-white/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-xl">
+             <i className="fa-solid fa-cloud-arrow-up text-3xl md:text-4xl text-white/80" />
+          </div>
+        </motion.div>
+
+        <h3 className="text-xl md:text-2xl font-black text-white mb-2 tracking-tighter uppercase">
+          {isDragOver ? "Release to Send" : "Release your files"}
+        </h3>
+        <p className="text-white/40 text-[10px] md:text-xs font-bold uppercase tracking-[0.2em] max-w-[200px]">
+          {isDragOver ? "Cosmic alignment ready" : "Drag & drop or click to browse the cosmos"}
+        </p>
+
+        {/* Hover Hint */}
+        <div className="absolute bottom-12 opacity-0 group-hover:opacity-100 transition-opacity">
+           <span className="text-[10px] text-indigo-400 font-black tracking-widest uppercase animate-pulse">Select Files</span>
         </div>
       </motion.div>
 
-      {/* Ripple Effect on Drag Over */}
+      {/* Floating Particles Around Blob */}
       <AnimatePresence>
         {isDragOver && (
           <motion.div
             initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 2, opacity: 0.2 }}
-            exit={{ scale: 2.5, opacity: 0 }}
-            transition={{ duration: 2, repeat: Infinity }}
-            className="absolute z-0 w-64 h-64 rounded-full border-2 border-orange-500/50"
+            animate={{ scale: 1.2, opacity: 1 }}
+            exit={{ scale: 1.5, opacity: 0 }}
+            transition={{ duration: 0.5 }}
+            className="absolute z-0 w-full h-full rounded-full border-2 border-orange-500/50 blur-[1px]"
           />
         )}
       </AnimatePresence>

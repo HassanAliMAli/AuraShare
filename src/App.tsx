@@ -71,7 +71,11 @@ function App() {
 
       const manager = new P2PManager({
         onProgress: (p) => setTransferProgress(p),
-        onConnected: () => setReceiverReady(true),
+        onConnected: () => {},
+        onReceiverConnected: () => {
+          setReceiverReady(true);
+          manager.sendMeta(pendingFiles.current ?? []);
+        },
         onDisconnected: () => { if (['downloading', 'sharing'].includes(status)) setStatus('error'); },
         onFilesReceived: async (files) => {
           setReceivedFiles(files);

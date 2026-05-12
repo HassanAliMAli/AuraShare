@@ -79,7 +79,11 @@ export class P2PManager {
       this.peer!.on('connection', (connection) => {
         this.conn = connection;
         this.setupConnection();
+        console.log('[P2P] Receiver connected, firing onReceiverConnected');
         this.events.onReceiverConnected?.();
+        if (this.conn.open) {
+          this.events.onConnected();
+        }
       });
 
       this.peer!.on('error', (err) => {

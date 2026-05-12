@@ -319,7 +319,7 @@ function App() {
                   )}
                 </div>
               </motion.div>
-            ) : ['connecting', 'transferring'].includes(status) ? (
+            ) : ['waiting', 'connecting', 'transferring'].includes(status) ? (
               <motion.div
                 key="transfer-status"
                 initial={{ opacity: 0, scale: 0.9 }}

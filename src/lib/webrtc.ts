@@ -4,6 +4,7 @@ type P2PEvents = {
   onProgress: (progress: number) => void;
   onConnected: () => void;
   onDisconnected: () => void;
+  onReceiverJoined?: () => void;
   onFilesReceived: (files: File[]) => void;
   onTransferComplete: () => void;
   onError: (err: string) => void;
@@ -127,6 +128,7 @@ export class P2PManager {
     this.conn.on('open', () => {
       this.clearConnectionSentinel();
       this.events.onConnected();
+      this.events.onReceiverJoined?.();
     });
 
     this.conn.on('data', (data: any) => {
@@ -167,7 +169,7 @@ export class P2PManager {
     this.conn.on('error', () => this.events.onError('Alignment Lost'));
   }
 
-  async sendFiles(files: FileList | File[]): Promise<void> {
+  async startTransfer(files: FileList | File[]): Promise<void> {
     const fileArray = files instanceof FileList ? Array.from(files) : files;
     if (!this.conn || !this.conn.open || fileArray.length === 0) return;
 

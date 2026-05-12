@@ -26,7 +26,7 @@ function getFileIcon(name: string, type: string): string {
 
 function App() {
   const [transferProgress, setTransferProgress] = useState(0);
-  const [status, setStatus] = useState<'idle' | 'creating' | 'waiting' | 'connecting' | 'transferring' | 'preview' | 'success' | 'error'>('idle');
+  const [status, setStatus] = useState<'idle' | 'sharing' | 'receiving' | 'transferring' | 'preview' | 'success' | 'error'>('idle');
   const [joinCode, setJoinCode] = useState('');
   const [isReceiving, setIsReceiving] = useState(false);
   const [shareMode, setShareMode] = useState<'text' | 'files'>('text');
@@ -35,8 +35,12 @@ function App() {
   const [roomId, setRoomId] = useState<string | null>(null);
   const [receivedFiles, setReceivedFiles] = useState<File[]>([]);
   const [downloadedFiles, setDownloadedFiles] = useState<Set<number>>(new Set());
+  const [receiverReady, setReceiverReady] = useState(false);
+  const [receiverJoined, setReceiverJoined] = useState(false);
 
   const p2pManager = useRef<P2PManager | null>(null);
+  const pendingFiles = useRef<FileList | null>(null);
+  const pendingText = useRef<string | null>(null);
   const receivedFileUrl = useRef<string | null>(null);
 
   useEffect(() => {
@@ -61,39 +65,45 @@ function App() {
 
   const startSharingFlow = async (files?: FileList, text?: string) => {
     try {
-      setStatus('creating');
+      setStatus('sharing');
+      pendingFiles.current = files ?? null;
+      pendingText.current = text ?? null;
       if (p2pManager.current) p2pManager.current.close();
 
       const manager = new P2PManager({
-          onProgress: (p) => setTransferProgress(p),
-          onConnected: () => {
-              setStatus('transferring');
-              if (files) manager.sendFiles(files);
-              else if (text) {
-                const blob = new Blob([text], { type: 'text/plain' });
-                manager.sendFiles([new File([blob], 'aura-text-msg.txt', { type: 'text/plain' })]);
-              }
-          },
-          onDisconnected: () => { if (['transferring', 'connecting'].includes(status)) setStatus('error'); },
-          onTransferComplete: () => setStatus('success'),
-          onFilesReceived: async (files) => {
-            setReceivedFiles(files);
-            setStatus('preview');
-          },
-          onError: (err) => {
-            console.error('P2P Error:', err);
-            setErrorMessage(err);
-            setStatus('error');
-          }
+        onProgress: (p) => setTransferProgress(p),
+        onConnected: () => {},
+        onDisconnected: () => { if (['transferring', 'sharing'].includes(status)) setStatus('error'); },
+        onReceiverJoined: () => { setReceiverJoined(true); },
+        onFilesReceived: async (files) => {
+          setReceivedFiles(files);
+          setStatus('preview');
+        },
+        onTransferComplete: () => setStatus('success'),
+        onError: (err) => {
+          console.error('P2P Error:', err);
+          setErrorMessage(err);
+          setStatus('error');
+        }
       });
       p2pManager.current = manager;
 
       const code = await manager.initialize();
       setRoomId(code);
-      setStatus('waiting');
     } catch (e) {
       setErrorMessage('Alignment Failed');
       setStatus('error');
+    }
+  };
+
+  const handleStartTransfer = () => {
+    if (!p2pManager.current || !receiverJoined) return;
+    setStatus('transferring');
+    if (pendingFiles.current) {
+      p2pManager.current.startTransfer(pendingFiles.current);
+    } else if (pendingText.current) {
+      const blob = new Blob([pendingText.current], { type: 'text/plain' });
+      p2pManager.current.startTransfer([new File([blob], 'aura-text-msg.txt', { type: 'text/plain' })]);
     }
   };
 
@@ -103,22 +113,22 @@ function App() {
     if (code.length !== 6) return;
 
     try {
-      setStatus('connecting');
+      setStatus('receiving');
       if (p2pManager.current) p2pManager.current.close();
 
       const manager = new P2PManager({
-          onProgress: (p) => setTransferProgress(p),
-          onConnected: () => setStatus('transferring'),
-          onDisconnected: () => { if (['transferring', 'connecting'].includes(status)) setStatus('error'); },
-          onTransferComplete: () => setStatus('success'),
-          onFilesReceived: async (files) => {
-            setReceivedFiles(files);
-            setStatus('preview');
-          },
-          onError: (err) => {
-            setErrorMessage(err);
-            setStatus('error');
-          }
+        onProgress: (p) => setTransferProgress(p),
+        onConnected: () => setReceiverReady(true),
+        onDisconnected: () => { if (['receiving', 'transferring'].includes(status)) setStatus('error'); },
+        onFilesReceived: async (files) => {
+          setReceivedFiles(files);
+          setStatus('preview');
+        },
+        onTransferComplete: () => setStatus('success'),
+        onError: (err) => {
+          setErrorMessage(err);
+          setStatus('error');
+        }
       });
       p2pManager.current = manager;
       await manager.join(code);
@@ -143,6 +153,10 @@ function App() {
     setRoomId(null);
     setReceivedFiles([]);
     setDownloadedFiles(new Set());
+    setReceiverReady(false);
+    setReceiverJoined(false);
+    pendingFiles.current = null;
+    pendingText.current = null;
   };
 
   const copyToClipboard = (text: string) => {
@@ -270,6 +284,46 @@ function App() {
                   Cancel Connection
                 </button>
               </motion.div>
+            ) : status === 'sharing' ? (
+              <motion.div
+                key="sharing"
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 1.1 }}
+                className="z-40 flex flex-col items-center w-full px-4"
+              >
+                <div className="text-center w-full relative z-50">
+                  <div className="text-orange-400 font-black text-[10px] md:text-xs tracking-[0.4em] mb-4 md:mb-8 uppercase">Transmission Code</div>
+                  <div className="text-5xl md:text-8xl text-white font-black tracking-[0.2em] md:tracking-[0.3em] bg-white/5 border border-white/10 rounded-3xl md:rounded-[56px] py-8 md:py-12 px-4 md:px-16 mb-6 md:mb-10 shadow-2xl backdrop-blur-2xl inline-block w-full max-w-sm md:max-w-none">
+                    {roomId}
+                  </div>
+                  {receiverJoined ? (
+                    <button
+                      onClick={handleStartTransfer}
+                      className="px-10 md:px-16 py-4 md:py-5 rounded-xl md:rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-500 text-white font-black uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-2xl shadow-indigo-500/30 text-xs md:text-sm"
+                    >
+                      Transmit Aura
+                    </button>
+                  ) : (
+                    <p className="text-white/20 uppercase tracking-[0.3em] text-[10px] font-black animate-pulse">Waiting for receiver...</p>
+                  )}
+                </div>
+              </motion.div>
+            ) : status === 'receiving' ? (
+              <motion.div
+                key="receiving"
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 1.1 }}
+                className="z-40 flex flex-col items-center w-full px-4"
+              >
+                <div className="text-center relative z-50 w-full max-w-lg">
+                  <div className="text-indigo-400 font-black text-[10px] md:text-xs tracking-[0.4em] mb-6 md:mb-10 uppercase">Receiver Connected</div>
+                  {receiverReady && !receivedFiles.length ? (
+                    <p className="text-white/30 uppercase tracking-[0.3em] text-[10px] md:text-xs font-black animate-pulse">Waiting for sender to transmit...</p>
+                  ) : null}
+                </div>
+              </motion.div>
             ) : status === 'preview' ? (
               <motion.div
                 key="file-preview"
@@ -319,27 +373,18 @@ function App() {
                   )}
                 </div>
               </motion.div>
-            ) : ['waiting', 'connecting', 'transferring'].includes(status) ? (
+            ) : status === 'transferring' ? (
               <motion.div
-                key="transfer-status"
+                key="transferring"
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 1.1 }}
                 className="z-40 flex flex-col items-center w-full px-4"
               >
-                {status === 'waiting' && roomId && (
-                  <div className="text-center w-full relative z-50">
-                    <div className="text-orange-400 font-black text-[10px] md:text-xs tracking-[0.4em] mb-4 md:mb-8 uppercase">Transmission Code</div>
-                    <div className="text-5xl md:text-8xl text-white font-black tracking-[0.2em] md:tracking-[0.3em] bg-white/5 border border-white/10 rounded-3xl md:rounded-[56px] py-8 md:py-12 px-4 md:px-16 mb-6 md:mb-10 shadow-2xl backdrop-blur-2xl inline-block w-full max-w-sm md:max-w-none">
-                      {roomId}
-                    </div>
-                    <p className="text-white/20 uppercase tracking-[0.3em] text-[10px] font-black animate-pulse">Waiting for cosmic alignment...</p>
-                  </div>
-                )}
                 <div className="relative flex flex-col items-center z-50 w-full max-w-md">
                   <div className="w-full text-center">
                     <div className="text-indigo-400 font-black text-[10px] md:text-xs tracking-[0.4em] mb-4 md:mb-6 font-bold uppercase">
-                      {status === 'connecting' ? 'Establishing Aura...' : `Resonating... ${Math.round(transferProgress)}%`}
+                      Transmitting... {Math.round(transferProgress)}%
                     </div>
                     <div className="w-full h-1.5 md:h-2 bg-white/5 rounded-full overflow-hidden shadow-inner">
                       <motion.div

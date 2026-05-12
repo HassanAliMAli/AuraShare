@@ -26,7 +26,7 @@ function getFileIcon(name: string, type: string): string {
 
 function App() {
   const [transferProgress, setTransferProgress] = useState(0);
-  const [status, setStatus] = useState<'idle' | 'sharing' | 'receiving' | 'transferring' | 'preview' | 'success' | 'error'>('idle');
+  const [status, setStatus] = useState<'idle' | 'sharing' | 'connected' | 'downloading' | 'success' | 'error' | 'connecting'>('idle');
   const [joinCode, setJoinCode] = useState('');
   const [isReceiving, setIsReceiving] = useState(false);
   const [shareMode, setShareMode] = useState<'text' | 'files'>('text');
@@ -36,7 +36,6 @@ function App() {
   const [receivedFiles, setReceivedFiles] = useState<File[]>([]);
   const [downloadedFiles, setDownloadedFiles] = useState<Set<number>>(new Set());
   const [receiverReady, setReceiverReady] = useState(false);
-  const [receiverJoined, setReceiverJoined] = useState(false);
 
   const p2pManager = useRef<P2PManager | null>(null);
   const pendingFiles = useRef<FileList | null>(null);
@@ -72,12 +71,11 @@ function App() {
 
       const manager = new P2PManager({
         onProgress: (p) => setTransferProgress(p),
-        onConnected: () => {},
-        onDisconnected: () => { if (['transferring', 'sharing'].includes(status)) setStatus('error'); },
-        onReceiverJoined: () => { setReceiverJoined(true); },
+        onConnected: () => setReceiverReady(true),
+        onDisconnected: () => { if (['downloading', 'sharing'].includes(status)) setStatus('error'); },
         onFilesReceived: async (files) => {
           setReceivedFiles(files);
-          setStatus('preview');
+          setStatus('success');
         },
         onTransferComplete: () => setStatus('success'),
         onError: (err) => {
@@ -96,35 +94,31 @@ function App() {
     }
   };
 
-  const handleStartTransfer = () => {
-    if (!p2pManager.current || !receiverJoined) return;
-    setStatus('transferring');
-    if (pendingFiles.current) {
-      p2pManager.current.startTransfer(pendingFiles.current);
-    } else if (pendingText.current) {
-      const blob = new Blob([pendingText.current], { type: 'text/plain' });
-      p2pManager.current.startTransfer([new File([blob], 'aura-text-msg.txt', { type: 'text/plain' })]);
-    }
-  };
-
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
     const code = joinCode.toUpperCase().trim();
     if (code.length !== 6) return;
 
     try {
-      setStatus('receiving');
+      setStatus('connecting');
       if (p2pManager.current) p2pManager.current.close();
 
       const manager = new P2PManager({
         onProgress: (p) => setTransferProgress(p),
-        onConnected: () => setReceiverReady(true),
-        onDisconnected: () => { if (['receiving', 'transferring'].includes(status)) setStatus('error'); },
+        onConnected: () => {
+          setReceiverReady(true);
+          if (pendingFiles.current) {
+            manager.sendMeta(pendingFiles.current);
+          }
+        },
+        onDisconnected: () => { if (['connecting', 'downloading'].includes(status)) setStatus('error'); },
         onFilesReceived: async (files) => {
           setReceivedFiles(files);
-          setStatus('preview');
+          setStatus('connected');
         },
-        onTransferComplete: () => setStatus('success'),
+        onTransferComplete: () => {
+          setStatus('success');
+        },
         onError: (err) => {
           setErrorMessage(err);
           setStatus('error');
@@ -154,7 +148,6 @@ function App() {
     setReceivedFiles([]);
     setDownloadedFiles(new Set());
     setReceiverReady(false);
-    setReceiverJoined(false);
     pendingFiles.current = null;
     pendingText.current = null;
   };
@@ -297,36 +290,16 @@ function App() {
                   <div className="text-5xl md:text-8xl text-white font-black tracking-[0.2em] md:tracking-[0.3em] bg-white/5 border border-white/10 rounded-3xl md:rounded-[56px] py-8 md:py-12 px-4 md:px-16 mb-6 md:mb-10 shadow-2xl backdrop-blur-2xl inline-block w-full max-w-sm md:max-w-none">
                     {roomId}
                   </div>
-                  {receiverJoined ? (
-                    <button
-                      onClick={handleStartTransfer}
-                      className="px-10 md:px-16 py-4 md:py-5 rounded-xl md:rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-500 text-white font-black uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-2xl shadow-indigo-500/30 text-xs md:text-sm"
-                    >
-                      Transmit Aura
-                    </button>
+                  {receiverReady ? (
+                    <p className="text-emerald-400 uppercase tracking-[0.3em] text-[10px] font-black animate-pulse">Receiver Connected</p>
                   ) : (
-                    <p className="text-white/20 uppercase tracking-[0.3em] text-[10px] font-black animate-pulse">Waiting for receiver...</p>
+                    <p className="text-white/20 uppercase tracking-[0.3em] text-[10px] font-black animate-pulse">Waiting for cosmic alignment...</p>
                   )}
                 </div>
               </motion.div>
-            ) : status === 'receiving' ? (
+            ) : status === 'connected' ? (
               <motion.div
-                key="receiving"
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 1.1 }}
-                className="z-40 flex flex-col items-center w-full px-4"
-              >
-                <div className="text-center relative z-50 w-full max-w-lg">
-                  <div className="text-indigo-400 font-black text-[10px] md:text-xs tracking-[0.4em] mb-6 md:mb-10 uppercase">Receiver Connected</div>
-                  {receiverReady && !receivedFiles.length ? (
-                    <p className="text-white/30 uppercase tracking-[0.3em] text-[10px] md:text-xs font-black animate-pulse">Waiting for sender to transmit...</p>
-                  ) : null}
-                </div>
-              </motion.div>
-            ) : status === 'preview' ? (
-              <motion.div
-                key="file-preview"
+                key="connected"
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 1.1 }}
@@ -334,11 +307,11 @@ function App() {
               >
                 <div className="relative flex flex-col items-center z-50 w-full max-w-md">
                   <div className="w-full text-center">
-                    <div className="text-indigo-400 font-black text-[10px] md:text-xs tracking-[0.4em] mb-4 md:mb-6 font-bold uppercase">
-                      Incoming Aura
+                    <div className="text-emerald-400 font-black text-[10px] md:text-xs tracking-[0.4em] mb-4 md:mb-6 font-bold uppercase">
+                      Receiver Connected
                     </div>
                     <div className="text-3xl md:text-4xl text-white font-black tracking-tight mb-2">
-                      {receivedFiles.length} {receivedFiles.length === 1 ? 'file' : 'files'} received
+                      {receivedFiles.length} {receivedFiles.length === 1 ? 'file' : 'files'} ready
                     </div>
                     <div className="text-white/30 text-xs md:text-sm mb-6 md:mb-8">
                       {formatBytes(receivedFiles.reduce((s, f) => s + f.size, 0))} total
@@ -363,19 +336,17 @@ function App() {
                       </div>
                     ))}
                   </div>
-                  {receivedFiles.length > 1 && (
-                    <button
-                      onClick={() => downloadAllFiles(receivedFiles)}
-                      className="mt-4 md:mt-6 w-full py-3 md:py-4 rounded-xl md:rounded-2xl bg-white/10 hover:bg-white/20 border border-white/10 text-white font-black uppercase tracking-widest text-xs md:text-sm transition-all hover:scale-[1.02] active:scale-[0.98]"
-                    >
-                      Save All
-                    </button>
-                  )}
+                  <button
+                    onClick={() => downloadAllFiles(receivedFiles)}
+                    className="mt-4 md:mt-6 w-full py-3 md:py-4 rounded-xl md:rounded-2xl bg-white/10 hover:bg-white/20 border border-white/10 text-white font-black uppercase tracking-widest text-xs md:text-sm transition-all hover:scale-[1.02] active:scale-[0.98]"
+                  >
+                    Download All
+                  </button>
                 </div>
               </motion.div>
-            ) : status === 'transferring' ? (
+            ) : status === 'downloading' ? (
               <motion.div
-                key="transferring"
+                key="downloading"
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 1.1 }}
@@ -384,7 +355,7 @@ function App() {
                 <div className="relative flex flex-col items-center z-50 w-full max-w-md">
                   <div className="w-full text-center">
                     <div className="text-indigo-400 font-black text-[10px] md:text-xs tracking-[0.4em] mb-4 md:mb-6 font-bold uppercase">
-                      Transmitting... {Math.round(transferProgress)}%
+                      Downloading... {Math.round(transferProgress)}%
                     </div>
                     <div className="w-full h-1.5 md:h-2 bg-white/5 rounded-full overflow-hidden shadow-inner">
                       <motion.div

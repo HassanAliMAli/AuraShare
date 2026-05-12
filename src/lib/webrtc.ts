@@ -1,19 +1,18 @@
 import { Peer } from 'peerjs';
 
-type P2PEvents = {
-  onProgress: (progress: number) => void;
-  onConnected: () => void;
-  onDisconnected: () => void;
-  onReceiverJoined?: () => void;
-  onFilesReceived: (files: File[]) => void;
-  onTransferComplete: () => void;
-  onError: (err: string) => void;
-};
-
 type FileDescriptor = {
   name: string;
   size: number;
   type: string;
+};
+
+type P2PEvents = {
+  onProgress: (progress: number) => void;
+  onConnected: () => void;
+  onDisconnected: () => void;
+  onFilesReceived: (files: File[]) => void;
+  onTransferComplete: () => void;
+  onError: (err: string) => void;
 };
 
 export class P2PManager {
@@ -128,7 +127,6 @@ export class P2PManager {
     this.conn.on('open', () => {
       this.clearConnectionSentinel();
       this.events.onConnected();
-      this.events.onReceiverJoined?.();
     });
 
     this.conn.on('data', (data: any) => {
@@ -169,18 +167,10 @@ export class P2PManager {
     this.conn.on('error', () => this.events.onError('Alignment Lost'));
   }
 
-  async startTransfer(files: FileList | File[]): Promise<void> {
+  sendMeta(files: FileList | File[]) {
     const fileArray = files instanceof FileList ? Array.from(files) : files;
     if (!this.conn || !this.conn.open || fileArray.length === 0) return;
-
-    const totalSize = fileArray.reduce((sum, f) => sum + f.size, 0);
     this.conn.send(JSON.stringify({ kind: 'files-start', count: fileArray.length }));
-
-    const chunkSize = 1024 * 1024;
-    const MAX_BUFFER_SIZE = 4 * 1024 * 1024;
-    const PROGRESS_INTERVAL = 50;
-    let sentSize = 0;
-
     for (const file of fileArray) {
       this.conn.send(JSON.stringify({
         kind: 'file-metadata',
@@ -188,38 +178,60 @@ export class P2PManager {
         size: file.size,
         type: file.type
       }));
+    }
+  }
 
-      let offset = 0;
-      let chunksSinceProgress = 0;
+  startTransfer(files: FileList | File[]): void {
+    const fileArray = files instanceof FileList ? Array.from(files) : files;
+    if (!this.conn || !this.conn.open || fileArray.length === 0) return;
 
-      while (offset < file.size) {
-        if (this.conn.dataChannel && this.conn.dataChannel.bufferedAmount > MAX_BUFFER_SIZE) {
-          await new Promise<void>((resolve) => {
-            const checkBuffer = setInterval(() => {
-              if (this.conn.dataChannel.bufferedAmount < MAX_BUFFER_SIZE / 2) {
-                clearInterval(checkBuffer);
-                resolve();
-              }
-            }, 20);
-          });
-        }
+    const totalSize = fileArray.reduce((sum, f) => sum + f.size, 0);
+    const chunkSize = 1024 * 1024;
+    const MAX_BUFFER_SIZE = 4 * 1024 * 1024;
+    const PROGRESS_INTERVAL = 50;
+    let sentSize = 0;
 
-        const slice = file.slice(offset, Math.min(offset + chunkSize, file.size));
-        const buffer = await slice.arrayBuffer();
-        this.conn.send(new Uint8Array(buffer));
-        offset += buffer.byteLength;
-        sentSize += buffer.byteLength;
-        chunksSinceProgress++;
-        if (chunksSinceProgress >= PROGRESS_INTERVAL) {
-          this.events.onProgress((sentSize / totalSize) * 100);
-          chunksSinceProgress = 0;
+    (async () => {
+      for (const file of fileArray) {
+        this.conn.send(JSON.stringify({
+          kind: 'file-metadata',
+          name: file.name,
+          size: file.size,
+          type: file.type
+        }));
+
+        let offset = 0;
+        let chunksSinceProgress = 0;
+
+        while (offset < file.size) {
+          if (this.conn.dataChannel && this.conn.dataChannel.bufferedAmount > MAX_BUFFER_SIZE) {
+            await new Promise<void>((resolve) => {
+              const checkBuffer = setInterval(() => {
+                if (this.conn.dataChannel.bufferedAmount < MAX_BUFFER_SIZE / 2) {
+                  clearInterval(checkBuffer);
+                  resolve();
+                }
+              }, 20);
+            });
+          }
+
+          const slice = file.slice(offset, Math.min(offset + chunkSize, file.size));
+          const buffer = await slice.arrayBuffer();
+          this.conn.send(new Uint8Array(buffer));
+          offset += buffer.byteLength;
+          sentSize += buffer.byteLength;
+          chunksSinceProgress++;
+          if (chunksSinceProgress >= PROGRESS_INTERVAL) {
+            this.events.onProgress((sentSize / totalSize) * 100);
+            chunksSinceProgress = 0;
+          }
         }
       }
-    }
 
-    this.conn.send(JSON.stringify({ kind: 'transfer-complete' }));
-    this.events.onProgress(100);
-    this.events.onTransferComplete();
+      this.conn.send(JSON.stringify({ kind: 'transfer-complete' }));
+      this.events.onProgress(100);
+      this.events.onTransferComplete();
+    })();
   }
 
   close() {

@@ -10,6 +10,8 @@ type P2PEvents = {
   onProgress: (progress: number) => void;
   onConnected: () => void;
   onDisconnected: () => void;
+  onReceiverReady?: () => void;
+  onReceiverConnected?: () => void;
   onFilesReceived: (files: File[]) => void;
   onTransferComplete: () => void;
   onError: (err: string) => void;
@@ -77,6 +79,7 @@ export class P2PManager {
       this.peer!.on('connection', (connection) => {
         this.conn = connection;
         this.setupConnection();
+        this.events.onReceiverConnected?.();
       });
 
       this.peer!.on('error', (err) => {
@@ -130,20 +133,18 @@ export class P2PManager {
       this.events.onConnected();
     });
 
-    if (this.conn.dataChannel) {
-      console.log('[P2P] DataChannel already exists, attaching handler');
-      this.conn.on('data', (data: any) => {
+    this.conn.on('data', (data: any) => {
+      console.log('[P2P] data event received, type:', typeof data, data instanceof Uint8Array ? 'binary' : 'string');
+      this.handleData(data);
+    });
+
+    this.conn.on('dataChannel', (channel: any) => {
+      console.log('[P2P] dataChannel event received');
+      channel.on('data', (data: any) => {
+        console.log('[P2P] dataChannel data:', typeof data);
         this.handleData(data);
       });
-    } else {
-      console.log('[P2P] DataChannel not ready, waiting for dataChannel event');
-      this.conn.on('dataChannel', (channel: any) => {
-        console.log('[P2P] DataChannel received:', channel.readyState);
-        channel.on('data', (data: any) => {
-          this.handleData(data);
-        });
-      });
-    }
+    });
 
     this.conn.on('close', () => this.events.onDisconnected());
     this.conn.on('error', () => this.events.onError('Alignment Lost'));

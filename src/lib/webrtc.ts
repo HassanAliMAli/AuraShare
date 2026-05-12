@@ -155,13 +155,14 @@ export class P2PManager {
         const msg = JSON.parse(data);
         console.log('[P2P] String data:', msg.kind);
         if (msg.kind === 'files-start') {
+          console.log('[P2P] Received files-start:', msg);
           this.pendingFiles = [];
           this.receiveBuffer = [];
           this.receivedSize = 0;
           this.metadata = null;
           this.events.onProgress(0);
         } else if (msg.kind === 'file-metadata') {
-          this.metadata = msg;
+          console.log('[P2P] Received file-metadata:', msg);
           this.receiveBuffer = [];
           this.receivedSize = 0;
         } else if (msg.kind === 'transfer-complete') {
@@ -188,14 +189,38 @@ export class P2PManager {
   sendMeta(files: FileList | File[]) {
     const fileArray = files instanceof FileList ? Array.from(files) : files;
     if (!this.conn || !this.conn.open || fileArray.length === 0) return;
-    this.conn.send(JSON.stringify({ kind: 'files-start', count: fileArray.length }));
-    for (const file of fileArray) {
-      this.conn.send(JSON.stringify({
-        kind: 'file-metadata',
-        name: file.name,
-        size: file.size,
-        type: file.type
-      }));
+
+    const send = () => {
+      console.log('[P2P] Sending metadata for', fileArray.length, 'files');
+      this.conn.send(JSON.stringify({ kind: 'files-start', count: fileArray.length }));
+      for (const file of fileArray) {
+        this.conn.send(JSON.stringify({
+          kind: 'file-metadata',
+          name: file.name,
+          size: file.size,
+          type: file.type
+        }));
+      }
+    };
+
+    const dc = this.conn.dataChannel;
+    if (dc && dc.readyState === 'open') {
+      send();
+    } else {
+      const waitForOpen = () => {
+        if (dc.readyState === 'open') {
+          send();
+        } else {
+          dc.addEventListener('open', send, { once: true });
+        }
+      };
+      if (dc) {
+        waitForOpen();
+      } else {
+        this.conn.once('dataChannel', (channel: any) => {
+          channel.once('open', send);
+        });
+      }
     }
   }
 

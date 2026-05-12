@@ -193,6 +193,7 @@ export class P2PManager {
 
   sendMeta(files: FileList | File[]) {
     const fileArray = files instanceof FileList ? Array.from(files) : files;
+    console.log('[P2P] sendMeta called, conn:', !!this.conn, 'conn.open:', this.conn?.open, 'fileCount:', fileArray.length);
     if (!this.conn || !this.conn.open || fileArray.length === 0) return;
 
     const send = () => {
@@ -209,6 +210,7 @@ export class P2PManager {
     };
 
     const dc = this.conn.dataChannel;
+    console.log('[P2P] sendMeta dc:', !!dc, dc?.readyState);
     if (dc && dc.readyState === 'open') {
       send();
     } else {
@@ -223,6 +225,7 @@ export class P2PManager {
         waitForOpen();
       } else {
         this.conn.once('dataChannel', (channel: any) => {
+          console.log('[P2P] dataChannel event received in sendMeta');
           channel.once('open', send);
         });
       }

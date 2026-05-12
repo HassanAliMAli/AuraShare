@@ -77,6 +77,10 @@ function App() {
           manager.sendMeta(pendingFiles.current ?? []);
         },
         onDisconnected: () => { if (['downloading', 'sharing'].includes(status)) setStatus('error'); },
+        onFileDescriptorsReceived: (files) => {
+          setReceivedFiles(files as unknown as File[]);
+          setStatus('connected');
+        },
         onFilesReceived: async (files) => {
           setReceivedFiles(files);
           setStatus('success');
@@ -109,16 +113,19 @@ function App() {
 
       const manager = new P2PManager({
         onProgress: (p) => setTransferProgress(p),
-        onConnected: () => {
+        onConnected: () => {},
+        onReceiverConnected: () => {
           setReceiverReady(true);
-          if (pendingFiles.current) {
-            manager.sendMeta(pendingFiles.current);
-          }
+          manager.sendMeta(pendingFiles.current ?? []);
         },
         onDisconnected: () => { if (['connecting', 'downloading'].includes(status)) setStatus('error'); },
+        onFileDescriptorsReceived: (files) => {
+          setReceivedFiles(files as unknown as File[]);
+          setStatus('connected');
+        },
         onFilesReceived: async (files) => {
           setReceivedFiles(files);
-          setStatus('connected');
+          setStatus('success');
         },
         onTransferComplete: () => {
           setStatus('success');

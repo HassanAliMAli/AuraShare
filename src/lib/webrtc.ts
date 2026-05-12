@@ -12,6 +12,7 @@ type P2PEvents = {
   onDisconnected: () => void;
   onReceiverReady?: () => void;
   onReceiverConnected?: () => void;
+  onFileDescriptorsReceived?: (files: FileDescriptor[]) => void;
   onFilesReceived: (files: File[]) => void;
   onTransferComplete: () => void;
   onError: (err: string) => void;
@@ -27,6 +28,7 @@ export class P2PManager {
   private metadata: FileDescriptor | null = null;
   private connectionTimeout: any = null;
 
+  private pendingFileDescriptors: FileDescriptor[] = [];
   private pendingFiles: File[] = [];
 
   constructor(events: P2PEvents) {
@@ -161,18 +163,20 @@ export class P2PManager {
         console.log('[P2P] String data:', msg.kind);
         if (msg.kind === 'files-start') {
           console.log('[P2P] Received files-start:', msg);
+          this.pendingFileDescriptors = [];
           this.pendingFiles = [];
           this.receiveBuffer = [];
           this.receivedSize = 0;
           this.metadata = null;
-          this.events.onProgress(0);
         } else if (msg.kind === 'file-metadata') {
           console.log('[P2P] Received file-metadata:', msg);
-          this.receiveBuffer = [];
-          this.receivedSize = 0;
+          this.pendingFileDescriptors.push(msg);
         } else if (msg.kind === 'transfer-complete') {
-          console.log('[P2P] Transfer complete, calling onFilesReceived with', this.pendingFiles.length, 'files');
+          console.log('[P2P] Transfer complete');
           this.events.onFilesReceived(this.pendingFiles);
+        } else if (msg.kind === 'file-descriptors') {
+          console.log('[P2P] Received file-descriptors:', msg.files?.length, 'files');
+          this.events.onFileDescriptorsReceived?.(msg.files);
         }
       } catch (e) {}
     } else {
@@ -196,17 +200,15 @@ export class P2PManager {
     console.log('[P2P] sendMeta called, fileCount:', fileArray.length);
     if (!this.conn || fileArray.length === 0) return;
 
+    const descriptors: FileDescriptor[] = fileArray.map((file) => ({
+      name: file.name,
+      size: file.size,
+      type: file.type,
+    }));
+
     const send = () => {
-      console.log('[P2P] Sending metadata for', fileArray.length, 'files');
-      this.conn.send(JSON.stringify({ kind: 'files-start', count: fileArray.length }));
-      for (const file of fileArray) {
-        this.conn.send(JSON.stringify({
-          kind: 'file-metadata',
-          name: file.name,
-          size: file.size,
-          type: file.type
-        }));
-      }
+      console.log('[P2P] Sending file descriptors for', descriptors.length, 'files');
+      this.conn.send(JSON.stringify({ kind: 'file-descriptors', files: descriptors }));
     };
 
     if (this.conn.open) {

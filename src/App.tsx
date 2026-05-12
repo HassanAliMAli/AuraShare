@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { AuraDropzone } from './components/AuraDropzone';
 import { AuraTextarea } from './components/AuraTextarea';
 import { CustomCursor } from './components/CustomCursor';
-import { SignalingManager } from './lib/signaling';
+import { P2PManager } from './lib/webrtc';
 
 type FileDescriptor = {
   name: string;
@@ -11,7 +11,7 @@ type FileDescriptor = {
   type: string;
 };
 
-const SIGNALING_URL = import.meta.env.VITE_SIGNALING_URL || '';
+
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
@@ -45,7 +45,7 @@ function App() {
   const [downloadedFiles, setDownloadedFiles] = useState<Set<number>>(new Set());
   const [receiverReady, setReceiverReady] = useState(false);
 
-  const manager = useRef<SignalingManager | null>(null);
+  const manager = useRef<P2PManager | null>(null);
   const pendingFiles = useRef<FileList | null>(null);
   const pendingText = useRef<string | null>(null);
   const receivedFileUrl = useRef<string | null>(null);
@@ -74,7 +74,7 @@ function App() {
       pendingText.current = text ?? null;
       if (manager.current) manager.current.close();
 
-      const mgr = new SignalingManager({
+      const mgr = new P2PManager({
         onProgress: (p) => setTransferProgress(p),
         onConnected: () => {},
         onReceiverConnected: () => {
@@ -92,10 +92,10 @@ function App() {
           setErrorMessage(err);
           setStatus('error');
         }
-      }, { signalingUrl: SIGNALING_URL });
+      });
       manager.current = mgr;
 
-      const code = await mgr.createRoom();
+      const code = await mgr.initialize();
       setRoomId(code);
     } catch (e) {
       setErrorMessage('Alignment Failed');
@@ -112,7 +112,7 @@ function App() {
       setStatus('connecting');
       if (manager.current) manager.current.close();
 
-      const mgr = new SignalingManager({
+      const mgr = new P2PManager({
         onProgress: (p) => setTransferProgress(p),
         onConnected: () => {},
         onDisconnected: () => { if (['connecting', 'downloading'].includes(status)) setStatus('error'); },
@@ -131,9 +131,9 @@ function App() {
           setErrorMessage(err);
           setStatus('error');
         }
-      }, { signalingUrl: SIGNALING_URL });
+      });
       manager.current = mgr;
-      await mgr.joinRoom(code);
+      await mgr.join(code);
     } catch (e) {
       setErrorMessage('Cosmic Link Broken');
       setStatus('error');

@@ -10,13 +10,14 @@ type P2PEvents = {
   onProgress: (progress: number) => void;
   onConnected: () => void;
   onDisconnected: () => void;
-  onReceiverReady?: () => void;
   onReceiverConnected?: () => void;
   onFileDescriptorsReceived?: (files: FileDescriptor[]) => void;
   onFilesReceived: (files: File[]) => void;
   onTransferComplete: () => void;
   onError: (err: string) => void;
 };
+
+
 
 export class P2PManager {
   private peer: Peer | null = null;
@@ -59,7 +60,7 @@ export class P2PManager {
   async initialize(): Promise<string> {
     const id = this.generateId();
     this.peer = new Peer(id, {
-      debug: 1,
+      debug: 0,
       config: {
         iceServers: [
           { urls: 'stun:stun.l.google.com:19302' },
@@ -81,6 +82,7 @@ export class P2PManager {
       this.peer!.on('connection', (connection) => {
         this.conn = connection;
         this.setupConnection();
+        this.events.onReceiverConnected?.();
         if (this.conn.open) {
           this.events.onConnected();
         }
@@ -99,15 +101,16 @@ export class P2PManager {
 
   async join(targetId: string): Promise<void> {
     this.peer = new Peer({
-        config: {
-            iceServers: [
-              { urls: 'stun:stun.l.google.com:19302' },
-              { urls: 'stun:stun1.l.google.com:19302' },
-              { urls: 'stun:openrelay.metered.ca:80' },
-              { urls: 'turn:openrelay.metered.ca:80', username: 'openrelay', credential: 'openrelay' },
-              { urls: 'turn:openrelay.metered.ca:443', username: 'openrelay', credential: 'openrelay' }
-            ]
-          }
+      debug: 0,
+      config: {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:openrelay.metered.ca:80' },
+          { urls: 'turn:openrelay.metered.ca:80', username: 'openrelay', credential: 'openrelay' },
+          { urls: 'turn:openrelay.metered.ca:443', username: 'openrelay', credential: 'openrelay' }
+        ]
+      }
     });
 
     this.startConnectionSentinel();
@@ -189,7 +192,7 @@ export class P2PManager {
   sendMeta(files: FileList | File[]) {
     const fileArray = files instanceof FileList ? Array.from(files) : files;
     this.pendingFileList = files instanceof FileList ? files : null;
-    if (!this.conn || fileArray.length === 0) return;
+    if (!this.conn || !this.conn.open || fileArray.length === 0) return;
 
     const descriptors: FileDescriptor[] = fileArray.map((file) => ({
       name: file.name,
@@ -197,20 +200,10 @@ export class P2PManager {
       type: file.type,
     }));
 
-    const send = () => {
-      this.conn.send(JSON.stringify({ kind: 'file-descriptors', files: descriptors }));
-    };
-
-    if (this.conn.open) {
-      send();
-    } else {
-      this.conn.once('open', () => {
-        send();
-      });
-    }
+    this.conn.send(JSON.stringify({ kind: 'file-descriptors', files: descriptors }));
   }
 
-  private startTransferForFile(file: File): void {
+  startTransferForFile(file: File) {
     const chunkSize = 1024 * 1024;
     const MAX_BUFFER_SIZE = 4 * 1024 * 1024;
     const PROGRESS_INTERVAL = 50;
@@ -254,7 +247,7 @@ export class P2PManager {
     })();
   }
 
-  startTransfer(files: FileList | File[]): void {
+  startTransfer(files: FileList | File[]) {
     const fileArray = files instanceof FileList ? Array.from(files) : files;
     this.pendingFileList = files instanceof FileList ? files : null;
     if (!this.conn || !this.conn.open || fileArray.length === 0) return;

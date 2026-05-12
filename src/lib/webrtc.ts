@@ -118,6 +118,7 @@ export class P2PManager {
 
     this.conn.on('open', () => {
       this.clearConnectionSentinel();
+      console.log('[setupConnection] Connection open');
       this.events.onConnected();
     });
 
@@ -129,6 +130,7 @@ export class P2PManager {
             this.metadata = msg;
             this.receiveBuffer = [];
             this.receivedSize = 0;
+            console.log('[receive] Metadata received:', msg);
             this.events.onProgress(0);
           }
         } catch (e) {}
@@ -140,6 +142,7 @@ export class P2PManager {
         if (this.metadata) {
           this.events.onProgress((this.receivedSize / this.metadata.size) * 100);
           if (this.receivedSize >= this.metadata.size) {
+            console.log('[receive] File complete, creating Blob');
             const file = new File([new Blob(this.receiveBuffer)], this.metadata.name, { type: this.metadata.type });
             this.events.onFileReceived(file);
             this.metadata = null;
@@ -154,6 +157,7 @@ export class P2PManager {
   }
 
   async sendFile(file: File) {
+    console.log('[sendFile] Called', { conn: !!this.conn, open: this.conn?.open, hasDataChannel: !!this.conn?.dataChannel });
     if (!this.conn || !this.conn.open) return;
 
     this.conn.send(JSON.stringify({
@@ -166,25 +170,28 @@ export class P2PManager {
     const chunkSize = 1024 * 1024;
     const MAX_BUFFER_SIZE = 4 * 1024 * 1024;
     const PROGRESS_INTERVAL = 50;
-    const dc = this.conn.dataChannel;
     let offset = 0;
     let chunksSinceProgress = 0;
 
+    console.log('[sendFile] Starting transfer:', { size: file.size, chunkSize });
+
     while (offset < file.size) {
-      if (dc.bufferedAmount > MAX_BUFFER_SIZE) {
+      if (this.conn.dataChannel && this.conn.dataChannel.bufferedAmount > MAX_BUFFER_SIZE) {
+        console.log('[sendFile] Buffer full, waiting... bufferedAmount:', this.conn.dataChannel.bufferedAmount);
         await new Promise<void>((resolve) => {
           const checkBuffer = setInterval(() => {
-            if (dc.bufferedAmount < MAX_BUFFER_SIZE / 2) {
+            if (this.conn.dataChannel.bufferedAmount < MAX_BUFFER_SIZE / 2) {
               clearInterval(checkBuffer);
               resolve();
             }
           }, 20);
         });
+        console.log('[sendFile] Buffer drained, resuming');
       }
 
       const slice = file.slice(offset, Math.min(offset + chunkSize, file.size));
       const buffer = await slice.arrayBuffer();
-      dc.send(new Uint8Array(buffer));
+      this.conn.send(new Uint8Array(buffer));
       offset += buffer.byteLength;
       chunksSinceProgress++;
       if (chunksSinceProgress >= PROGRESS_INTERVAL) {
@@ -193,6 +200,7 @@ export class P2PManager {
       }
     }
 
+    console.log('[sendFile] Transfer complete');
     this.events.onProgress(100);
     
     this.events.onFileSent();

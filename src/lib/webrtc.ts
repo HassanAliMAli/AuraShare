@@ -126,45 +126,63 @@ export class P2PManager {
 
     this.conn.on('open', () => {
       this.clearConnectionSentinel();
+      console.log('[P2P] Connection open');
       this.events.onConnected();
     });
 
-    this.conn.on('data', (data: any) => {
-      if (typeof data === 'string') {
-        try {
-          const msg = JSON.parse(data);
-          if (msg.kind === 'files-start') {
-            this.pendingFiles = [];
-            this.receiveBuffer = [];
-            this.receivedSize = 0;
-            this.metadata = null;
-            this.events.onProgress(0);
-          } else if (msg.kind === 'file-metadata') {
-            this.metadata = msg;
-            this.receiveBuffer = [];
-            this.receivedSize = 0;
-          } else if (msg.kind === 'transfer-complete') {
-            this.events.onFilesReceived(this.pendingFiles);
-          }
-        } catch (e) {}
-      } else {
-        if (!this.metadata) return;
-        const buffer = data instanceof Uint8Array ? data.buffer : data;
-        this.receiveBuffer.push(buffer);
-        this.receivedSize += buffer.byteLength;
-
-        this.events.onProgress((this.receivedSize / this.metadata.size) * 100);
-        if (this.receivedSize >= this.metadata.size) {
-          const file = new File([new Blob(this.receiveBuffer)], this.metadata.name, { type: this.metadata.type });
-          this.pendingFiles.push(file);
-          this.metadata = null;
-          this.receiveBuffer = [];
-        }
-      }
-    });
+    if (this.conn.dataChannel) {
+      console.log('[P2P] DataChannel already exists, attaching handler');
+      this.conn.on('data', (data: any) => {
+        this.handleData(data);
+      });
+    } else {
+      console.log('[P2P] DataChannel not ready, waiting for dataChannel event');
+      this.conn.on('dataChannel', (channel: any) => {
+        console.log('[P2P] DataChannel received:', channel.readyState);
+        channel.on('data', (data: any) => {
+          this.handleData(data);
+        });
+      });
+    }
 
     this.conn.on('close', () => this.events.onDisconnected());
     this.conn.on('error', () => this.events.onError('Alignment Lost'));
+  }
+
+  private handleData(data: any) {
+    if (typeof data === 'string') {
+      try {
+        const msg = JSON.parse(data);
+        console.log('[P2P] String data:', msg.kind);
+        if (msg.kind === 'files-start') {
+          this.pendingFiles = [];
+          this.receiveBuffer = [];
+          this.receivedSize = 0;
+          this.metadata = null;
+          this.events.onProgress(0);
+        } else if (msg.kind === 'file-metadata') {
+          this.metadata = msg;
+          this.receiveBuffer = [];
+          this.receivedSize = 0;
+        } else if (msg.kind === 'transfer-complete') {
+          console.log('[P2P] Transfer complete, calling onFilesReceived with', this.pendingFiles.length, 'files');
+          this.events.onFilesReceived(this.pendingFiles);
+        }
+      } catch (e) {}
+    } else {
+      if (!this.metadata) return;
+      const buffer = data instanceof Uint8Array ? data.buffer : data;
+      this.receiveBuffer.push(buffer);
+      this.receivedSize += buffer.byteLength;
+
+      this.events.onProgress((this.receivedSize / this.metadata.size) * 100);
+      if (this.receivedSize >= this.metadata.size) {
+        const file = new File([new Blob(this.receiveBuffer)], this.metadata.name, { type: this.metadata.type });
+        this.pendingFiles.push(file);
+        this.metadata = null;
+        this.receiveBuffer = [];
+      }
+    }
   }
 
   sendMeta(files: FileList | File[]) {

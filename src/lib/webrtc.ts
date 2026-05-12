@@ -4,20 +4,28 @@ type P2PEvents = {
   onProgress: (progress: number) => void;
   onConnected: () => void;
   onDisconnected: () => void;
-  onFileReceived: (file: File) => void;
-  onFileSent: () => void;
+  onFilesReceived: (files: File[]) => void;
+  onTransferComplete: () => void;
   onError: (err: string) => void;
+};
+
+type FileDescriptor = {
+  name: string;
+  size: number;
+  type: string;
 };
 
 export class P2PManager {
   private peer: Peer | null = null;
   private conn: any = null;
   private events: P2PEvents;
-  
+
   private receiveBuffer: any[] = [];
   private receivedSize = 0;
-  private metadata: any = null;
+  private metadata: FileDescriptor | null = null;
   private connectionTimeout: any = null;
+
+  private pendingFiles: File[] = [];
 
   constructor(events: P2PEvents) {
     this.events = events;
@@ -34,7 +42,7 @@ export class P2PManager {
         this.events.onError('Connection Timeout');
         this.close();
       }
-    }, 300000); // 5-minute grace period for global alignment
+    }, 300000);
   }
 
   private clearConnectionSentinel() {
@@ -105,7 +113,7 @@ export class P2PManager {
         this.setupConnection();
         resolve();
       });
-      
+
       this.peer!.on('error', (err) => {
         this.events.onError('Portal Failed');
         reject(err);
@@ -118,7 +126,6 @@ export class P2PManager {
 
     this.conn.on('open', () => {
       this.clearConnectionSentinel();
-      console.log('[setupConnection] Connection open');
       this.events.onConnected();
     });
 
@@ -126,28 +133,32 @@ export class P2PManager {
       if (typeof data === 'string') {
         try {
           const msg = JSON.parse(data);
-          if (msg.kind === 'metadata') {
+          if (msg.kind === 'files-start') {
+            this.pendingFiles = [];
+            this.receiveBuffer = [];
+            this.receivedSize = 0;
+            this.metadata = null;
+            this.events.onProgress(0);
+          } else if (msg.kind === 'file-metadata') {
             this.metadata = msg;
             this.receiveBuffer = [];
             this.receivedSize = 0;
-            console.log('[receive] Metadata received:', msg);
-            this.events.onProgress(0);
+          } else if (msg.kind === 'transfer-complete') {
+            this.events.onFilesReceived(this.pendingFiles);
           }
         } catch (e) {}
       } else {
+        if (!this.metadata) return;
         const buffer = data instanceof Uint8Array ? data.buffer : data;
         this.receiveBuffer.push(buffer);
         this.receivedSize += buffer.byteLength;
 
-        if (this.metadata) {
-          this.events.onProgress((this.receivedSize / this.metadata.size) * 100);
-          if (this.receivedSize >= this.metadata.size) {
-            console.log('[receive] File complete, creating Blob');
-            const file = new File([new Blob(this.receiveBuffer)], this.metadata.name, { type: this.metadata.type });
-            this.events.onFileReceived(file);
-            this.metadata = null;
-            this.receiveBuffer = [];
-          }
+        this.events.onProgress((this.receivedSize / this.metadata.size) * 100);
+        if (this.receivedSize >= this.metadata.size) {
+          const file = new File([new Blob(this.receiveBuffer)], this.metadata.name, { type: this.metadata.type });
+          this.pendingFiles.push(file);
+          this.metadata = null;
+          this.receiveBuffer = [];
         }
       }
     });
@@ -156,54 +167,57 @@ export class P2PManager {
     this.conn.on('error', () => this.events.onError('Alignment Lost'));
   }
 
-  async sendFile(file: File) {
-    console.log('[sendFile] Called', { conn: !!this.conn, open: this.conn?.open, hasDataChannel: !!this.conn?.dataChannel });
-    if (!this.conn || !this.conn.open) return;
+  async sendFiles(files: FileList | File[]): Promise<void> {
+    const fileArray = files instanceof FileList ? Array.from(files) : files;
+    if (!this.conn || !this.conn.open || fileArray.length === 0) return;
 
-    this.conn.send(JSON.stringify({
-      kind: 'metadata',
-      name: file.name,
-      size: file.size,
-      type: file.type
-    }));
+    const totalSize = fileArray.reduce((sum, f) => sum + f.size, 0);
+    this.conn.send(JSON.stringify({ kind: 'files-start', count: fileArray.length }));
 
     const chunkSize = 1024 * 1024;
     const MAX_BUFFER_SIZE = 4 * 1024 * 1024;
     const PROGRESS_INTERVAL = 50;
-    let offset = 0;
-    let chunksSinceProgress = 0;
+    let sentSize = 0;
 
-    console.log('[sendFile] Starting transfer:', { size: file.size, chunkSize });
+    for (const file of fileArray) {
+      this.conn.send(JSON.stringify({
+        kind: 'file-metadata',
+        name: file.name,
+        size: file.size,
+        type: file.type
+      }));
 
-    while (offset < file.size) {
-      if (this.conn.dataChannel && this.conn.dataChannel.bufferedAmount > MAX_BUFFER_SIZE) {
-        console.log('[sendFile] Buffer full, waiting... bufferedAmount:', this.conn.dataChannel.bufferedAmount);
-        await new Promise<void>((resolve) => {
-          const checkBuffer = setInterval(() => {
-            if (this.conn.dataChannel.bufferedAmount < MAX_BUFFER_SIZE / 2) {
-              clearInterval(checkBuffer);
-              resolve();
-            }
-          }, 20);
-        });
-        console.log('[sendFile] Buffer drained, resuming');
-      }
+      let offset = 0;
+      let chunksSinceProgress = 0;
 
-      const slice = file.slice(offset, Math.min(offset + chunkSize, file.size));
-      const buffer = await slice.arrayBuffer();
-      this.conn.send(new Uint8Array(buffer));
-      offset += buffer.byteLength;
-      chunksSinceProgress++;
-      if (chunksSinceProgress >= PROGRESS_INTERVAL) {
-        this.events.onProgress((offset / file.size) * 100);
-        chunksSinceProgress = 0;
+      while (offset < file.size) {
+        if (this.conn.dataChannel && this.conn.dataChannel.bufferedAmount > MAX_BUFFER_SIZE) {
+          await new Promise<void>((resolve) => {
+            const checkBuffer = setInterval(() => {
+              if (this.conn.dataChannel.bufferedAmount < MAX_BUFFER_SIZE / 2) {
+                clearInterval(checkBuffer);
+                resolve();
+              }
+            }, 20);
+          });
+        }
+
+        const slice = file.slice(offset, Math.min(offset + chunkSize, file.size));
+        const buffer = await slice.arrayBuffer();
+        this.conn.send(new Uint8Array(buffer));
+        offset += buffer.byteLength;
+        sentSize += buffer.byteLength;
+        chunksSinceProgress++;
+        if (chunksSinceProgress >= PROGRESS_INTERVAL) {
+          this.events.onProgress((sentSize / totalSize) * 100);
+          chunksSinceProgress = 0;
+        }
       }
     }
 
-    console.log('[sendFile] Transfer complete');
+    this.conn.send(JSON.stringify({ kind: 'transfer-complete' }));
     this.events.onProgress(100);
-    
-    this.events.onFileSent();
+    this.events.onTransferComplete();
   }
 
   close() {

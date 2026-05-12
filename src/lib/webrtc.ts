@@ -87,7 +87,10 @@ export class P2PManager {
         config: {
             iceServers: [
               { urls: 'stun:stun.l.google.com:19302' },
-              { urls: 'stun:openrelay.metered.ca:80' }
+              { urls: 'stun:stun1.l.google.com:19302' },
+              { urls: 'stun:openrelay.metered.ca:80' },
+              { urls: 'turn:openrelay.metered.ca:80', username: 'openrelay', credential: 'openrelay' },
+              { urls: 'turn:openrelay.metered.ca:443', username: 'openrelay', credential: 'openrelay' }
             ]
           }
     });
@@ -160,32 +163,45 @@ export class P2PManager {
       type: file.type
     }));
 
-    const chunkSize = 16 * 1024;
+    const chunkSize = 1024 * 1024;
+    const MAX_BUFFER_SIZE = 4 * 1024 * 1024;
+    const PROGRESS_INTERVAL = 50;
+    const dc = this.conn.dataChannel;
     let offset = 0;
+    let chunksSinceProgress = 0;
 
-    // WORLD-CLASS BACKPRESSURE: Prevent SCTP buffer overflow
-    const MAX_BUFFER_SIZE = 1024 * 1024; // 1MB
+    const waitForDrain = () => new Promise<void>((resolve) => {
+      const timeout = setTimeout(resolve, 2000);
+      const handler = () => {
+        dc.removeEventListener('bufferedamountlow', handler);
+        clearTimeout(timeout);
+        resolve();
+      };
+      dc.addEventListener('bufferedamountlow', handler, { once: true });
+      if (dc.bufferedAmount < MAX_BUFFER_SIZE) {
+        clearTimeout(timeout);
+        dc.removeEventListener('bufferedamountlow', handler);
+        resolve();
+      }
+    });
 
     while (offset < file.size) {
-      // Check PeerJS/WebRTC buffer size
-      if (this.conn.dataChannel.bufferedAmount > MAX_BUFFER_SIZE) {
-        // Wait for buffer to drain
-        await new Promise<void>((resolve) => {
-          const checkBuffer = setInterval(() => {
-            if (this.conn.dataChannel.bufferedAmount < MAX_BUFFER_SIZE / 2) {
-              clearInterval(checkBuffer);
-              resolve();
-            }
-          }, 50);
-        });
+      if (dc.bufferedAmount > MAX_BUFFER_SIZE) {
+        await waitForDrain();
       }
 
-      const slice = file.slice(offset, offset + chunkSize);
+      const slice = file.slice(offset, Math.min(offset + chunkSize, file.size));
       const buffer = await slice.arrayBuffer();
-      this.conn.send(new Uint8Array(buffer));
+      dc.send(new Uint8Array(buffer));
       offset += buffer.byteLength;
-      this.events.onProgress((offset / file.size) * 100);
+      chunksSinceProgress++;
+      if (chunksSinceProgress >= PROGRESS_INTERVAL) {
+        this.events.onProgress((offset / file.size) * 100);
+        chunksSinceProgress = 0;
+      }
     }
+
+    this.events.onProgress(100);
     
     this.events.onFileSent();
   }

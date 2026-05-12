@@ -18,30 +18,23 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
   if (request.method === "OPTIONS") return new Response(null, { headers: CORS_HEADERS });
 
-  // 1. Establish the Real-time SSE Tunnel (GET)
+  // 1. Establish the Real-time SSE Tunnel (GET) with ultra-fast polling
   if (request.method === "GET" && path.startsWith("/api/tunnel/")) {
     const tunnelId = path.split("/").pop();
-    
-    // We use KV as a temporary "Presence" indicator, but the actual relay 
-    // happens through the stream response if we were using Durable Objects.
-    // Since we are using standard Functions, we'll implement a "Long Poll" 
-    // with immediate flush to simulate a real-time tunnel.
-    
+
     const stream = new ReadableStream({
       async start(controller) {
         const encoder = new TextEncoder();
-        controller.enqueue(encoder.encode("retry: 1000\n\n"));
-        
-        // Wait for a message to appear in KV with high-frequency check
-        // This is a "Turbo-Poll" that only lasts 30 seconds
+        controller.enqueue(encoder.encode("retry: 100\n\n"));
+
         let attempts = 0;
-        while (attempts < 60) {
+        while (attempts < 300) {
           const msg = await env.ROOMS.get(`tunnel:${tunnelId}`, 'json');
           if (msg) {
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(msg)}\n\n`));
-            await env.ROOMS.delete(`tunnel:${tunnelId}`); // Consume the message
+            await env.ROOMS.delete(`tunnel:${tunnelId}`);
           }
-          await new Promise(r => setTimeout(r, 500));
+          await new Promise(r => setTimeout(r, 20));
           attempts++;
         }
         controller.close();
@@ -62,10 +55,9 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   if (request.method === "POST" && path.startsWith("/api/push/")) {
     const tunnelId = path.split("/").pop();
     const data = await request.json();
-    
-    // Store message in KV with zero expiration for instant delivery
+
     await env.ROOMS.put(`tunnel:${tunnelId}`, JSON.stringify(data), { expirationTtl: 60 });
-    
+
     return new Response(JSON.stringify({ success: true }), {
       headers: { ...CORS_HEADERS, "Content-Type": "application/json" }
     });

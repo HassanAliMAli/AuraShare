@@ -3,13 +3,15 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { AuraDropzone } from './components/AuraDropzone';
 import { AuraTextarea } from './components/AuraTextarea';
 import { CustomCursor } from './components/CustomCursor';
-import { P2PManager } from './lib/webrtc';
+import { SignalingManager } from './lib/signaling';
 
 type FileDescriptor = {
   name: string;
   size: number;
   type: string;
 };
+
+const SIGNALING_URL = import.meta.env.VITE_SIGNALING_URL || '';
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
@@ -43,26 +45,26 @@ function App() {
   const [downloadedFiles, setDownloadedFiles] = useState<Set<number>>(new Set());
   const [receiverReady, setReceiverReady] = useState(false);
 
-  const p2pManager = useRef<P2PManager | null>(null);
+  const manager = useRef<SignalingManager | null>(null);
   const pendingFiles = useRef<FileList | null>(null);
   const pendingText = useRef<string | null>(null);
   const receivedFileUrl = useRef<string | null>(null);
 
   useEffect(() => {
     return () => {
-      if (p2pManager.current) p2pManager.current.close();
+      if (manager.current) manager.current.close();
       if (receivedFileUrl.current) URL.revokeObjectURL(receivedFileUrl.current);
     };
   }, []);
 
   const downloadFile = (index: number) => {
-    p2pManager.current?.requestFile(index);
+    manager.current?.requestFile(index);
     setStatus('downloading');
   };
 
   const downloadAllFiles = () => {
     setStatus('downloading');
-    p2pManager.current?.startTransfer(pendingFiles.current ?? []);
+    receivedFiles.forEach((_, i) => manager.current?.requestFile(i));
   };
 
   const startSharingFlow = async (files?: FileList, text?: string) => {
@@ -70,14 +72,14 @@ function App() {
       setStatus('sharing');
       pendingFiles.current = files ?? null;
       pendingText.current = text ?? null;
-      if (p2pManager.current) p2pManager.current.close();
+      if (manager.current) manager.current.close();
 
-      const manager = new P2PManager({
+      const mgr = new SignalingManager({
         onProgress: (p) => setTransferProgress(p),
         onConnected: () => {},
         onReceiverConnected: () => {
           setReceiverReady(true);
-          manager.sendMeta(pendingFiles.current ?? []);
+          mgr.sendMeta(pendingFiles.current ?? []);
         },
         onDisconnected: () => { if (['downloading', 'sharing'].includes(status)) setStatus('error'); },
         onFilesReceived: async (files) => {
@@ -86,14 +88,14 @@ function App() {
         },
         onTransferComplete: () => setStatus('success'),
         onError: (err) => {
-          console.error('P2P Error:', err);
+          console.error('Signaling Error:', err);
           setErrorMessage(err);
           setStatus('error');
         }
-      });
-      p2pManager.current = manager;
+      }, { signalingUrl: SIGNALING_URL });
+      manager.current = mgr;
 
-      const code = await manager.initialize();
+      const code = await mgr.createRoom();
       setRoomId(code);
     } catch (e) {
       setErrorMessage('Alignment Failed');
@@ -108,16 +110,11 @@ function App() {
 
     try {
       setStatus('connecting');
-      if (p2pManager.current) p2pManager.current.close();
+      if (manager.current) manager.current.close();
 
-      const manager = new P2PManager({
+      const mgr = new SignalingManager({
         onProgress: (p) => setTransferProgress(p),
-        onConnected: () => {
-          setReceiverReady(true);
-          if (pendingFiles.current) {
-            manager.sendMeta(pendingFiles.current);
-          }
-        },
+        onConnected: () => {},
         onDisconnected: () => { if (['connecting', 'downloading'].includes(status)) setStatus('error'); },
         onFileDescriptorsReceived: (files) => {
           setReceivedFiles(files);
@@ -134,9 +131,9 @@ function App() {
           setErrorMessage(err);
           setStatus('error');
         }
-      });
-      p2pManager.current = manager;
-      await manager.join(code);
+      }, { signalingUrl: SIGNALING_URL });
+      manager.current = mgr;
+      await mgr.joinRoom(code);
     } catch (e) {
       setErrorMessage('Cosmic Link Broken');
       setStatus('error');
@@ -144,7 +141,7 @@ function App() {
   };
 
   const reset = () => {
-    if (p2pManager.current) p2pManager.current.close();
+    if (manager.current) manager.current.close();
     if (receivedFileUrl.current) {
         URL.revokeObjectURL(receivedFileUrl.current);
         receivedFileUrl.current = null;

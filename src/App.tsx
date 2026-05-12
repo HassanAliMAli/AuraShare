@@ -5,6 +5,12 @@ import { AuraTextarea } from './components/AuraTextarea';
 import { CustomCursor } from './components/CustomCursor';
 import { P2PManager } from './lib/webrtc';
 
+type FileDescriptor = {
+  name: string;
+  size: number;
+  type: string;
+};
+
 function formatBytes(bytes: number): string {
   if (bytes === 0) return '0 B';
   const k = 1024;
@@ -33,7 +39,7 @@ function App() {
   const [receivedText, setReceivedText] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [roomId, setRoomId] = useState<string | null>(null);
-  const [receivedFiles, setReceivedFiles] = useState<File[]>([]);
+  const [receivedFiles, setReceivedFiles] = useState<FileDescriptor[]>([]);
   const [downloadedFiles, setDownloadedFiles] = useState<Set<number>>(new Set());
   const [receiverReady, setReceiverReady] = useState(false);
 
@@ -49,17 +55,14 @@ function App() {
     };
   }, []);
 
-  const downloadFile = (file: File) => {
-    const url = URL.createObjectURL(file);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = file.name;
-    a.click();
-    URL.revokeObjectURL(url);
+  const downloadFile = (index: number) => {
+    p2pManager.current?.requestFile(index);
+    setStatus('downloading');
   };
 
-  const downloadAllFiles = (files: File[]) => {
-    files.forEach((file) => downloadFile(file));
+  const downloadAllFiles = () => {
+    setStatus('downloading');
+    p2pManager.current?.startTransfer(pendingFiles.current ?? []);
   };
 
   const startSharingFlow = async (files?: FileList, text?: string) => {
@@ -77,12 +80,8 @@ function App() {
           manager.sendMeta(pendingFiles.current ?? []);
         },
         onDisconnected: () => { if (['downloading', 'sharing'].includes(status)) setStatus('error'); },
-        onFileDescriptorsReceived: (files) => {
-          setReceivedFiles(files as unknown as File[]);
-          setStatus('connected');
-        },
         onFilesReceived: async (files) => {
-          setReceivedFiles(files);
+          setReceivedFiles(files as unknown as FileDescriptor[]);
           setStatus('success');
         },
         onTransferComplete: () => setStatus('success'),
@@ -113,18 +112,19 @@ function App() {
 
       const manager = new P2PManager({
         onProgress: (p) => setTransferProgress(p),
-        onConnected: () => {},
-        onReceiverConnected: () => {
+        onConnected: () => {
           setReceiverReady(true);
-          manager.sendMeta(pendingFiles.current ?? []);
+          if (pendingFiles.current) {
+            manager.sendMeta(pendingFiles.current);
+          }
         },
         onDisconnected: () => { if (['connecting', 'downloading'].includes(status)) setStatus('error'); },
         onFileDescriptorsReceived: (files) => {
-          setReceivedFiles(files as unknown as File[]);
+          setReceivedFiles(files);
           setStatus('connected');
         },
         onFilesReceived: async (files) => {
-          setReceivedFiles(files);
+          setReceivedFiles(files as unknown as FileDescriptor[]);
           setStatus('success');
         },
         onTransferComplete: () => {
@@ -339,7 +339,7 @@ function App() {
                           </div>
                         </div>
                         <button
-                          onClick={() => { downloadFile(file); setDownloadedFiles(prev => new Set([...prev, i])); }}
+                          onClick={() => downloadFile(i)}
                           className="ml-3 px-4 py-2 bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/30 rounded-xl text-xs font-black uppercase tracking-widest text-indigo-300 transition-all hover:scale-105 active:scale-95 flex-shrink-0"
                         >
                           {downloadedFiles.has(i) ? 'Saved' : 'Save'}
@@ -347,12 +347,14 @@ function App() {
                       </div>
                     ))}
                   </div>
-                  <button
-                    onClick={() => downloadAllFiles(receivedFiles)}
-                    className="mt-4 md:mt-6 w-full py-3 md:py-4 rounded-xl md:rounded-2xl bg-white/10 hover:bg-white/20 border border-white/10 text-white font-black uppercase tracking-widest text-xs md:text-sm transition-all hover:scale-[1.02] active:scale-[0.98]"
-                  >
-                    Download All
-                  </button>
+                  {receivedFiles.length > 1 && (
+                    <button
+                      onClick={() => downloadAllFiles()}
+                      className="mt-4 md:mt-6 w-full py-3 md:py-4 rounded-xl md:rounded-2xl bg-white/10 hover:bg-white/20 border border-white/10 text-white font-black uppercase tracking-widest text-xs md:text-sm transition-all hover:scale-[1.02] active:scale-[0.98]"
+                    >
+                      Download All
+                    </button>
+                  )}
                 </div>
               </motion.div>
             ) : status === 'downloading' ? (

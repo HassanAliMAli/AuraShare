@@ -28,8 +28,8 @@ export class P2PManager {
   private metadata: FileDescriptor | null = null;
   private connectionTimeout: any = null;
 
-  private pendingFileDescriptors: FileDescriptor[] = [];
   private pendingFiles: File[] = [];
+  private pendingFileList: FileList | null = null;
 
   constructor(events: P2PEvents) {
     this.events = events;
@@ -81,8 +81,6 @@ export class P2PManager {
       this.peer!.on('connection', (connection) => {
         this.conn = connection;
         this.setupConnection();
-        console.log('[P2P] Receiver connected, firing onReceiverConnected');
-        this.events.onReceiverConnected?.();
         if (this.conn.open) {
           this.events.onConnected();
         }
@@ -135,19 +133,15 @@ export class P2PManager {
 
     this.conn.on('open', () => {
       this.clearConnectionSentinel();
-      console.log('[P2P] Connection open');
       this.events.onConnected();
     });
 
     this.conn.on('data', (data: any) => {
-      console.log('[P2P] data event received, type:', typeof data, data instanceof Uint8Array ? 'binary' : 'string');
       this.handleData(data);
     });
 
     this.conn.on('dataChannel', (channel: any) => {
-      console.log('[P2P] dataChannel event received');
       channel.on('data', (data: any) => {
-        console.log('[P2P] dataChannel data:', typeof data);
         this.handleData(data);
       });
     });
@@ -160,23 +154,15 @@ export class P2PManager {
     if (typeof data === 'string') {
       try {
         const msg = JSON.parse(data);
-        console.log('[P2P] String data:', msg.kind);
-        if (msg.kind === 'files-start') {
-          console.log('[P2P] Received files-start:', msg);
-          this.pendingFileDescriptors = [];
-          this.pendingFiles = [];
-          this.receiveBuffer = [];
-          this.receivedSize = 0;
-          this.metadata = null;
-        } else if (msg.kind === 'file-metadata') {
-          console.log('[P2P] Received file-metadata:', msg);
-          this.pendingFileDescriptors.push(msg);
-        } else if (msg.kind === 'transfer-complete') {
-          console.log('[P2P] Transfer complete');
+        if (msg.kind === 'transfer-complete') {
           this.events.onFilesReceived(this.pendingFiles);
         } else if (msg.kind === 'file-descriptors') {
-          console.log('[P2P] Received file-descriptors:', msg.files?.length, 'files');
           this.events.onFileDescriptorsReceived?.(msg.files);
+        } else if (msg.kind === 'file-request') {
+          const fileIndex = msg.index;
+          if (this.pendingFileList && this.pendingFileList[fileIndex]) {
+            this.startTransferForFile(this.pendingFileList[fileIndex]);
+          }
         }
       } catch (e) {}
     } else {
@@ -195,9 +181,14 @@ export class P2PManager {
     }
   }
 
+  requestFile(index: number) {
+    if (!this.conn || !this.conn.open) return;
+    this.conn.send(JSON.stringify({ kind: 'file-request', index }));
+  }
+
   sendMeta(files: FileList | File[]) {
     const fileArray = files instanceof FileList ? Array.from(files) : files;
-    console.log('[P2P] sendMeta called, fileCount:', fileArray.length);
+    this.pendingFileList = files instanceof FileList ? files : null;
     if (!this.conn || fileArray.length === 0) return;
 
     const descriptors: FileDescriptor[] = fileArray.map((file) => ({
@@ -207,7 +198,6 @@ export class P2PManager {
     }));
 
     const send = () => {
-      console.log('[P2P] Sending file descriptors for', descriptors.length, 'files');
       this.conn.send(JSON.stringify({ kind: 'file-descriptors', files: descriptors }));
     };
 
@@ -215,62 +205,64 @@ export class P2PManager {
       send();
     } else {
       this.conn.once('open', () => {
-        console.log('[P2P] conn open now, sending metadata');
         send();
       });
     }
   }
 
-  startTransfer(files: FileList | File[]): void {
-    const fileArray = files instanceof FileList ? Array.from(files) : files;
-    if (!this.conn || !this.conn.open || fileArray.length === 0) return;
-
-    const totalSize = fileArray.reduce((sum, f) => sum + f.size, 0);
+  private startTransferForFile(file: File): void {
     const chunkSize = 1024 * 1024;
     const MAX_BUFFER_SIZE = 4 * 1024 * 1024;
     const PROGRESS_INTERVAL = 50;
-    let sentSize = 0;
+    let offset = 0;
+    let chunksSinceProgress = 0;
+
+    this.conn.send(JSON.stringify({
+      kind: 'file-metadata',
+      name: file.name,
+      size: file.size,
+      type: file.type
+    }));
 
     (async () => {
-      for (const file of fileArray) {
-        this.conn.send(JSON.stringify({
-          kind: 'file-metadata',
-          name: file.name,
-          size: file.size,
-          type: file.type
-        }));
+      while (offset < file.size) {
+        if (this.conn.dataChannel && this.conn.dataChannel.bufferedAmount > MAX_BUFFER_SIZE) {
+          await new Promise<void>((resolve) => {
+            const checkBuffer = setInterval(() => {
+              if (this.conn.dataChannel.bufferedAmount < MAX_BUFFER_SIZE / 2) {
+                clearInterval(checkBuffer);
+                resolve();
+              }
+            }, 20);
+          });
+        }
 
-        let offset = 0;
-        let chunksSinceProgress = 0;
-
-        while (offset < file.size) {
-          if (this.conn.dataChannel && this.conn.dataChannel.bufferedAmount > MAX_BUFFER_SIZE) {
-            await new Promise<void>((resolve) => {
-              const checkBuffer = setInterval(() => {
-                if (this.conn.dataChannel.bufferedAmount < MAX_BUFFER_SIZE / 2) {
-                  clearInterval(checkBuffer);
-                  resolve();
-                }
-              }, 20);
-            });
-          }
-
-          const slice = file.slice(offset, Math.min(offset + chunkSize, file.size));
-          const buffer = await slice.arrayBuffer();
-          this.conn.send(new Uint8Array(buffer));
-          offset += buffer.byteLength;
-          sentSize += buffer.byteLength;
-          chunksSinceProgress++;
-          if (chunksSinceProgress >= PROGRESS_INTERVAL) {
-            this.events.onProgress((sentSize / totalSize) * 100);
-            chunksSinceProgress = 0;
-          }
+        const slice = file.slice(offset, Math.min(offset + chunkSize, file.size));
+        const buffer = await slice.arrayBuffer();
+        this.conn.send(new Uint8Array(buffer));
+        offset += buffer.byteLength;
+        chunksSinceProgress++;
+        if (chunksSinceProgress >= PROGRESS_INTERVAL) {
+          this.events.onProgress((offset / file.size) * 100);
+          chunksSinceProgress = 0;
         }
       }
 
       this.conn.send(JSON.stringify({ kind: 'transfer-complete' }));
       this.events.onProgress(100);
       this.events.onTransferComplete();
+    })();
+  }
+
+  startTransfer(files: FileList | File[]): void {
+    const fileArray = files instanceof FileList ? Array.from(files) : files;
+    this.pendingFileList = files instanceof FileList ? files : null;
+    if (!this.conn || !this.conn.open || fileArray.length === 0) return;
+
+    (async () => {
+      for (const file of fileArray) {
+        this.startTransferForFile(file);
+      }
     })();
   }
 

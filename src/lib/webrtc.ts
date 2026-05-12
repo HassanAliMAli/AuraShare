@@ -170,24 +170,16 @@ export class P2PManager {
     let offset = 0;
     let chunksSinceProgress = 0;
 
-    const waitForDrain = () => new Promise<void>((resolve) => {
-      const timeout = setTimeout(resolve, 2000);
-      const handler = () => {
-        dc.removeEventListener('bufferedamountlow', handler);
-        clearTimeout(timeout);
-        resolve();
-      };
-      dc.addEventListener('bufferedamountlow', handler, { once: true });
-      if (dc.bufferedAmount < MAX_BUFFER_SIZE) {
-        clearTimeout(timeout);
-        dc.removeEventListener('bufferedamountlow', handler);
-        resolve();
-      }
-    });
-
     while (offset < file.size) {
       if (dc.bufferedAmount > MAX_BUFFER_SIZE) {
-        await waitForDrain();
+        await new Promise<void>((resolve) => {
+          const checkBuffer = setInterval(() => {
+            if (dc.bufferedAmount < MAX_BUFFER_SIZE / 2) {
+              clearInterval(checkBuffer);
+              resolve();
+            }
+          }, 20);
+        });
       }
 
       const slice = file.slice(offset, Math.min(offset + chunkSize, file.size));

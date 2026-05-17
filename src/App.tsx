@@ -186,15 +186,23 @@ function App() {
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
-          className="flex items-center gap-2 md:gap-4 cursor-pointer"
-          onClick={reset}
+          className="flex items-center gap-2 md:gap-4"
         >
+          <button
+            onClick={reset}
+            disabled={status === 'idle' && !isReceiving}
+            className={cn(
+              "flex items-center gap-2 md:gap-4 cursor-pointer",
+              status !== 'idle' || isReceiving ? "pointer-events-auto" : "pointer-events-none opacity-50"
+            )}
+          >
           <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl md:rounded-2xl overflow-hidden flex items-center justify-center shadow-lg shadow-indigo-500/20 bg-white/5">
             <img src="/logo.svg" alt="AuraShare" className="w-full h-full object-cover" />
           </div>
           <h1 className="text-xl md:text-2xl font-bold tracking-tighter text-white logo-font whitespace-nowrap">
             AuraShare
           </h1>
+          </button>
         </motion.div>
 
         <motion.div
@@ -315,6 +323,12 @@ function App() {
                     <p className="text-white/20 uppercase tracking-[0.3em] text-[10px] font-black animate-pulse">Waiting for cosmic alignment...</p>
                   )}
                 </div>
+                <button
+                  onClick={reset}
+                  className="mt-6 md:mt-8 px-6 md:px-8 py-3 md:py-4 rounded-xl md:rounded-2xl bg-white/10 hover:bg-white/20 border border-white/10 text-white/60 font-black uppercase tracking-widest text-[10px] md:text-xs transition-all hover:scale-[1.02] active:scale-[0.98]"
+                >
+                  End Transmission
+                </button>
               </motion.div>
             ) : status === 'connected' ? (
               <motion.div
@@ -363,6 +377,12 @@ function App() {
                       Download All
                     </button>
                   )}
+                  <button
+                    onClick={reset}
+                    className="mt-4 md:mt-6 w-full py-3 md:py-4 rounded-xl md:rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/50 font-black uppercase tracking-widest text-xs md:text-sm transition-all hover:scale-[1.02] active:scale-[0.98]"
+                  >
+                    Disconnect
+                  </button>
                 </div>
               </motion.div>
             ) : status === 'downloading' ? (
@@ -386,6 +406,12 @@ function App() {
                       />
                     </div>
                   </div>
+                  <button
+                    onClick={reset}
+                    className="mt-6 md:mt-8 px-6 md:px-8 py-3 md:py-4 rounded-xl md:rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/50 font-black uppercase tracking-widest text-[10px] md:text-xs transition-all hover:scale-[1.02] active:scale-[0.98]"
+                  >
+                    Cancel
+                  </button>
                 </div>
               </motion.div>
             ) : status === 'success' ? (

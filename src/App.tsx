@@ -97,7 +97,7 @@ function App() {
 
       const code = await mgr.initialize();
       setRoomId(code);
-    } catch (e) {
+    } catch {
       setErrorMessage('Alignment Failed');
       setStatus('error');
     }
@@ -134,7 +134,7 @@ function App() {
       });
       manager.current = mgr;
       await mgr.join(code);
-    } catch (e) {
+    } catch {
       setErrorMessage('Cosmic Link Broken');
       setStatus('error');
     }

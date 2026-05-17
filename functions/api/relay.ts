@@ -65,7 +65,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
   // 3. Room Management
   if (request.method === "POST" && path === "/api/room") {
-    const { offer } = await request.json() as any;
+    const { offer } = await request.json() as { offer: string };
     const roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
     await env.ROOMS.put(`room:${roomId}:offer`, JSON.stringify(offer), { expirationTtl: 600 });
     return new Response(JSON.stringify({ roomId }), {

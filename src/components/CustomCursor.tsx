@@ -1,8 +1,20 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { motion, useSpring, useMotionValue } from 'framer-motion';
 
+function useMediaQuery(query: string): boolean {
+  return useSyncExternalStore(
+    (callback) => {
+      const mediaQuery = window.matchMedia(query);
+      mediaQuery.addEventListener('change', callback);
+      return () => mediaQuery.removeEventListener('change', callback);
+    },
+    () => window.matchMedia(query).matches,
+    () => false
+  );
+}
+
 export const CustomCursor = () => {
-  const [isTouch, setIsTouch] = useState(false);
+  const isTouch = useMediaQuery('(pointer: coarse)');
   const mouseX = useMotionValue(0);
   const mouseY = useMotionValue(0);
 
@@ -14,10 +26,7 @@ export const CustomCursor = () => {
   const trailY = useSpring(mouseY, { damping: 40, stiffness: 150, mass: 1 });
 
   useEffect(() => {
-    if (window.matchMedia('(pointer: coarse)').matches) {
-      setIsTouch(true);
-      return;
-    }
+    if (isTouch) return undefined;
 
     const handleMouseMove = (e: MouseEvent) => {
       mouseX.set(e.clientX);
@@ -26,7 +35,7 @@ export const CustomCursor = () => {
 
     window.addEventListener('mousemove', handleMouseMove);
     return () => window.removeEventListener('mousemove', handleMouseMove);
-  }, [mouseX, mouseY]);
+  }, [isTouch, mouseX, mouseY]);
 
   if (isTouch) return null;
 

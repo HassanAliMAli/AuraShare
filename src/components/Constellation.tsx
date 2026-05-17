@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { cn } from '../lib/utils';
 
@@ -7,8 +7,8 @@ interface Device {
   name: string;
   icon: string;
   status: 'online' | 'busy' | 'away';
-  angle: number; // For orbital position
-  radius: number; // For orbital distance
+  angle: number;
+  radius: number;
 }
 
 interface ConstellationProps {
@@ -17,13 +17,24 @@ interface ConstellationProps {
   className?: string;
 }
 
+const generateRandomDuration = (base: number, range: number): number => {
+  return base + Math.random() * range;
+};
+
 export const Constellation: React.FC<ConstellationProps> = ({ devices, onDeviceClick, className }) => {
+  const randomDurations = useMemo(() => {
+    return devices.map(() => ({
+      x: generateRandomDuration(4, 2),
+      y: generateRandomDuration(5, 2),
+    }));
+  }, [devices]);
+
   return (
     <div className={cn("absolute inset-0 pointer-events-none", className)}>
-      {devices.map((device) => {
-        // Calculate position based on angle and radius
+      {devices.map((device, index) => {
         const x = Math.cos((device.angle * Math.PI) / 180) * device.radius;
         const y = Math.sin((device.angle * Math.PI) / 180) * device.radius;
+        const duration = randomDurations[index];
 
         return (
           <motion.div
@@ -38,8 +49,8 @@ export const Constellation: React.FC<ConstellationProps> = ({ devices, onDeviceC
             transition={{
               opacity: { duration: 1 },
               scale: { duration: 0.5, type: "spring" },
-              x: { duration: 4 + Math.random() * 2, repeat: Infinity, ease: "easeInOut" },
-              y: { duration: 5 + Math.random() * 2, repeat: Infinity, ease: "easeInOut" }
+              x: { duration: duration.x, repeat: Infinity, ease: "easeInOut" },
+              y: { duration: duration.y, repeat: Infinity, ease: "easeInOut" }
             }}
             style={{ 
               left: '50%', 

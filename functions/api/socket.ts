@@ -1,5 +1,5 @@
 export interface Env {
-  // No KV needed for hibernatable WebSockets!
+  SOCKETS: unknown;
 }
 
 const CORS_HEADERS = {
@@ -17,10 +17,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
   const [client, server] = new WebSocketPair();
 
-  // Create a 6-digit ID for this session
-  const roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
-
-  (server as any).accept();
+  (server as WebSocket).accept();
 
   // Handle room coordination
   // Note: For a pure "lobby" without Durable Objects, we use a simple relay.

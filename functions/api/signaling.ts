@@ -2,6 +2,14 @@ interface Env {
   ROOMS: KVNamespace;
 }
 
+type RoomData = {
+  offer?: string | null;
+  answer?: string | null;
+  offererConnected?: boolean;
+  answererConnected?: boolean;
+  created?: number;
+};
+
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
@@ -61,7 +69,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     const roomId = path.split("/")[3];
     const { offer } = await request.json() as { offer: string };
     const key = `room:${roomId}`;
-    const room = await env.ROOMS.get(key, 'json') as any;
+    const room = await env.ROOMS.get(key, 'json') as { offer?: string; answer?: string; offererConnected?: boolean; answererConnected?: boolean; created?: number } | null;
 
     if (!room) return new Response("Room not found", { status: 404, headers: CORS_HEADERS });
 
@@ -79,7 +87,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   if (request.method === "GET" && path.match(/\/api\/room\/([A-Z0-9]+)\/offer$/)) {
     const roomId = path.split("/")[3];
     const key = `room:${roomId}`;
-    const room = await env.ROOMS.get(key, 'json') as any;
+    const room = await env.ROOMS.get(key, 'json') as RoomData | null;
 
     if (!room) return new Response("Room not found", { status: 404, headers: CORS_HEADERS });
 
@@ -93,7 +101,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     const roomId = path.split("/")[3];
     const { answer } = await request.json() as { answer: string };
     const key = `room:${roomId}`;
-    const room = await env.ROOMS.get(key, 'json') as any;
+    const room = await env.ROOMS.get(key, 'json') as RoomData | null;
 
     if (!room) return new Response("Room not found", { status: 404, headers: CORS_HEADERS });
 
@@ -111,7 +119,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   if (request.method === "GET" && path.match(/\/api\/room\/([A-Z0-9]+)\/answer$/)) {
     const roomId = path.split("/")[3];
     const key = `room:${roomId}`;
-    const room = await env.ROOMS.get(key, 'json') as any;
+    const room = await env.ROOMS.get(key, 'json') as RoomData | null;
 
     if (!room) return new Response("Room not found", { status: 404, headers: CORS_HEADERS });
 
@@ -124,7 +132,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   if (request.method === "GET" && path.match(/\/api\/room\/([A-Z0-9]+)$/)) {
     const roomId = path.split("/")[3];
     const key = `room:${roomId}`;
-    const room = await env.ROOMS.get(key, 'json') as any;
+    const room = await env.ROOMS.get(key, 'json') as RoomData | null;
 
     if (!room) return new Response("Room not found", { status: 404, headers: CORS_HEADERS });
 

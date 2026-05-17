@@ -34,12 +34,12 @@ export class SignalingManager {
   private config: Config;
   private roomId: string = '';
 
-  private receiveBuffer: any[] = [];
+  private receiveBuffer: ArrayBuffer[] = [];
   private receivedSize = 0;
   private metadata: FileDescriptor | null = null;
   private pendingFiles: File[] = [];
   private pendingFileList: FileList | null = null;
-  private pollInterval: any = null;
+  private pollInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor(events: SignalingEvents, config: Config) {
     this.events = events;
@@ -86,25 +86,27 @@ export class SignalingManager {
     };
   }
 
-  private handleData(data: any) {
+  private handleData(data: unknown) {
     if (typeof data === 'string') {
       try {
-        const msg = JSON.parse(data);
+        const msg = JSON.parse(data) as { kind?: string; files?: FileDescriptor[]; index?: number };
         if (msg.kind === 'transfer-complete') {
           this.events.onFilesReceived(this.pendingFiles);
-        } else if (msg.kind === 'file-descriptors') {
+        } else if (msg.kind === 'file-descriptors' && msg.files) {
           this.events.onFileDescriptorsReceived?.(msg.files);
-        } else if (msg.kind === 'file-request') {
+        } else if (msg.kind === 'file-request' && typeof msg.index === 'number') {
           const fileIndex = msg.index;
           if (this.pendingFileList && this.pendingFileList[fileIndex]) {
             this.startTransferForFile(this.pendingFileList[fileIndex]);
           }
         }
-      } catch (e) {}
+      } catch { /* ignore parse errors */ }
     } else {
       if (!this.metadata) return;
-      const buffer = data instanceof ArrayBuffer ? data : data.buffer;
-      this.receiveBuffer.push(buffer);
+      const buffer = data instanceof ArrayBuffer 
+        ? data 
+        : (data as Uint8Array).buffer;
+      this.receiveBuffer.push(buffer as ArrayBuffer);
       this.receivedSize += buffer.byteLength;
 
       this.events.onProgress((this.receivedSize / this.metadata.size) * 100);
@@ -194,7 +196,7 @@ export class SignalingManager {
       if (!res.ok) return;
 
       const { answer } = await res.json() as { answer: string | null };
-      if (answer) {
+      if (answer && this.pollInterval) {
         clearInterval(this.pollInterval);
         const answerObj = JSON.parse(answer);
         await this.pc!.setRemoteDescription(new RTCSessionDescription(answerObj));

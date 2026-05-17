@@ -17,17 +17,23 @@ type P2PEvents = {
   onError: (err: string) => void;
 };
 
-
+interface PeerConnection {
+  on(event: string, handler: (...args: unknown[]) => void): void;
+  send(data: unknown): void;
+  open: boolean;
+  dataChannel?: RTCDataChannel;
+  close(): void;
+}
 
 export class P2PManager {
   private peer: Peer | null = null;
-  private conn: any = null;
+  private conn: PeerConnection | null = null;
   private events: P2PEvents;
 
-  private receiveBuffer: any[] = [];
+  private receiveBuffer: ArrayBuffer[] = [];
   private receivedSize = 0;
   private metadata: FileDescriptor | null = null;
-  private connectionTimeout: any = null;
+  private connectionTimeout: ReturnType<typeof setTimeout> | null = null;
 
   private pendingFiles: File[] = [];
   private pendingFileList: FileList | null = null;
@@ -139,39 +145,35 @@ export class P2PManager {
       this.events.onConnected();
     });
 
-    this.conn.on('data', (data: any) => {
+    this.conn.on('data', (data: unknown) => {
       this.handleData(data);
-    });
-
-    this.conn.on('dataChannel', (channel: any) => {
-      channel.on('data', (data: any) => {
-        this.handleData(data);
-      });
     });
 
     this.conn.on('close', () => this.events.onDisconnected());
     this.conn.on('error', () => this.events.onError('Alignment Lost'));
   }
 
-  private handleData(data: any) {
+  private handleData(data: unknown) {
     if (typeof data === 'string') {
       try {
-        const msg = JSON.parse(data);
+        const msg = JSON.parse(data) as { kind?: string; files?: FileDescriptor[]; index?: number };
         if (msg.kind === 'transfer-complete') {
           this.events.onFilesReceived(this.pendingFiles);
-        } else if (msg.kind === 'file-descriptors') {
+        } else if (msg.kind === 'file-descriptors' && msg.files) {
           this.events.onFileDescriptorsReceived?.(msg.files);
-        } else if (msg.kind === 'file-request') {
+        } else if (msg.kind === 'file-request' && typeof msg.index === 'number') {
           const fileIndex = msg.index;
           if (this.pendingFileList && this.pendingFileList[fileIndex]) {
             this.startTransferForFile(this.pendingFileList[fileIndex]);
           }
         }
-      } catch (e) {}
+      } catch { /* ignore parse errors */ }
     } else {
       if (!this.metadata) return;
-      const buffer = data instanceof Uint8Array ? data.buffer : data;
-      this.receiveBuffer.push(buffer);
+      const buffer = data instanceof Uint8Array 
+        ? data.buffer 
+        : (data as Uint8Array).buffer;
+      this.receiveBuffer.push(buffer as ArrayBuffer);
       this.receivedSize += buffer.byteLength;
 
       this.events.onProgress((this.receivedSize / this.metadata.size) * 100);
@@ -204,6 +206,8 @@ export class P2PManager {
   }
 
   startTransferForFile(file: File) {
+    if (!this.conn) return;
+    
     const chunkSize = 1024 * 1024;
     const MAX_BUFFER_SIZE = 4 * 1024 * 1024;
     const PROGRESS_INTERVAL = 50;
@@ -219,10 +223,12 @@ export class P2PManager {
 
     (async () => {
       while (offset < file.size) {
-        if (this.conn.dataChannel && this.conn.dataChannel.bufferedAmount > MAX_BUFFER_SIZE) {
+        if (!this.conn) return;
+        const dataChannel = this.conn.dataChannel;
+        if (dataChannel && dataChannel.bufferedAmount > MAX_BUFFER_SIZE) {
           await new Promise<void>((resolve) => {
             const checkBuffer = setInterval(() => {
-              if (this.conn.dataChannel.bufferedAmount < MAX_BUFFER_SIZE / 2) {
+              if (!this.conn || this.conn.dataChannel!.bufferedAmount < MAX_BUFFER_SIZE / 2) {
                 clearInterval(checkBuffer);
                 resolve();
               }
@@ -230,6 +236,7 @@ export class P2PManager {
           });
         }
 
+        if (!this.conn) return;
         const slice = file.slice(offset, Math.min(offset + chunkSize, file.size));
         const buffer = await slice.arrayBuffer();
         this.conn.send(new Uint8Array(buffer));
@@ -241,7 +248,9 @@ export class P2PManager {
         }
       }
 
-      this.conn.send(JSON.stringify({ kind: 'transfer-complete' }));
+      if (this.conn) {
+        this.conn.send(JSON.stringify({ kind: 'transfer-complete' }));
+      }
       this.events.onProgress(100);
       this.events.onTransferComplete();
     })();

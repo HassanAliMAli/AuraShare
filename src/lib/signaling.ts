@@ -74,7 +74,7 @@ export class SignalingManager {
     if (!this.dc) return;
 
     this.dc.onopen = () => {
-      console.log('[Signaling] DataChannel open');
+      // DataChannel ready
     };
 
     this.dc.onmessage = (event) => {

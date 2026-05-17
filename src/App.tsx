@@ -4,6 +4,7 @@ import { AuraDropzone } from './components/AuraDropzone';
 import { AuraTextarea } from './components/AuraTextarea';
 import { CustomCursor } from './components/CustomCursor';
 import { P2PManager } from './lib/webrtc';
+import { cn } from './lib/utils';
 
 type FileDescriptor = {
   name: string;
@@ -81,9 +82,10 @@ function App() {
           setReceiverReady(true);
           mgr.sendMeta(pendingFiles.current ?? []);
         },
-        onDisconnected: () => { if (['downloading', 'sharing'].includes(status)) setStatus('error'); },
+        onDisconnected: () => { setStatus(prev => (prev === 'downloading' || prev === 'sharing') ? 'error' : prev); },
         onFilesReceived: async (files) => {
-          setReceivedFiles(files as unknown as FileDescriptor[]);
+          const fileDescs: FileDescriptor[] = files.map(f => ({ name: f.name, size: f.size, type: f.type }));
+          setReceivedFiles(fileDescs);
           setStatus('success');
         },
         onTransferComplete: () => setStatus('success'),
@@ -106,7 +108,7 @@ function App() {
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
     const code = joinCode.toUpperCase().trim();
-    if (code.length !== 6) return;
+    if (code.length !== 6 || !/^[A-Z0-9]+$/.test(code)) return;
 
     try {
       setStatus('connecting');
@@ -115,13 +117,14 @@ function App() {
       const mgr = new P2PManager({
         onProgress: (p) => setTransferProgress(p),
         onConnected: () => {},
-        onDisconnected: () => { if (['connecting', 'downloading'].includes(status)) setStatus('error'); },
+        onDisconnected: () => { setStatus(prev => (prev === 'connecting' || prev === 'downloading') ? 'error' : prev); },
         onFileDescriptorsReceived: (files) => {
           setReceivedFiles(files);
           setStatus('connected');
         },
         onFilesReceived: async (files) => {
-          setReceivedFiles(files as unknown as FileDescriptor[]);
+          const fileDescs: FileDescriptor[] = files.map(f => ({ name: f.name, size: f.size, type: f.type }));
+          setReceivedFiles(fileDescs);
           setStatus('success');
         },
         onTransferComplete: () => {
@@ -150,6 +153,7 @@ function App() {
     setStatus('idle');
     setJoinCode('');
     setIsReceiving(false);
+    setShareMode('text');
     setReceivedText(null);
     setErrorMessage(null);
     setRoomId(null);
@@ -160,12 +164,16 @@ function App() {
     pendingText.current = null;
   };
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (err) {
+      console.error('Failed to copy to clipboard:', err);
+    }
   };
 
   return (
-    <div className="relative w-screen h-screen bg-[#0c0c0e] overflow-hidden font-['Inter'] cursor-none text-white selection:bg-indigo-500/30">
+    <div className="relative w-screen h-screen bg-void overflow-hidden font-['Inter'] cursor-none text-white selection:bg-indigo-500/30">
       <CustomCursor />
 
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
@@ -217,7 +225,10 @@ function App() {
                 <button
                   key={mode}
                   onClick={() => setShareMode(mode)}
-                  className={`relative px-6 md:px-10 py-2 md:py-3 rounded-xl md:rounded-2xl text-[10px] md:text-xs font-black uppercase tracking-[0.2em] transition-colors duration-300 ${shareMode === mode ? 'text-[#0c0c0e]' : 'text-white/30 hover:text-white/60'}`}
+                  className={cn(
+                      "relative px-6 md:px-10 py-2 md:py-3 rounded-xl md:rounded-2xl text-[10px] md:text-xs font-black uppercase tracking-[0.2em] transition-colors duration-300",
+                      shareMode === mode ? 'text-void' : 'text-white/30 hover:text-white/60'
+                    )}
                 >
                   {shareMode === mode && (
                     <motion.div
@@ -273,7 +284,7 @@ function App() {
                   <button
                     type="submit"
                     disabled={joinCode.length !== 6}
-                    className="w-full py-4 md:py-5 rounded-xl md:rounded-2xl bg-white text-[#0c0c0e] font-black uppercase tracking-widest disabled:opacity-20 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl text-xs md:text-sm"
+                    className="w-full py-4 md:py-5 rounded-xl md:rounded-2xl bg-white text-void font-black uppercase tracking-widest disabled:opacity-20 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl text-xs md:text-sm"
                   >
                     Establish Link
                   </button>
@@ -407,7 +418,7 @@ function App() {
                     </div>
                   )}
 
-                  <button onClick={reset} className="px-10 md:px-16 py-4 md:py-5 rounded-xl md:rounded-2xl bg-white text-[#0c0c0e] font-black uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-2xl text-xs md:text-sm">
+                  <button onClick={reset} className="px-10 md:px-16 py-4 md:py-5 rounded-xl md:rounded-2xl bg-white text-void font-black uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-2xl text-xs md:text-sm">
                     Begin New Cycle
                   </button>
                 </div>
@@ -428,7 +439,7 @@ function App() {
                   <p className="text-white font-black mb-2 uppercase tracking-[0.2em] text-[10px] md:text-xs">
                     {errorMessage || "Link Failed"}
                   </p>
-                  <button onClick={reset} className="px-10 md:px-14 py-4 md:py-5 rounded-xl md:rounded-2xl bg-white text-[#0c0c0e] font-black uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-xl mt-8 text-xs">
+                  <button onClick={reset} className="px-10 md:px-14 py-4 md:py-5 rounded-xl md:rounded-2xl bg-white text-void font-black uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-xl mt-8 text-xs">
                     Try Re-Alignment
                   </button>
                 </div>

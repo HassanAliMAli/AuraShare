@@ -1,5 +1,23 @@
 @import "tailwindcss";
 
+@theme {
+  --color-void: #0c0c0e;
+  --color-aura-1: #111115;
+  --color-aura-2: #16161c;
+  --color-aura-3: #1c1c24;
+  --color-aura-edge: #2a2a38;
+
+  --color-text-primary: #e8e8f0;
+  --color-text-secondary: #9090a8;
+  --color-text-ghost: #50505e;
+
+  --color-signal: #6c7cf8;
+  --color-signal-dim: #3d4a9a;
+  --color-transfer: #22d3a8;
+  --color-warn: #f59e0b;
+  --color-error: #ef4444;
+}
+
 :root {
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;

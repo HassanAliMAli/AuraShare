@@ -64,7 +64,7 @@ export const AuraTextarea: React.FC<AuraTextareaProps> = ({ onTextShare, classNa
             whileTap={{ scale: 0.98 }}
             onClick={handleSubmit}
             disabled={!text.trim()}
-            className="px-8 py-3 rounded-2xl bg-white text-[#0c0c0e] font-bold text-sm uppercase tracking-widest disabled:opacity-20 transition-opacity"
+            className="px-8 py-3 rounded-2xl bg-white text-void font-bold text-sm uppercase tracking-widest disabled:opacity-20 transition-opacity"
           >
             Share Aura
           </motion.button>

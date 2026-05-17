@@ -87,11 +87,22 @@ export class P2PManager {
 
       this.peer!.on('connection', (connection) => {
         this.conn = connection;
-        this.setupConnection();
-        this.events.onReceiverConnected?.();
-        if (this.conn.open) {
+        
+        connection.on('open', () => {
+          this.clearConnectionSentinel();
           this.events.onConnected();
-        }
+          this.events.onReceiverConnected?.();
+        });
+
+        connection.on('close', () => {
+          this.events.onDisconnected();
+        });
+
+        connection.on('error', () => {
+          this.events.onError('Connection Lost');
+        });
+
+        this.setupConnection();
       });
 
       this.peer!.on('error', (err) => {
@@ -126,8 +137,23 @@ export class P2PManager {
         this.conn = this.peer!.connect(targetId, {
           reliable: true
         });
+        
+        this.conn.on('open', () => {
+          this.clearConnectionSentinel();
+          this.events.onConnected();
+          resolve();
+        });
+
+        this.conn.on('error', (err) => {
+          this.events.onError('Connection Error');
+          reject(err);
+        });
+
+        this.conn.on('close', () => {
+          this.events.onDisconnected();
+        });
+
         this.setupConnection();
-        resolve();
       });
 
       this.peer!.on('error', (err) => {

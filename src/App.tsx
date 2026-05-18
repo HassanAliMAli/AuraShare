@@ -175,11 +175,7 @@ function App() {
           setStatus('success');
         },
         onTransferComplete: () => {
-          const total = downloadTrack.current.total;
-          const completed = downloadTrack.current.completed.size;
-          if (total > 0 && completed >= total) {
-            setStatus('success');
-          }
+          // Don't auto-set success here - let user decide when to end
         },
         onError: (err) => {
           setErrorMessage(err);

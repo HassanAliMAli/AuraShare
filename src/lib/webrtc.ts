@@ -43,6 +43,7 @@ export class P2PManager {
   private pendingFileDescriptors: FileDescriptor[] = [];
   private pendingFileIndices: Set<number> = new Set();
   private acknowledgedFiles: Set<number> = new Set();
+  private isProcessingTransfer = false;
 
   constructor(events: P2PEvents) {
     this.events = events;
@@ -191,26 +192,31 @@ export class P2PManager {
           this.receiveBuffer = [];
           this.receivedSize = 0;
         } else if (msg.kind === 'transfer-complete') {
-          if (this.metadata && this.receivedSize >= this.metadata.size) {
-            const file = new File([new Blob(this.receiveBuffer)], this.metadata.name, { type: this.metadata.type });
-            this.pendingFiles.push(file);
-            
-            const fileIndex = typeof msg.fileIndex === 'number' && msg.fileIndex >= 0 && msg.fileIndex < this.pendingFileDescriptors.length
-              ? msg.fileIndex
-              : this.pendingFileDescriptors.findIndex(f => f.name === this.metadata!.name);
-            if (fileIndex >= 0) {
-              this.events.onFileComplete?.(fileIndex, file);
-              if (this.conn?.open) {
-                this.conn.send(JSON.stringify({ kind: 'file-acknowledged', index: fileIndex }));
-              }
+          // Ignore if already processing or no active transfer
+          if (this.isProcessingTransfer || !this.metadata) return;
+          if (this.receivedSize < this.metadata.size) return;
+          
+          this.isProcessingTransfer = true;
+          
+          const file = new File([new Blob(this.receiveBuffer)], this.metadata.name, { type: this.metadata.type });
+          this.pendingFiles.push(file);
+          
+          const fileIndex = typeof msg.fileIndex === 'number' && msg.fileIndex >= 0 && msg.fileIndex < this.pendingFileDescriptors.length
+            ? msg.fileIndex
+            : this.pendingFileDescriptors.findIndex(f => f.name === this.metadata!.name);
+          if (fileIndex >= 0) {
+            this.events.onFileComplete?.(fileIndex, file);
+            if (this.conn?.open) {
+              this.conn.send(JSON.stringify({ kind: 'file-acknowledged', index: fileIndex }));
             }
-            this.events.onProgress(100);
-            this.events.onTransferComplete?.();
-            
-            this.metadata = null;
-            this.receiveBuffer = [];
-            this.receivedSize = 0;
           }
+          this.events.onProgress(100);
+          this.events.onTransferComplete?.();
+          
+          this.metadata = null;
+          this.receiveBuffer = [];
+          this.receivedSize = 0;
+          this.isProcessingTransfer = false;
         } else if (msg.kind === 'file-descriptors' && msg.files) {
           this.pendingFileDescriptors = msg.files;
           this.events.onFileDescriptorsReceived?.(msg.files);

@@ -44,6 +44,7 @@ export class P2PManager {
   private pendingFileIndices: Set<number> = new Set();
   private acknowledgedFiles: Set<number> = new Set();
   private isProcessingTransfer = false;
+  private pendingTransferQueue: File[] = [];
 
   constructor(events: P2PEvents) {
     this.events = events;
@@ -274,13 +275,21 @@ export class P2PManager {
   startTransferForFile(file: File) {
     if (!this.conn) return;
     
+    // If already transferring, queue this file
+    if (this.pendingTransferQueue.length > 0 || this.isProcessingTransfer) {
+      this.pendingTransferQueue.push(file);
+      return;
+    }
+    
+    this.isProcessingTransfer = true;
+    
     const chunkSize = 1024 * 1024;
     const MAX_BUFFER_SIZE = 4 * 1024 * 1024;
     const PROGRESS_INTERVAL = 50;
     let offset = 0;
     let chunksSinceProgress = 0;
 
-this.conn.send(JSON.stringify({
+    this.conn.send(JSON.stringify({
         kind: 'file-metadata',
         name: file.name,
         size: file.size,
@@ -290,7 +299,7 @@ this.conn.send(JSON.stringify({
 
     (async () => {
       while (offset < file.size) {
-        if (!this.conn) return;
+        if (!this.conn) break;
         const dataChannel = this.conn.dataChannel;
         if (dataChannel && dataChannel.bufferedAmount > MAX_BUFFER_SIZE) {
           await new Promise<void>((resolve) => {
@@ -303,7 +312,7 @@ this.conn.send(JSON.stringify({
           });
         }
 
-        if (!this.conn) return;
+        if (!this.conn) break;
         const slice = file.slice(offset, Math.min(offset + chunkSize, file.size));
         const buffer = await slice.arrayBuffer();
         this.conn.send(new Uint8Array(buffer));
@@ -320,6 +329,16 @@ this.conn.send(JSON.stringify({
       }
       this.events.onProgress(100);
       this.events.onTransferComplete();
+      
+      this.isProcessingTransfer = false;
+      
+      // Process next file in queue
+      if (this.pendingTransferQueue.length > 0) {
+        const nextFile = this.pendingTransferQueue.shift();
+        if (nextFile) {
+          this.startTransferForFile(nextFile);
+        }
+      }
     })();
   }
 

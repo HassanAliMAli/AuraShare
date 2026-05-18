@@ -99,7 +99,7 @@ function App() {
           }
           mgr.sendMeta(pendingFiles.current ?? []);
         },
-        onDisconnected: () => { setStatus(prev => (prev === 'downloading' || prev === 'sharing') ? 'error' : prev); },
+        onDisconnected: () => { setStatus(prev => (prev === 'downloading') ? 'error' : prev); },
         onFilesReceived: async (files) => {
           const fileDescs: FileDescriptor[] = files.map(f => ({ name: f.name, size: f.size, type: f.type }));
           setReceivedFiles(fileDescs);
@@ -137,7 +137,7 @@ function App() {
       const mgr = new P2PManager({
         onProgress: (p) => setTransferProgress(p),
         onConnected: () => {},
-        onDisconnected: () => { setStatus(prev => (prev === 'connecting' || prev === 'downloading') ? 'error' : prev); },
+        onDisconnected: () => { setStatus(prev => (prev === 'connecting') ? 'error' : prev); },
         onFileDescriptorsReceived: (files) => {
           setReceivedFiles(files);
           setStatus('connected');

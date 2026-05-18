@@ -46,7 +46,7 @@ function App() {
   const [downloadedFiles, setDownloadedFiles] = useState<Set<number>>(new Set());
   const [selectedFiles, setSelectedFiles] = useState<Set<number>>(new Set());
   const [downloadTotal, setDownloadTotal] = useState(0);
-  const [downloadCompleted, setDownloadCompleted] = useState(0);
+  const [downloadingFileIndex, setDownloadingFileIndex] = useState<number | null>(null);
   const [acknowledgedFiles, setAcknowledgedFiles] = useState<Set<number>>(new Set());
   const [sentFiles, setSentFiles] = useState<FileDescriptor[]>([]);
   const [receiverReady, setReceiverReady] = useState(false);
@@ -64,28 +64,17 @@ function App() {
     };
   }, []);
 
-  const downloadFile = (index: number) => {
-    downloadTrack.current = { total: 1, completed: new Set(), requested: new Set() };
-    downloadTrack.current.requested.add(index);
-    setDownloadedFiles(new Set());
-    setSelectedFiles(new Set([index]));
-    setDownloadTotal(1);
-    setDownloadCompleted(0);
-    manager.current?.requestFile(index);
-    setStatus('downloading');
-  };
-
   const downloadSelectedFiles = () => {
     if (selectedFiles.size === 0) return;
     downloadTrack.current = { total: selectedFiles.size, completed: new Set(), requested: new Set() };
     setDownloadedFiles(new Set());
     setDownloadTotal(selectedFiles.size);
-    setDownloadCompleted(0);
+    const firstIndex = Array.from(selectedFiles)[0];
+    setDownloadingFileIndex(firstIndex);
     selectedFiles.forEach(i => {
       downloadTrack.current.requested.add(i);
-      manager.current?.requestFile(i);
     });
-    setStatus('downloading');
+    manager.current?.requestFile(firstIndex);
   };
 
   const startSharingFlow = async (files?: FileList, text?: string) => {
@@ -151,28 +140,29 @@ function App() {
         },
         onFileComplete: (index: number, file: File) => {
           setDownloadedFiles(prev => new Set([...prev, index]));
-          setDownloadCompleted(prev => prev + 1);
           
           // Mark as completed and remove from requested
           downloadTrack.current.completed.add(index);
           downloadTrack.current.requested.delete(index);
+          setDownloadingFileIndex(null);
           
           // Auto-trigger next download if pending
           if (downloadTotal > 0 && downloadTrack.current.completed.size < downloadTotal) {
-            const nextPending = Array.from({ length: downloadTotal }, (_, i) => i)
-              .find(i => !downloadTrack.current.completed.has(i) && !downloadTrack.current.requested.has(i));
-            if (nextPending !== undefined) {
-              downloadTrack.current.requested.add(nextPending);
-              setTimeout(() => mgr.requestFile(nextPending), 100);
+            const allIndices = Array.from(selectedFiles);
+            const pending = allIndices.filter(i => !downloadTrack.current.completed.has(i));
+            if (pending.length > 0) {
+              const nextIndex = pending[0];
+              downloadTrack.current.requested.add(nextIndex);
+              setDownloadingFileIndex(nextIndex);
+              setTimeout(() => mgr.requestFile(nextIndex), 100);
             }
           } else if (downloadTotal > 0 && downloadTrack.current.completed.size >= downloadTotal) {
-            // All files in this batch downloaded - go back to connected
+            // All files in this batch downloaded
             setTransferProgress(0);
-            setStatus('connected');
             downloadTrack.current = { total: 0, completed: new Set(), requested: new Set() };
             setSelectedFiles(new Set());
             setDownloadTotal(0);
-            setDownloadCompleted(0);
+            setDownloadingFileIndex(null);
           }
           
           // Auto-save file to device
@@ -224,7 +214,7 @@ function App() {
     setDownloadedFiles(new Set());
     setSelectedFiles(new Set());
     setDownloadTotal(0);
-    setDownloadCompleted(0);
+    setDownloadingFileIndex(null);
     setAcknowledgedFiles(new Set());
     setSentFiles([]);
     setReceiverReady(false);
@@ -436,12 +426,13 @@ function App() {
                   </div>
                   <div className="w-full bg-white/5 border border-white/10 rounded-2xl md:rounded-3xl p-4 md:p-6 max-h-[40vh] overflow-y-auto scrollbar-hide">
                     {receivedFiles.map((file, i) => (
-                      <div key={i} className="flex items-center justify-between py-3 border-b border-white/5 last:border-0">
-                        <div className="flex items-center gap-3 overflow-hidden">
+                      <div key={i} className="py-3 border-b border-white/5 last:border-0">
+                        <div className="flex items-center gap-3 overflow-hidden mb-2">
                           <input
                             type="checkbox"
-                            checked={selectedFiles.has(i) || downloadedFiles.has(i)}
+                            checked={selectedFiles.has(i)}
                             onChange={(e) => {
+                              if (downloadedFiles.has(i)) return;
                               const newSelected = new Set(selectedFiles);
                               if (e.target.checked) {
                                 newSelected.add(i);
@@ -450,75 +441,54 @@ function App() {
                               }
                               setSelectedFiles(newSelected);
                             }}
-                            className="w-5 h-5 rounded border-white/20 bg-white/5 accent-indigo-500 cursor-pointer"
+                            disabled={downloadedFiles.has(i)}
+                            className="w-5 h-5 rounded border-white/20 bg-white/5 accent-indigo-500 cursor-pointer disabled:opacity-50"
                           />
                           <i className={`${getFileIcon(file.name, file.type)} text-indigo-400 text-lg md:text-xl`} />
-                          <div className="overflow-hidden">
+                          <div className="overflow-hidden flex-1">
                             <div className="text-white text-sm font-bold truncate">{file.name}</div>
                             <div className="text-white/30 text-xs">{formatBytes(file.size)}</div>
                           </div>
+                          {downloadedFiles.has(i) ? (
+                            <i className="fa-solid fa-check text-emerald-400 text-lg" />
+                          ) : downloadingFileIndex === i ? (
+                            <motion.div
+                              className="w-5 h-5 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin"
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: 1 }}
+                            />
+                          ) : (
+                            <i className="fa-solid fa-clock text-white/20 text-lg" />
+                          )}
                         </div>
-                        {downloadedFiles.has(i) ? (
-                          <span className="px-4 py-2 text-emerald-400 text-xs font-black uppercase tracking-widest">Saved</span>
-                        ) : (
-                          <button
-                            onClick={() => downloadFile(i)}
-                            className="ml-3 px-4 py-2 bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/30 rounded-xl text-xs font-black uppercase tracking-widest text-indigo-300 transition-all hover:scale-105 active:scale-95 flex-shrink-0"
-                          >
-                            Save
-                          </button>
+                        {downloadingFileIndex === i && (
+                          <div className="w-full h-1 bg-white/5 rounded-full overflow-hidden ml-8">
+                            <motion.div
+                              className="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-orange-500"
+                              initial={{ width: 0 }}
+                              animate={{ width: `${transferProgress}%` }}
+                            />
+                          </div>
                         )}
                       </div>
                     ))}
                   </div>
-                  {selectedFiles.size > 0 && (
-                    <button
-                      onClick={downloadSelectedFiles}
-                      className="mt-4 md:mt-6 w-full py-3 md:py-4 rounded-xl md:rounded-2xl bg-indigo-500 hover:bg-indigo-600 text-white font-black uppercase tracking-widest text-xs md:text-sm transition-all hover:scale-[1.02] active:scale-[0.98]"
-                    >
-                      Download Selected ({selectedFiles.size})
-                    </button>
-                  )}
-                </div>
-              </motion.div>
-            ) : status === 'downloading' ? (
-              <motion.div
-                key="downloading"
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 1.1 }}
-                className="z-40 flex flex-col items-center w-full px-4"
-              >
-                <div className="relative flex flex-col items-center z-50 w-full max-w-md">
-                  <div className="w-full text-center">
-                    <div className="text-indigo-400 font-black text-[10px] md:text-xs tracking-[0.4em] mb-4 md:mb-6 font-bold uppercase">
-                      Downloading... {Math.round(transferProgress)}%
-                    </div>
-                    <div className="w-full h-1.5 md:h-2 bg-white/5 rounded-full overflow-hidden shadow-inner">
-                      <motion.div
-                        className="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-orange-500 shadow-[0_0_20px_rgba(99,102,241,0.5)]"
-                        initial={{ width: 0 }}
-                        animate={{ width: `${transferProgress}%` }}
-                      />
-                    </div>
-                    {downloadTotal > 1 && (
-                      <div className="text-white/40 text-xs mt-4">
-                        {downloadCompleted + 1} of {downloadTotal} files
-                      </div>
+                  <div className="flex gap-3 mt-4 md:mt-6">
+                    {selectedFiles.size > 0 && (
+                      <button
+                        onClick={downloadSelectedFiles}
+                        className="flex-1 py-3 md:py-4 rounded-xl md:rounded-2xl bg-indigo-500 hover:bg-indigo-600 text-white font-black uppercase tracking-widest text-xs md:text-sm transition-all hover:scale-[1.02] active:scale-[0.98]"
+                      >
+                        Download ({selectedFiles.size})
+                      </button>
                     )}
+                    <button
+                      onClick={reset}
+                      className="flex-1 py-3 md:py-4 rounded-xl md:rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 font-black uppercase tracking-widest text-xs md:text-sm transition-all hover:scale-[1.02] active:scale-[0.98]"
+                    >
+                      End Session
+                    </button>
                   </div>
-                  <button
-                    onClick={() => {
-                      setTransferProgress(0);
-                      setStatus('connected');
-                      downloadTrack.current = { total: 0, completed: new Set(), requested: new Set() };
-                      setDownloadTotal(0);
-                      setDownloadCompleted(0);
-                    }}
-                    className="mt-6 text-[10px] text-white/20 hover:text-white/40 font-black uppercase tracking-[0.2em] transition-colors relative z-50"
-                  >
-                    Cancel Transfer
-                  </button>
                 </div>
               </motion.div>
             ) : status === 'success' ? (

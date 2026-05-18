@@ -330,7 +330,7 @@ function App() {
                   <button
                     type="submit"
                     disabled={joinCode.length !== 6}
-                    className="w-full py-4 md:py-5 rounded-xl md:rounded-2xl bg-white text-void font-black uppercase tracking-widest disabled:opacity-20 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl text-xs md:text-sm"
+                    className="w-full py-4 md:py-5 rounded-xl md:rounded-2xl bg-white text-slate-900 font-black uppercase tracking-widest disabled:opacity-20 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl text-xs md:text-sm"
                   >
                     Establish Link
                   </button>
@@ -360,6 +360,12 @@ function App() {
                   ) : (
                     <p className="text-white/20 uppercase tracking-[0.3em] text-[10px] font-black animate-pulse">Waiting for cosmic alignment...</p>
                   )}
+                  <button
+                    onClick={reset}
+                    className="mt-8 text-[10px] text-white/20 hover:text-white/40 font-black uppercase tracking-[0.2em] transition-colors relative z-50"
+                  >
+                    End Session
+                  </button>
                 </div>
               </motion.div>
             ) : status === 'connected' ? (
@@ -432,6 +438,12 @@ function App() {
                       />
                     </div>
                   </div>
+                  <button
+                    onClick={reset}
+                    className="mt-6 text-[10px] text-white/20 hover:text-white/40 font-black uppercase tracking-[0.2em] transition-colors relative z-50"
+                  >
+                    Cancel Transfer
+                  </button>
                 </div>
               </motion.div>
             ) : status === 'success' ? (
@@ -464,7 +476,7 @@ function App() {
                     </div>
                   )}
 
-                  <button onClick={reset} className="px-10 md:px-16 py-4 md:py-5 rounded-xl md:rounded-2xl bg-white text-void font-black uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-2xl text-xs md:text-sm">
+                  <button onClick={reset} className="px-10 md:px-16 py-4 md:py-5 rounded-xl md:rounded-2xl bg-white text-slate-900 font-black uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-2xl text-xs md:text-sm">
                     Begin New Cycle
                   </button>
                 </div>
@@ -485,7 +497,7 @@ function App() {
                   <p className="text-white font-black mb-2 uppercase tracking-[0.2em] text-[10px] md:text-xs">
                     {errorMessage || "Link Failed"}
                   </p>
-                  <button onClick={reset} className="px-10 md:px-14 py-4 md:py-5 rounded-xl md:rounded-2xl bg-white text-void font-black uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-xl mt-8 text-xs">
+                  <button onClick={reset} className="px-10 md:px-14 py-4 md:py-5 rounded-xl md:rounded-2xl bg-white text-slate-900 font-black uppercase tracking-widest hover:scale-105 active:scale-95 transition-all shadow-xl mt-8 text-xs">
                     Try Re-Alignment
                   </button>
                 </div>

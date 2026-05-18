@@ -199,6 +199,7 @@ export class P2PManager {
             if (fileIndex >= 0) {
               this.events.onFileComplete?.(fileIndex, file);
             }
+            this.events.onProgress(100);
             this.events.onTransferComplete?.();
             
             this.metadata = null;
@@ -301,6 +302,7 @@ export class P2PManager {
       }
 
       this.events.onProgress(100);
+      this.events.onTransferComplete();
     })();
   }
 
@@ -373,6 +375,8 @@ export class P2PManager {
 
         if (this.conn) {
           this.conn.send(JSON.stringify({ kind: 'transfer-complete', fileIndex: this.pendingFileDescriptors.findIndex(f => f.name === file.name) }));
+          this.events.onProgress(100);
+          this.events.onTransferComplete();
         }
         resolve();
       };

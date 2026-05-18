@@ -16,6 +16,7 @@ type P2PEvents = {
   onFilesReceived: (files: File[]) => void;
   onTransferComplete: () => void;
   onFileComplete?: (index: number, file: File) => void;
+  onFileAcknowledged?: (index: number) => void;
   onError: (err: string) => void;
 };
 
@@ -41,6 +42,7 @@ export class P2PManager {
   private pendingFileList: FileList | null = null;
   private pendingFileDescriptors: FileDescriptor[] = [];
   private pendingFileIndices: Set<number> = new Set();
+  private acknowledgedFiles: Set<number> = new Set();
 
   constructor(events: P2PEvents) {
     this.events = events;
@@ -198,6 +200,9 @@ export class P2PManager {
               : this.pendingFileDescriptors.findIndex(f => f.name === this.metadata!.name);
             if (fileIndex >= 0) {
               this.events.onFileComplete?.(fileIndex, file);
+              if (this.conn?.open) {
+                this.conn.send(JSON.stringify({ kind: 'file-acknowledged', index: fileIndex }));
+              }
             }
             this.events.onProgress(100);
             this.events.onTransferComplete?.();
@@ -211,6 +216,8 @@ export class P2PManager {
           this.events.onFileDescriptorsReceived?.(msg.files);
         } else if (msg.kind === 'file-request' && typeof msg.index === 'number') {
           this.handleFileRequest(msg.index);
+        } else if (msg.kind === 'file-acknowledged' && typeof msg.index === 'number') {
+          this.events.onFileAcknowledged?.(msg.index);
         }
       } catch { /* ignore parse errors */ }
     } else {
@@ -394,5 +401,9 @@ this.conn.send(JSON.stringify({
     this.clearConnectionSentinel();
     this.conn?.close();
     this.peer?.destroy();
+  }
+
+  getAcknowledgedFiles(): Set<number> {
+    return this.acknowledgedFiles;
   }
 }

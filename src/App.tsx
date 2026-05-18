@@ -44,6 +44,8 @@ function App() {
   const [roomId, setRoomId] = useState<string | null>(null);
   const [receivedFiles, setReceivedFiles] = useState<FileDescriptor[]>([]);
   const [downloadedFiles, setDownloadedFiles] = useState<Set<number>>(new Set());
+  const [acknowledgedFiles, setAcknowledgedFiles] = useState<Set<number>>(new Set());
+  const [sentFiles, setSentFiles] = useState<FileDescriptor[]>([]);
   const [receiverReady, setReceiverReady] = useState(false);
 
   const manager = useRef<P2PManager | null>(null);
@@ -91,6 +93,10 @@ function App() {
         onConnected: () => {},
         onReceiverConnected: () => {
           setReceiverReady(true);
+          if (pendingFiles.current) {
+            const fileArray = Array.from(pendingFiles.current);
+            setSentFiles(fileArray.map(f => ({ name: f.name, size: f.size, type: f.type })));
+          }
           mgr.sendMeta(pendingFiles.current ?? []);
         },
         onDisconnected: () => { setStatus(prev => (prev === 'downloading' || prev === 'sharing') ? 'error' : prev); },
@@ -98,6 +104,9 @@ function App() {
           const fileDescs: FileDescriptor[] = files.map(f => ({ name: f.name, size: f.size, type: f.type }));
           setReceivedFiles(fileDescs);
           setStatus('success');
+        },
+        onFileAcknowledged: (index: number) => {
+          setAcknowledgedFiles(prev => new Set([...prev, index]));
         },
         onTransferComplete: () => {},
         onError: (err) => {
@@ -201,6 +210,8 @@ function App() {
     setRoomId(null);
     setReceivedFiles([]);
     setDownloadedFiles(new Set());
+    setAcknowledgedFiles(new Set());
+    setSentFiles([]);
     setReceiverReady(false);
     downloadTrack.current = { total: 0, completed: new Set(), requested: new Set() };
     pendingFiles.current = null;
@@ -359,6 +370,26 @@ function App() {
                     <p className="text-emerald-400 uppercase tracking-[0.3em] text-[10px] font-black animate-pulse">Receiver Connected</p>
                   ) : (
                     <p className="text-white/20 uppercase tracking-[0.3em] text-[10px] font-black animate-pulse">Waiting for cosmic alignment...</p>
+                  )}
+                  {sentFiles.length > 0 && (
+                    <div className="mt-6 w-full max-w-sm mx-auto">
+                      <div className="text-white/30 text-[10px] font-black uppercase tracking-widest mb-3">Files Sent</div>
+                      <div className="space-y-2">
+                        {sentFiles.map((file, i) => (
+                          <div key={i} className="flex items-center justify-between bg-white/5 rounded-xl px-4 py-3">
+                            <div className="flex items-center gap-3 overflow-hidden">
+                              <i className={`${getFileIcon(file.name, file.type)} text-lg`} />
+                              <span className="text-white text-sm font-bold truncate">{file.name}</span>
+                            </div>
+                            {acknowledgedFiles.has(i) ? (
+                              <i className="fa-solid fa-check text-emerald-400" />
+                            ) : (
+                              <i className="fa-solid fa-clock text-white/20" />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   )}
                   <button
                     onClick={reset}

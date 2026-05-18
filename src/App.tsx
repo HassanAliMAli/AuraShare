@@ -66,15 +66,12 @@ function App() {
 
   const downloadSelectedFiles = () => {
     if (selectedFiles.size === 0) return;
-    downloadTrack.current = { total: selectedFiles.size, completed: new Set(), requested: new Set() };
+    const indices = Array.from(selectedFiles);
+    downloadTrack.current = { total: indices.length, completed: new Set(), requested: new Set(indices) };
     setDownloadedFiles(new Set());
-    setDownloadTotal(selectedFiles.size);
-    const firstIndex = Array.from(selectedFiles)[0];
-    setDownloadingFileIndex(firstIndex);
-    selectedFiles.forEach(i => {
-      downloadTrack.current.requested.add(i);
-    });
-    manager.current?.requestFile(firstIndex);
+    setDownloadTotal(indices.length);
+    setDownloadingFileIndex(indices[0]);
+    manager.current?.requestFile(indices[0]);
   };
 
   const startSharingFlow = async (files?: FileList, text?: string) => {
@@ -140,19 +137,15 @@ function App() {
         },
         onFileComplete: (index: number, file: File) => {
           setDownloadedFiles(prev => new Set([...prev, index]));
-          
-          // Mark as completed and remove from requested
           downloadTrack.current.completed.add(index);
           downloadTrack.current.requested.delete(index);
           setDownloadingFileIndex(null);
           
           // Auto-trigger next download if pending
           if (downloadTotal > 0 && downloadTrack.current.completed.size < downloadTotal) {
-            const allIndices = Array.from(selectedFiles);
-            const pending = allIndices.filter(i => !downloadTrack.current.completed.has(i));
+            const pending = Array.from(downloadTrack.current.requested).filter(i => !downloadTrack.current.completed.has(i));
             if (pending.length > 0) {
               const nextIndex = pending[0];
-              downloadTrack.current.requested.add(nextIndex);
               setDownloadingFileIndex(nextIndex);
               setTimeout(() => mgr.requestFile(nextIndex), 100);
             }
@@ -160,7 +153,6 @@ function App() {
             // All files in this batch downloaded
             setTransferProgress(0);
             downloadTrack.current = { total: 0, completed: new Set(), requested: new Set() };
-            setSelectedFiles(new Set());
             setDownloadTotal(0);
             setDownloadingFileIndex(null);
           }

@@ -41,10 +41,9 @@ export class P2PManager {
   private pendingFiles: File[] = [];
   private pendingFileList: FileList | null = null;
   private pendingFileDescriptors: FileDescriptor[] = [];
-  private pendingFileIndices: Set<number> = new Set();
   private acknowledgedFiles: Set<number> = new Set();
   private isProcessingTransfer = false;
-  private pendingTransferQueue: File[] = [];
+  private pendingFileIndicesQueue: number[] = [];
 
   constructor(events: P2PEvents) {
     this.events = events;
@@ -264,24 +263,85 @@ export class P2PManager {
   handleFileRequest(index: number) {
     if (!this.conn || !this.conn.open) return;
     
-    if (this.pendingFileList && this.pendingFileList[index]) {
-      this.pendingFileIndices.add(index);
-      this.startTransferForFile(this.pendingFileList[index]);
-    } else if (this.pendingFileDescriptors[index]) {
-      this.pendingFileIndices.add(index);
-    }
-  }
-
-  startTransferForFile(file: File) {
-    if (!this.conn) return;
-    
-    // If already transferring, queue this file
-    if (this.pendingTransferQueue.length > 0 || this.isProcessingTransfer) {
-      this.pendingTransferQueue.push(file);
+    if (this.isProcessingTransfer) {
+      // Queue this file request
+      if (!this.pendingFileIndicesQueue.includes(index)) {
+        this.pendingFileIndicesQueue.push(index);
+      }
       return;
     }
     
     this.isProcessingTransfer = true;
+    
+    if (this.pendingFileList && this.pendingFileList[index]) {
+      this.startTransferForFile(this.pendingFileList[index]);
+    } else if (this.pendingFileDescriptors[index]) {
+      this.startTransferForFileByDescriptor(this.pendingFileDescriptors[index]);
+    }
+  }
+
+  startTransferForFileByDescriptor(desc: FileDescriptor) {
+    if (!this.conn || !desc) return;
+    
+    const chunkSize = 64 * 1024;
+    const MAX_BUFFER_SIZE = 256 * 1024;
+    const fileIndex = this.pendingFileDescriptors.indexOf(desc);
+    let offset = 0;
+
+    this.conn.send(JSON.stringify({
+      kind: 'file-metadata',
+      name: desc.name,
+      size: desc.size,
+      type: desc.type,
+      index: fileIndex
+    }));
+
+    const sendChunk = async () => {
+      while (offset < desc.size && this.conn) {
+        const dataChannel = this.conn.dataChannel;
+        if (dataChannel && dataChannel.bufferedAmount > MAX_BUFFER_SIZE) {
+          await new Promise<void>((resolve) => {
+            const checkBuffer = setInterval(() => {
+              if (!this.conn || this.conn.dataChannel!.bufferedAmount < MAX_BUFFER_SIZE / 2) {
+                clearInterval(checkBuffer);
+                resolve();
+              }
+            }, 20);
+          });
+        }
+
+        if (!this.conn) break;
+        const slice = this.pendingFileList ? this.pendingFileList[fileIndex]?.slice(offset, Math.min(offset + chunkSize, desc.size)) : null;
+        if (!slice) break;
+        const buffer = await slice.arrayBuffer();
+        this.conn.send(new Uint8Array(buffer));
+        offset += buffer.byteLength;
+        this.events.onProgress(Math.min((offset / desc.size) * 100, 99));
+
+        await new Promise(res => setTimeout(res, 5));
+      }
+
+      if (this.conn) {
+        this.conn.send(JSON.stringify({ kind: 'transfer-complete', fileIndex }));
+      }
+      this.events.onProgress(100);
+      this.events.onTransferComplete();
+      
+      this.isProcessingTransfer = false;
+      
+      if (this.pendingFileIndicesQueue.length > 0) {
+        const nextIndex = this.pendingFileIndicesQueue.shift();
+        if (nextIndex !== undefined) {
+          setTimeout(() => this.handleFileRequest(nextIndex), 100);
+        }
+      }
+    };
+
+    sendChunk();
+  }
+
+  startTransferForFile(file: File) {
+    if (!this.conn) return;
     
     const chunkSize = 1024 * 1024;
     const MAX_BUFFER_SIZE = 4 * 1024 * 1024;
@@ -332,11 +392,10 @@ export class P2PManager {
       
       this.isProcessingTransfer = false;
       
-      // Process next file in queue
-      if (this.pendingTransferQueue.length > 0) {
-        const nextFile = this.pendingTransferQueue.shift();
-        if (nextFile) {
-          this.startTransferForFile(nextFile);
+      if (this.pendingFileIndicesQueue.length > 0) {
+        const nextIndex = this.pendingFileIndicesQueue.shift();
+        if (nextIndex !== undefined) {
+          setTimeout(() => this.handleFileRequest(nextIndex), 100);
         }
       }
     })();

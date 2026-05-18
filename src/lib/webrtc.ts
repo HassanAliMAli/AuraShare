@@ -267,12 +267,13 @@ export class P2PManager {
     let offset = 0;
     let chunksSinceProgress = 0;
 
-    this.conn.send(JSON.stringify({
-      kind: 'file-metadata',
-      name: file.name,
-      size: file.size,
-      type: file.type
-    }));
+this.conn.send(JSON.stringify({
+        kind: 'file-metadata',
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        index: this.pendingFileDescriptors.findIndex(f => f.name === file.name)
+      }));
 
     (async () => {
       while (offset < file.size) {
@@ -301,6 +302,9 @@ export class P2PManager {
         }
       }
 
+      if (this.conn) {
+        this.conn.send(JSON.stringify({ kind: 'transfer-complete', fileIndex: this.pendingFileDescriptors.findIndex(f => f.name === file.name) }));
+      }
       this.events.onProgress(100);
       this.events.onTransferComplete();
     })();
@@ -347,7 +351,8 @@ export class P2PManager {
         kind: 'file-metadata',
         name: file.name,
         size: file.size,
-        type: file.type
+        type: file.type,
+        index: this.pendingFileDescriptors.findIndex(f => f.name === file.name)
       }));
 
       const sendNextChunk = async () => {

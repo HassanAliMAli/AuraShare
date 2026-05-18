@@ -4,6 +4,7 @@ type FileDescriptor = {
   name: string;
   size: number;
   type: string;
+  index?: number;
 };
 
 type P2PEvents = {
@@ -14,6 +15,7 @@ type P2PEvents = {
   onFileDescriptorsReceived?: (files: FileDescriptor[]) => void;
   onFilesReceived: (files: File[]) => void;
   onTransferComplete: () => void;
+  onFileComplete?: (index: number, file: File) => void;
   onError: (err: string) => void;
 };
 
@@ -37,6 +39,8 @@ export class P2PManager {
 
   private pendingFiles: File[] = [];
   private pendingFileList: FileList | null = null;
+  private pendingFileDescriptors: FileDescriptor[] = [];
+  private pendingFileIndices: Set<number> = new Set();
 
   constructor(events: P2PEvents) {
     this.events = events;
@@ -178,33 +182,46 @@ export class P2PManager {
   private handleData(data: unknown) {
     if (typeof data === 'string') {
       try {
-        const msg = JSON.parse(data) as { kind?: string; files?: FileDescriptor[]; index?: number };
-        if (msg.kind === 'transfer-complete') {
-          this.events.onFilesReceived(this.pendingFiles);
+        const msg = JSON.parse(data) as { kind?: string; files?: FileDescriptor[]; index?: number; name?: string; size?: number; type?: string; fileIndex?: number };
+        if (msg.kind === 'file-metadata') {
+          const senderIndex = typeof msg.index === 'number' ? msg.index : this.pendingFileDescriptors.length;
+          this.metadata = { name: msg.name!, size: msg.size!, type: msg.type!, index: senderIndex };
+          this.receiveBuffer = [];
+          this.receivedSize = 0;
+        } else if (msg.kind === 'transfer-complete') {
+          if (this.metadata && this.receivedSize >= this.metadata.size) {
+            const file = new File([new Blob(this.receiveBuffer)], this.metadata.name, { type: this.metadata.type });
+            this.pendingFiles.push(file);
+            
+            const fileIndex = typeof msg.fileIndex === 'number' && msg.fileIndex >= 0 && msg.fileIndex < this.pendingFileDescriptors.length
+              ? msg.fileIndex
+              : this.pendingFileDescriptors.findIndex(f => f.name === this.metadata!.name);
+            if (fileIndex >= 0) {
+              this.events.onFileComplete?.(fileIndex, file);
+            }
+            this.events.onTransferComplete?.();
+            
+            this.metadata = null;
+            this.receiveBuffer = [];
+            this.receivedSize = 0;
+          }
         } else if (msg.kind === 'file-descriptors' && msg.files) {
+          this.pendingFileDescriptors = msg.files;
           this.events.onFileDescriptorsReceived?.(msg.files);
         } else if (msg.kind === 'file-request' && typeof msg.index === 'number') {
-          const fileIndex = msg.index;
-          if (this.pendingFileList && this.pendingFileList[fileIndex]) {
-            this.startTransferForFile(this.pendingFileList[fileIndex]);
-          }
+          this.handleFileRequest(msg.index);
         }
       } catch { /* ignore parse errors */ }
     } else {
       if (!this.metadata) return;
-      const buffer = data instanceof Uint8Array 
-        ? data.buffer 
-        : (data as Uint8Array).buffer;
-      this.receiveBuffer.push(buffer as ArrayBuffer);
-      this.receivedSize += buffer.byteLength;
+      const uint8 = data instanceof Uint8Array ? data : new Uint8Array(data as ArrayBuffer);
+      const byteLength = uint8.byteLength;
+      const buffer = new ArrayBuffer(byteLength);
+      new Uint8Array(buffer).set(uint8);
+      this.receiveBuffer.push(buffer);
+      this.receivedSize += byteLength;
 
-      this.events.onProgress((this.receivedSize / this.metadata.size) * 100);
-      if (this.receivedSize >= this.metadata.size) {
-        const file = new File([new Blob(this.receiveBuffer)], this.metadata.name, { type: this.metadata.type });
-        this.pendingFiles.push(file);
-        this.metadata = null;
-        this.receiveBuffer = [];
-      }
+      this.events.onProgress(Math.min((this.receivedSize / this.metadata.size) * 100, 99));
     }
   }
 
@@ -218,13 +235,26 @@ export class P2PManager {
     this.pendingFileList = files instanceof FileList ? files : null;
     if (!this.conn || !this.conn.open || fileArray.length === 0) return;
 
-    const descriptors: FileDescriptor[] = fileArray.map((file) => ({
+    const descriptors: FileDescriptor[] = fileArray.map((file, idx) => ({
       name: file.name,
       size: file.size,
       type: file.type,
+      index: idx,
     }));
 
+    this.pendingFileDescriptors = descriptors;
     this.conn.send(JSON.stringify({ kind: 'file-descriptors', files: descriptors }));
+  }
+
+  handleFileRequest(index: number) {
+    if (!this.conn || !this.conn.open) return;
+    
+    if (this.pendingFileList && this.pendingFileList[index]) {
+      this.pendingFileIndices.add(index);
+      this.startTransferForFile(this.pendingFileList[index]);
+    } else if (this.pendingFileDescriptors[index]) {
+      this.pendingFileIndices.add(index);
+    }
   }
 
   startTransferForFile(file: File) {
@@ -270,11 +300,7 @@ export class P2PManager {
         }
       }
 
-      if (this.conn) {
-        this.conn.send(JSON.stringify({ kind: 'transfer-complete' }));
-      }
       this.events.onProgress(100);
-      this.events.onTransferComplete();
     })();
   }
 
@@ -284,10 +310,75 @@ export class P2PManager {
     if (!this.conn || !this.conn.open || fileArray.length === 0) return;
 
     (async () => {
-      for (const file of fileArray) {
-        this.startTransferForFile(file);
+      for (let i = 0; i < fileArray.length; i++) {
+        const file = fileArray[i];
+        const metadataSent = new Promise<void>((resolve) => {
+          const checkMeta = setInterval(() => {
+            if (this.conn) {
+              clearInterval(checkMeta);
+              resolve();
+            }
+          }, 50);
+        });
+        await metadataSent;
+        await this.startTransferForFileAsync(file);
+        
+        if (i < fileArray.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
       }
     })();
+  }
+
+  private startTransferForFileAsync(file: File): Promise<void> {
+    return new Promise((resolve) => {
+      if (!this.conn) {
+        resolve();
+        return;
+      }
+      
+      const chunkSize = 1024 * 1024;
+      const MAX_BUFFER_SIZE = 4 * 1024 * 1024;
+      let offset = 0;
+
+      this.conn.send(JSON.stringify({
+        kind: 'file-metadata',
+        name: file.name,
+        size: file.size,
+        type: file.type
+      }));
+
+      const sendNextChunk = async () => {
+        while (offset < file.size && this.conn) {
+          const dataChannel = this.conn.dataChannel;
+          if (dataChannel && dataChannel.bufferedAmount > MAX_BUFFER_SIZE) {
+            await new Promise<void>((res) => {
+              const checkBuffer = setInterval(() => {
+                if (!this.conn || this.conn.dataChannel!.bufferedAmount < MAX_BUFFER_SIZE / 2) {
+                  clearInterval(checkBuffer);
+                  res();
+                }
+              }, 20);
+            });
+          }
+
+          if (!this.conn) break;
+          const slice = file.slice(offset, Math.min(offset + chunkSize, file.size));
+          const buffer = await slice.arrayBuffer();
+          this.conn.send(new Uint8Array(buffer));
+          offset += buffer.byteLength;
+
+          await new Promise(res => setTimeout(res, 10));
+        }
+
+        if (this.conn) {
+          this.conn.send(JSON.stringify({ kind: 'transfer-complete', fileIndex: this.pendingFileDescriptors.findIndex(f => f.name === file.name) }));
+        }
+        resolve();
+      };
+
+      sendNextChunk();
+    });
   }
 
   close() {

@@ -50,6 +50,7 @@ function App() {
   const pendingFiles = useRef<FileList | null>(null);
   const pendingText = useRef<string | null>(null);
   const receivedFileUrl = useRef<string | null>(null);
+  const downloadTrack = useRef<{ total: number; completed: Set<number>; requested: Set<number> }>({ total: 0, completed: new Set(), requested: new Set() });
 
   useEffect(() => {
     return () => {
@@ -59,13 +60,23 @@ function App() {
   }, []);
 
   const downloadFile = (index: number) => {
+    downloadTrack.current = { total: 1, completed: new Set(), requested: new Set() };
+    downloadTrack.current.requested.add(index);
+    setDownloadedFiles(new Set());
     manager.current?.requestFile(index);
     setStatus('downloading');
   };
 
   const downloadAllFiles = () => {
+    downloadTrack.current = { total: receivedFiles.length, completed: new Set(), requested: new Set() };
+    setDownloadedFiles(new Set());
+    receivedFiles.forEach((_, i) => {
+      if (!downloadTrack.current.completed.has(i) && !downloadTrack.current.requested.has(i)) {
+        downloadTrack.current.requested.add(i);
+        manager.current?.requestFile(i);
+      }
+    });
     setStatus('downloading');
-    receivedFiles.forEach((_, i) => manager.current?.requestFile(i));
   };
 
   const startSharingFlow = async (files?: FileList, text?: string) => {
@@ -88,7 +99,7 @@ function App() {
           setReceivedFiles(fileDescs);
           setStatus('success');
         },
-        onTransferComplete: () => setStatus('success'),
+        onTransferComplete: () => {},
         onError: (err) => {
           console.error('Signaling Error:', err);
           setErrorMessage(err);
@@ -122,13 +133,44 @@ function App() {
           setReceivedFiles(files);
           setStatus('connected');
         },
+        onFileComplete: (index: number, file: File) => {
+          setDownloadedFiles(prev => new Set([...prev, index]));
+          
+          // Mark as completed and remove from requested
+          downloadTrack.current.completed.add(index);
+          downloadTrack.current.requested.delete(index);
+          
+          // Auto-trigger next download if pending
+          if (downloadTrack.current.total > 0 && downloadTrack.current.completed.size < downloadTrack.current.total) {
+            const nextPending = Array.from({ length: downloadTrack.current.total }, (_, i) => i)
+              .find(i => !downloadTrack.current.completed.has(i) && !downloadTrack.current.requested.has(i));
+            if (nextPending !== undefined) {
+              downloadTrack.current.requested.add(nextPending);
+              setTimeout(() => mgr.requestFile(nextPending), 100);
+            }
+          }
+          
+          // Auto-save file to device
+          const url = URL.createObjectURL(file);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = file.name;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        },
         onFilesReceived: async (files) => {
           const fileDescs: FileDescriptor[] = files.map(f => ({ name: f.name, size: f.size, type: f.type }));
           setReceivedFiles(fileDescs);
           setStatus('success');
         },
         onTransferComplete: () => {
-          setStatus('success');
+          const total = downloadTrack.current.total;
+          const completed = downloadTrack.current.completed.size;
+          if (total > 0 && completed >= total) {
+            setStatus('success');
+          }
         },
         onError: (err) => {
           setErrorMessage(err);
@@ -160,6 +202,7 @@ function App() {
     setReceivedFiles([]);
     setDownloadedFiles(new Set());
     setReceiverReady(false);
+    downloadTrack.current = { total: 0, completed: new Set(), requested: new Set() };
     pendingFiles.current = null;
     pendingText.current = null;
   };
@@ -230,14 +273,17 @@ function App() {
                       shareMode === mode ? 'text-void' : 'text-white/30 hover:text-white/60'
                     )}
                 >
-                  {shareMode === mode && (
-                    <motion.div
-                      layoutId="activeTab"
-                      className="absolute inset-0 bg-white rounded-xl md:rounded-2xl z-0"
-                      transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
-                    />
-                  )}
-                  <span className="relative z-10">{mode}</span>
+{shareMode === mode && (
+                      <motion.div
+                        layoutId="activeTab"
+                        className="absolute inset-0 bg-white rounded-xl md:rounded-2xl z-0"
+                        transition={{ type: "spring", bounce: 0.2, duration: 0.6 }}
+                      />
+                    )}
+                    <span className={cn(
+                      "relative z-10 transition-colors duration-300",
+                      shareMode === mode ? 'text-slate-900' : ''
+                    )}>{mode}</span>
                 </button>
               ))}
             </motion.div>

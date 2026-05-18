@@ -44,6 +44,9 @@ function App() {
   const [roomId, setRoomId] = useState<string | null>(null);
   const [receivedFiles, setReceivedFiles] = useState<FileDescriptor[]>([]);
   const [downloadedFiles, setDownloadedFiles] = useState<Set<number>>(new Set());
+  const [selectedFiles, setSelectedFiles] = useState<Set<number>>(new Set());
+  const [downloadTotal, setDownloadTotal] = useState(0);
+  const [downloadCompleted, setDownloadCompleted] = useState(0);
   const [acknowledgedFiles, setAcknowledgedFiles] = useState<Set<number>>(new Set());
   const [sentFiles, setSentFiles] = useState<FileDescriptor[]>([]);
   const [receiverReady, setReceiverReady] = useState(false);
@@ -65,18 +68,22 @@ function App() {
     downloadTrack.current = { total: 1, completed: new Set(), requested: new Set() };
     downloadTrack.current.requested.add(index);
     setDownloadedFiles(new Set());
+    setSelectedFiles(new Set([index]));
+    setDownloadTotal(1);
+    setDownloadCompleted(0);
     manager.current?.requestFile(index);
     setStatus('downloading');
   };
 
-  const downloadAllFiles = () => {
-    downloadTrack.current = { total: receivedFiles.length, completed: new Set(), requested: new Set() };
+  const downloadSelectedFiles = () => {
+    if (selectedFiles.size === 0) return;
+    downloadTrack.current = { total: selectedFiles.size, completed: new Set(), requested: new Set() };
     setDownloadedFiles(new Set());
-    receivedFiles.forEach((_, i) => {
-      if (!downloadTrack.current.completed.has(i) && !downloadTrack.current.requested.has(i)) {
-        downloadTrack.current.requested.add(i);
-        manager.current?.requestFile(i);
-      }
+    setDownloadTotal(selectedFiles.size);
+    setDownloadCompleted(0);
+    selectedFiles.forEach(i => {
+      downloadTrack.current.requested.add(i);
+      manager.current?.requestFile(i);
     });
     setStatus('downloading');
   };
@@ -144,19 +151,28 @@ function App() {
         },
         onFileComplete: (index: number, file: File) => {
           setDownloadedFiles(prev => new Set([...prev, index]));
+          setDownloadCompleted(prev => prev + 1);
           
           // Mark as completed and remove from requested
           downloadTrack.current.completed.add(index);
           downloadTrack.current.requested.delete(index);
           
           // Auto-trigger next download if pending
-          if (downloadTrack.current.total > 0 && downloadTrack.current.completed.size < downloadTrack.current.total) {
-            const nextPending = Array.from({ length: downloadTrack.current.total }, (_, i) => i)
+          if (downloadTotal > 0 && downloadTrack.current.completed.size < downloadTotal) {
+            const nextPending = Array.from({ length: downloadTotal }, (_, i) => i)
               .find(i => !downloadTrack.current.completed.has(i) && !downloadTrack.current.requested.has(i));
             if (nextPending !== undefined) {
               downloadTrack.current.requested.add(nextPending);
               setTimeout(() => mgr.requestFile(nextPending), 100);
             }
+          } else if (downloadTotal > 0 && downloadTrack.current.completed.size >= downloadTotal) {
+            // All files in this batch downloaded - go back to connected
+            setTransferProgress(0);
+            setStatus('connected');
+            downloadTrack.current = { total: 0, completed: new Set(), requested: new Set() };
+            setSelectedFiles(new Set());
+            setDownloadTotal(0);
+            setDownloadCompleted(0);
           }
           
           // Auto-save file to device
@@ -206,6 +222,9 @@ function App() {
     setRoomId(null);
     setReceivedFiles([]);
     setDownloadedFiles(new Set());
+    setSelectedFiles(new Set());
+    setDownloadTotal(0);
+    setDownloadCompleted(0);
     setAcknowledgedFiles(new Set());
     setSentFiles([]);
     setReceiverReady(false);
@@ -419,27 +438,45 @@ function App() {
                     {receivedFiles.map((file, i) => (
                       <div key={i} className="flex items-center justify-between py-3 border-b border-white/5 last:border-0">
                         <div className="flex items-center gap-3 overflow-hidden">
+                          <input
+                            type="checkbox"
+                            checked={selectedFiles.has(i) || downloadedFiles.has(i)}
+                            onChange={(e) => {
+                              const newSelected = new Set(selectedFiles);
+                              if (e.target.checked) {
+                                newSelected.add(i);
+                              } else {
+                                newSelected.delete(i);
+                              }
+                              setSelectedFiles(newSelected);
+                            }}
+                            className="w-5 h-5 rounded border-white/20 bg-white/5 accent-indigo-500 cursor-pointer"
+                          />
                           <i className={`${getFileIcon(file.name, file.type)} text-indigo-400 text-lg md:text-xl`} />
                           <div className="overflow-hidden">
                             <div className="text-white text-sm font-bold truncate">{file.name}</div>
                             <div className="text-white/30 text-xs">{formatBytes(file.size)}</div>
                           </div>
                         </div>
-                        <button
-                          onClick={() => downloadFile(i)}
-                          className="ml-3 px-4 py-2 bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/30 rounded-xl text-xs font-black uppercase tracking-widest text-indigo-300 transition-all hover:scale-105 active:scale-95 flex-shrink-0"
-                        >
-                          {downloadedFiles.has(i) ? 'Saved' : 'Save'}
-                        </button>
+                        {downloadedFiles.has(i) ? (
+                          <span className="px-4 py-2 text-emerald-400 text-xs font-black uppercase tracking-widest">Saved</span>
+                        ) : (
+                          <button
+                            onClick={() => downloadFile(i)}
+                            className="ml-3 px-4 py-2 bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-500/30 rounded-xl text-xs font-black uppercase tracking-widest text-indigo-300 transition-all hover:scale-105 active:scale-95 flex-shrink-0"
+                          >
+                            Save
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>
-                  {receivedFiles.length > 1 && (
+                  {selectedFiles.size > 0 && (
                     <button
-                      onClick={() => downloadAllFiles()}
-                      className="mt-4 md:mt-6 w-full py-3 md:py-4 rounded-xl md:rounded-2xl bg-white/10 hover:bg-white/20 border border-white/10 text-white font-black uppercase tracking-widest text-xs md:text-sm transition-all hover:scale-[1.02] active:scale-[0.98]"
+                      onClick={downloadSelectedFiles}
+                      className="mt-4 md:mt-6 w-full py-3 md:py-4 rounded-xl md:rounded-2xl bg-indigo-500 hover:bg-indigo-600 text-white font-black uppercase tracking-widest text-xs md:text-sm transition-all hover:scale-[1.02] active:scale-[0.98]"
                     >
-                      Download All
+                      Download Selected ({selectedFiles.size})
                     </button>
                   )}
                 </div>
@@ -464,9 +501,20 @@ function App() {
                         animate={{ width: `${transferProgress}%` }}
                       />
                     </div>
+                    {downloadTotal > 1 && (
+                      <div className="text-white/40 text-xs mt-4">
+                        {downloadCompleted + 1} of {downloadTotal} files
+                      </div>
+                    )}
                   </div>
                   <button
-                    onClick={reset}
+                    onClick={() => {
+                      setTransferProgress(0);
+                      setStatus('connected');
+                      downloadTrack.current = { total: 0, completed: new Set(), requested: new Set() };
+                      setDownloadTotal(0);
+                      setDownloadCompleted(0);
+                    }}
                     className="mt-6 text-[10px] text-white/20 hover:text-white/40 font-black uppercase tracking-[0.2em] transition-colors relative z-50"
                   >
                     Cancel Transfer

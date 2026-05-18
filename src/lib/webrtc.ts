@@ -153,7 +153,10 @@ export class P2PManager {
           this.events.onDisconnected();
         });
 
-        this.setupConnection();
+        // Set up data handler only (other handlers already registered above)
+        this.conn.on('data', (data: unknown) => {
+          this.handleData(data);
+        });
       });
 
       this.peer!.on('error', (err) => {
@@ -164,19 +167,12 @@ export class P2PManager {
   }
 
   private setupConnection() {
+    // Handlers are now registered in initialize() and join() to avoid duplication
     if (!this.conn) return;
-
-    this.conn.on('open', () => {
-      this.clearConnectionSentinel();
-      this.events.onConnected();
-    });
 
     this.conn.on('data', (data: unknown) => {
       this.handleData(data);
     });
-
-    this.conn.on('close', () => this.events.onDisconnected());
-    this.conn.on('error', () => this.events.onError('Alignment Lost'));
   }
 
   private handleData(data: unknown) {

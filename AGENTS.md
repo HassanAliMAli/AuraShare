@@ -28,8 +28,8 @@ Never upgrade a pinned dependency without explicit user approval and a migration
 | Language | TypeScript | 5.x | Strict mode always on |
 | Build | Vite | 8.x | No CRA, no Next.js unless explicitly migrated |
 | Styling | Tailwind CSS | 4.0 | Via `@tailwindcss/vite` plugin — use `@theme` not config.js |
-| Animation | Framer Motion | 12.x | For orchestrated motion; use CSS for simple transitions |
-| P2P | PeerJS | latest | Core feature — never mock in production |
+| Animation | Motion | 12.x | For orchestrated motion; use CSS for simple transitions |
+| P2P | PeerJS | 1.x | Core feature — never mock in production |
 | Utilities | clsx + tailwind-merge | latest | Always use `cn()` for conditional classes |
 | Linting | ESLint + TypeScript ESLint | project config | Must pass on every commit |
 
@@ -445,7 +445,7 @@ type Result<T, E = Error> =
   | { success: false; error: E };
 
 // ✅ Error boundaries for component trees
-// Use react-error-boundary — wrap all major feature sections
+// Use react-error-boundary (future recommendation — not yet in approved stack) — wrap all major feature sections
 
 // ❌ Never silent failures
 try { doSomething(); } catch (e) {} // swallowing errors
@@ -455,8 +455,8 @@ try { doSomething(); } catch (e) {} // swallowing errors
 ### 6.3 Performance Patterns
 
 ```tsx
-// ✅ Virtualize long lists (files list)
-import { useVirtualizer } from "@tanstack/react-virtual"; // only if list > 100 items
+// ✅ Virtualize long lists (files list) — future recommendation if needed
+// import { useVirtualizer } from "@tanstack/react-virtual"; // only if list > 100 items
 
 // ✅ Memoize expensive computations
 const sortedFiles = useMemo(

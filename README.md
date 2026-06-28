@@ -1,73 +1,70 @@
-# React + TypeScript + Vite
+# AuraShare
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Peer-to-peer file sharing with an ambient, organic UI. No servers, no limits, end-to-end encrypted. Files flow directly between devices via WebRTC — the cloud only relays the initial handshake.
 
-Currently, two official plugins are available:
+## Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+| Layer | Technology |
+|---|---|
+| Framework | React 19 |
+| Language | TypeScript 5 (strict mode) |
+| Build | Vite 8 |
+| Styling | Tailwind CSS 4 (`@theme` tokens) |
+| Animation | Motion 12 (Framer Motion) |
+| P2P | Raw WebRTC (DataChannels) |
+| Signaling | Cloudflare Durable Objects (Hibernatable WebSockets) |
+| Icons | lucide-react |
+| Fonts | @fontsource (self-hosted, no CDN) |
+| Tests | Vitest + React Testing Library |
 
-## React Compiler
+## Architecture
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```
+Browser A (Sender)                         Browser B (Receiver)
+     │                                          │
+     │  POST /api/room → mint 6-char code        │
+     │  WS  /api/room/:id/ws                    │
+     │──────────────► RoomDO ◄──────────────────│
+     │   SDP offer/answer + trickle ICE relay    │
+     │                                          │
+     │◄═══════════ WebRTC DataChannel ══════════►│
+     │         (direct P2P, E2E encrypted)       │
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+One Durable Object per room code acts as a dumb WebSocket relay for SDP/ICE exchange. File data never touches the server — it flows directly between peers via a WebRTC DataChannel, encrypted with DTLS.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## Development
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+# Terminal 1: Cloudflare Worker (Durable Objects + static assets)
+npm run dev:worker
+
+# Terminal 2: Vite dev server (HMR — proxies /api to the worker)
+npm run dev
 ```
+
+## Commands
+
+```bash
+npm run dev              # Vite dev server
+npm run dev:worker       # Wrangler local dev (DO + assets)
+npm run build            # TypeScript check + Vite production build
+npm run deploy           # Build + wrangler deploy to Cloudflare
+npm run lint             # ESLint
+npm run typecheck        # tsc --build (no emit)
+npm run test             # Vitest unit tests
+npm run test:coverage    # Vitest with coverage report
+npm run preview          # Preview production build locally
+```
+
+## Deploy
+
+See [DEPLOYMENT.md](./DEPLOYMENT.md) for the full Cloudflare deployment guide including TURN configuration.
+
+```bash
+npm run deploy
+```
+
+## Project Rules
+
+All contributors (human or AI) must follow the rules in [AGENTS.md](./AGENTS.md) — the project's ground-truth contract covering stack, architecture, design system, motion, security, and quality standards.

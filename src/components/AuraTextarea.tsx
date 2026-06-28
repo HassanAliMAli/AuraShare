@@ -1,13 +1,16 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
+import { usePrefersReducedMotion } from '../hooks';
+import { shareInputVariants } from '../lib/motion';
 
 interface AuraTextareaProps {
   onTextShare: (text: string) => void;
   className?: string;
 }
 
-export const AuraTextarea: React.FC<AuraTextareaProps> = ({ onTextShare, className }) => {
+export function AuraTextarea({ onTextShare, className }: AuraTextareaProps) {
   const [text, setText] = useState('');
+  const prefersReduced = usePrefersReducedMotion();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -19,7 +22,7 @@ export const AuraTextarea: React.FC<AuraTextareaProps> = ({ onTextShare, classNa
   return (
     <div className={`relative w-full h-full flex flex-col items-center justify-center p-8 ${className}`}>
       {/* Liquid Aura Background for Text Mode */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden opacity-40">
+      <div className="absolute inset-0 pointer-events-none overflow-hidden opacity-40" aria-hidden="true">
         <svg className="w-full h-full">
           <defs>
             <filter id="text-aura-goo">
@@ -32,11 +35,12 @@ export const AuraTextarea: React.FC<AuraTextareaProps> = ({ onTextShare, classNa
             <motion.circle
               cx="50%"
               cy="50%"
-              animate={{
-                r: [100, 130, 100],
-                fill: ["#6366f1", "#d946ef", "#6366f1"],
-              }}
-              transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+              animate={
+                prefersReduced
+                  ? { r: 100 }
+                  : { r: [100, 130, 100], fill: ['#6c7cf8', '#22d3a8', '#6c7cf8'] }
+              }
+              transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
             />
           </g>
         </svg>
@@ -44,27 +48,30 @@ export const AuraTextarea: React.FC<AuraTextareaProps> = ({ onTextShare, classNa
 
       {/* Textarea Container */}
       <motion.div
-        initial={{ opacity: 0, scale: 0.9 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="z-10 w-full bg-white/5 backdrop-blur-xl border border-white/10 rounded-[40px] p-6 shadow-2xl flex flex-col gap-4"
+        variants={shareInputVariants}
+        initial="hidden"
+        animate="visible"
+        className="z-10 w-full bg-bright/5 backdrop-blur-xl border border-bright/10 rounded-[40px] p-6 shadow-2xl flex flex-col gap-4"
       >
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder="Paste or type something to share..."
-          className="w-full h-64 bg-transparent border-none text-white placeholder-white/20 resize-none focus:outline-none text-lg leading-relaxed font-light scrollbar-hide"
+          aria-label="Text to share"
+          className="w-full h-64 bg-transparent border-none text-text-primary placeholder-text-ghost resize-none focus:outline-none focus-visible:ring-2 focus-visible:ring-signal rounded-2xl text-lg leading-relaxed font-light scrollbar-hide"
         />
-        
+
         <div className="flex justify-between items-center px-2">
-          <div className="text-[10px] uppercase tracking-widest text-white/20 font-bold">
+          <div className="text-[10px] uppercase tracking-widest text-text-ghost font-bold">
             {text.length} characters
           </div>
           <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
+            type="submit"
+            whileHover={prefersReduced ? undefined : { scale: 1.02 }}
+            whileTap={prefersReduced ? undefined : { scale: 0.98 }}
             onClick={handleSubmit}
             disabled={!text.trim()}
-            className="px-8 py-3 rounded-2xl bg-white text-[#0c0c0e] font-bold text-sm uppercase tracking-widest disabled:opacity-20 transition-opacity"
+            className="px-8 py-3 rounded-2xl bg-bright text-void font-bold text-sm uppercase tracking-widest disabled:opacity-20 transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal"
           >
             Share Aura
           </motion.button>
@@ -72,4 +79,4 @@ export const AuraTextarea: React.FC<AuraTextareaProps> = ({ onTextShare, classNa
       </motion.div>
     </div>
   );
-};
+}

@@ -19,6 +19,7 @@
   --color-transfer: #22d3a8;
   --color-warn: #f59e0b;
   --color-error: #ef4444;
+  --color-bright: #ffffff;
 
   /* Spacing */
   --space-1: 0.25rem;
@@ -43,9 +44,9 @@
   --radius-full: 9999px;
 
   /* Typography */
-  --font-display: 'Space Grotesk', 'Inter', sans-serif;
-  --font-body: 'Inter', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+  --font-display: 'Space Grotesk', 'Inter Variable', sans-serif;
+  --font-body: 'Inter Variable', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
 
   /* Animation timing */
   --ease-organic: cubic-bezier(0.16, 1, 0.3, 1);
@@ -56,6 +57,10 @@
   --duration-normal: 300ms;
   --duration-slow: 500ms;
   --duration-blob: 8000ms;
+
+  /* Glow shadows (map to shadow-glow-* utilities) */
+  --shadow-glow-signal: 0 0 20px oklch(from var(--color-signal) l c h / 0.3);
+  --shadow-glow-transfer: 0 0 80px oklch(from var(--color-transfer) l c h / 0.15);
 }
 
 :root {
@@ -90,9 +95,24 @@ body {
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
+  /* Brand transfer gradient (signal → transfer), used by progress bars. */
+  .bg-gradient-transfer {
+    background-image: linear-gradient(90deg, var(--color-signal), var(--color-transfer));
+  }
 }
 
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

@@ -13,12 +13,25 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    target: 'es2022',
+    minify: 'esbuild',
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/react') || id.includes('node_modules/react-dom')) return 'react-vendor';
+          if (id.includes('node_modules/framer-motion')) return 'motion';
+        },
+      },
+    },
+  },
   server: {
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:8787',
         changeOrigin: true,
-      }
-    }
-  }
+        ws: true,
+      },
+    },
+  },
 })

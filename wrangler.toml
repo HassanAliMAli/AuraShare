@@ -1,0 +1,30 @@
+name = "aurashare"
+main = "worker/index.ts"
+compatibility_date = "2024-11-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Static assets: Vite build output served directly by the Worker platform.
+# SPA fallback handles deep-link routing (no _redirects needed).
+[assets]
+directory = "./dist"
+not_found_handling = "single-page-application"
+
+# Durable Object: one RoomDO instance per room code (real-time signaling relay).
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "RoomDO"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RoomDO"]
+
+# TURN credentials are injected via `wrangler secret put` (never committed).
+# If unset, the Worker degrades gracefully to STUN-only (works on most networks,
+# but symmetric-NAT peers will fail to connect).
+#
+#   wrangler secret put TURN_CF_URL
+#   wrangler secret put TURN_CF_USERNAME
+#   wrangler secret put TURN_CF_CREDENTIAL
+#   wrangler secret put TURN_METERED_URL
+#   wrangler secret put TURN_METERED_USERNAME
+#   wrangler secret put TURN_METERED_CREDENTIAL

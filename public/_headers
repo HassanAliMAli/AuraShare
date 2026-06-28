@@ -1,0 +1,17 @@
+# Long-cache fingerprinted assets (immutable — safe to cache for a year)
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# HTML and root-level files — revalidate always
+/*.html
+  Cache-Control: public, max-age=0, must-revalidate
+/logo.svg
+  Cache-Control: public, max-age=86400
+
+# Security headers applied to all responses
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+  X-Frame-Options: DENY

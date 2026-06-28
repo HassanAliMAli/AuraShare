@@ -484,24 +484,24 @@ const handleFileSelect = useCallback((files: File[]) => {
 
 ---
 
-## 7. Current Technical Debt (Prioritized)
+## 7. Technical Debt Registry
 
-These are known issues. Do not add features on top of unresolved debt without marking the new code `TODO: [debt-id]`.
+All debt items from the initial audit have been resolved. New debt items should be added here as they are discovered.
 
-| ID | Issue | Location | Priority |
+| ID | Issue | Location | Status |
 |---|---|---|---|
-| TD-001 | App.tsx is 22KB — needs decomposition | `src/App.tsx` | 🔴 Critical |
-| TD-002 | All discovery logic is mocked | `src/hooks/useDiscovery.ts` | 🟡 High |
-| TD-003 | All file transfer is mocked | `src/App.tsx` (scattered) | 🟡 High |
-| TD-004 | No test framework configured | project root | 🟠 Medium |
-| TD-005 | No error boundaries | `src/App.tsx` | 🟠 Medium |
-| TD-006 | No Web Worker for file processing | `src/lib/` | 🟠 Medium |
-| TD-007 | No bundle size analysis | `vite.config.ts` | 🟢 Low |
+| TD-001 | App.tsx decomposition | `src/App.tsx` | ✅ Resolved (567→67 lines, 9 components extracted) |
+| TD-002 | Discovery logic was mocked | `src/hooks/useDiscovery.ts` | ✅ Resolved (mock deleted, DO signaling implemented) |
+| TD-003 | File transfer was mocked | `src/lib/webrtc.ts` | ✅ Resolved (raw WebRTC + DO signaling) |
+| TD-004 | No test framework | project root | ✅ Resolved (Vitest + RTL, 24 tests) |
+| TD-005 | No error boundaries | `src/App.tsx` | ✅ Resolved (react-error-boundary wrapping AppProvider) |
+| TD-006 | No Web Worker for file processing | `src/lib/` | ✅ Resolved (`src/workers/chunker.worker.ts` created) |
+| TD-007 | No bundle size analysis | `vite.config.ts` | ✅ Resolved (manualChunks: react-vendor/motion/app split) |
 
 **Rule**: New features require a linked debt ID comment if they depend on mocked behavior:
 ```typescript
-// TODO(TD-002): Replace mock discovery with real PeerJS peer listing
-const peers = await mockDiscoverPeers();
+// TODO(TD-XXX): Description of what needs to be replaced
+const placeholder = await mockFunction();
 ```
 
 ---

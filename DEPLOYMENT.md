@@ -24,26 +24,25 @@ Browser A (Sender)                         Browser B (Receiver)
 - `wrangler` CLI: `npm install -D wrangler` (already in devDependencies)
 - Node.js 18+
 
-## 2. Configure TURN (optional but recommended)
+## 2. Configure TURN (recommended)
 
-TURN relay is needed for peers behind symmetric NAT. Without it, most connections work (STUN-only), but some network configurations will fail.
+TURN relay is needed for peers behind symmetric NAT (corporate Wi-Fi, mobile carriers, hotel networks). Without it, ~80-90% of connections work (STUN-only); with it, essentially 100% connect.
 
-### Option A: Cloudflare Calls TURN (recommended — same account)
-```bash
-npx wrangler secret put TURN_CF_URL
-npx wrangler secret put TURN_CF_USERNAME
-npx wrangler secret put TURN_CF_CREDENTIAL
-```
+AuraShare uses **Cloudflare Calls TURN** — a managed relay on Cloudflare's global anycast network. It uses **ephemeral credentials** (24h TTL) that the Worker mints per session via the Cloudflare API, so no static passwords live in your code.
 
-### Option B: Metered TURN (free 50 GB/month)
-```bash
-npx wrangler secret put TURN_METERED_URL
-npx wrangler secret put TURN_METERED_USERNAME
-npx wrangler secret put TURN_METERED_CREDENTIAL
-```
+### Setup (one-time)
 
-### Both (CF primary, Metered fallback)
-Set all six secrets. The Worker assembles the ICE server array in order.
+1. Go to **Cloudflare Dashboard → Calls → Turn Applications → Create**
+2. Copy the **Key ID** and **API Token**
+3. Set them as Worker secrets:
+   ```bash
+   npx wrangler secret put TURN_KEY_ID
+   npx wrangler secret put TURN_KEY_API_TOKEN
+   ```
+
+That's it. The Worker's `/api/ice-servers` endpoint calls the Cloudflare API to generate short-lived credentials and passes them to the browser. If the secrets aren't set, the Worker falls back to STUN-only (Google + Cloudflare STUN).
+
+**Cost:** Free when used with the Cloudflare Calls SFU; otherwise $0.05/GB outbound. Since AuraShare's file data flows P2P directly (TURN is only used for the ~10-20% of sessions that can't go direct), cost stays near zero.
 
 ## 3. Local Development
 

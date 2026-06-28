@@ -18,13 +18,10 @@ class_name = "RoomDO"
 tag = "v1"
 new_sqlite_classes = ["RoomDO"]
 
-# TURN credentials are injected via `wrangler secret put` (never committed).
-# If unset, the Worker degrades gracefully to STUN-only (works on most networks,
-# but symmetric-NAT peers will fail to connect).
+# Cloudflare Calls TURN — ephemeral credential generation.
+# Create a TURN key in the dashboard (Cloudflare → Calls → Turn Applications),
+# then set these two secrets. The Worker mints short-lived (24h) credentials
+# per session via the Cloudflare API. If unset, falls back to STUN-only.
 #
-#   wrangler secret put TURN_CF_URL
-#   wrangler secret put TURN_CF_USERNAME
-#   wrangler secret put TURN_CF_CREDENTIAL
-#   wrangler secret put TURN_METERED_URL
-#   wrangler secret put TURN_METERED_USERNAME
-#   wrangler secret put TURN_METERED_CREDENTIAL
+#   wrangler secret put TURN_KEY_ID
+#   wrangler secret put TURN_KEY_API_TOKEN

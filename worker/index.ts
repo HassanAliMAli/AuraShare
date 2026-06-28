@@ -9,12 +9,9 @@
 
 interface Env {
   ROOMS: DurableObjectNamespace;
-  TURN_CF_URL?: string;
-  TURN_CF_USERNAME?: string;
-  TURN_CF_CREDENTIAL?: string;
-  TURN_METERED_URL?: string;
-  TURN_METERED_USERNAME?: string;
-  TURN_METERED_CREDENTIAL?: string;
+  /** Cloudflare Calls TURN key ID + API token (set via `wrangler secret put`). */
+  TURN_KEY_ID?: string;
+  TURN_KEY_API_TOKEN?: string;
 }
 
 /** ICE server config shape (the client casts this to RTCIceServer[]). */
@@ -24,7 +21,26 @@ type IceServer = {
   credential?: string;
 };
 
+/** Response from the Cloudflare Calls credential-generation API. */
+type CloudflareIceResponse = {
+  iceServers: IceServer[];
+  // Cloudflare returns expiry info; we track it to refresh before TTL ends.
+  expiresOn?: string;
+};
+
 const ROOM_TTL_MS = 30 * 60 * 1000;
+const TURN_CREDENTIAL_TTL_SECONDS = 86400; // 24h — covers the longest expected session.
+const TURN_REFRESH_MARGIN_MS = 60 * 60 * 1000; // Refresh when <1h remains.
+
+/** Module-level cache so we don't call the CF API on every ice-servers request. */
+let cachedIceServers: IceServer[] | null = null;
+let cachedExpiry = 0;
+
+const STUN_ONLY_FALLBACK: IceServer[] = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun.cloudflare.com:3478' },
+];
 
 /** Crockford base32 — excludes I, L, O, U to avoid ambiguity. */
 const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
@@ -38,18 +54,50 @@ function generateRoomCode(): string {
   return code;
 }
 
-function buildIceServers(env: Env): IceServer[] {
-  const ice: IceServer[] = [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-  ];
-  if (env.TURN_CF_URL && env.TURN_CF_USERNAME && env.TURN_CF_CREDENTIAL) {
-    ice.push({ urls: env.TURN_CF_URL, username: env.TURN_CF_USERNAME, credential: env.TURN_CF_CREDENTIAL });
+/**
+ * Returns ICE servers with ephemeral TURN credentials from Cloudflare Calls.
+ * Caches the result until near-expiry; falls back to STUN-only on error or
+ * when TURN secrets aren't configured.
+ */
+async function getIceServers(env: Env): Promise<IceServer[]> {
+  if (!env.TURN_KEY_ID || !env.TURN_KEY_API_TOKEN) {
+    return STUN_ONLY_FALLBACK;
   }
-  if (env.TURN_METERED_URL && env.TURN_METERED_USERNAME && env.TURN_METERED_CREDENTIAL) {
-    ice.push({ urls: env.TURN_METERED_URL, username: env.TURN_METERED_USERNAME, credential: env.TURN_METERED_CREDENTIAL });
+  // Serve from cache if still fresh.
+  if (cachedIceServers && Date.now() < cachedExpiry - TURN_REFRESH_MARGIN_MS) {
+    return cachedIceServers;
   }
-  return ice;
+  try {
+    const res = await fetch(
+      `https://rtc.live.cloudflare.com/v1/turn/keys/${env.TURN_KEY_ID}/credentials/generate-ice-servers`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${env.TURN_KEY_API_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ ttl: TURN_CREDENTIAL_TTL_SECONDS }),
+      },
+    );
+    if (!res.ok) {
+      console.warn('[TURN] CF API returned', res.status, '— falling back to STUN-only');
+      return cachedIceServers ?? STUN_ONLY_FALLBACK;
+    }
+    const data = (await res.json()) as CloudflareIceResponse;
+    if (!data.iceServers || data.iceServers.length === 0) {
+      return STUN_ONLY_FALLBACK;
+    }
+    // Parse expiry if provided; otherwise assume TTL minus a safety margin.
+    const expiryMs = data.expiresOn
+      ? Date.parse(data.expiresOn)
+      : Date.now() + (TURN_CREDENTIAL_TTL_SECONDS * 1000);
+    cachedIceServers = data.iceServers;
+    cachedExpiry = expiryMs;
+    return data.iceServers;
+  } catch (err) {
+    console.error('[TURN] credential generation failed:', err);
+    return cachedIceServers ?? STUN_ONLY_FALLBACK;
+  }
 }
 
 const CORS: Record<string, string> = {
@@ -78,7 +126,7 @@ export default {
     if (request.method === 'OPTIONS') return withCors(new Response(null));
 
     if (path === '/api/ice-servers' && request.method === 'GET') {
-      return withCors(json({ iceServers: buildIceServers(env) }));
+      return withCors(json({ iceServers: await getIceServers(env) }));
     }
 
     if (path === '/api/room' && request.method === 'POST') {

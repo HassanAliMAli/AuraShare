@@ -72,9 +72,9 @@ export function ReceiverFileList() {
                   aria-valuemax={100}
                 >
                   <motion.div
-                    className="h-full bg-gradient-transfer"
-                    initial={{ width: 0 }}
-                    animate={{ width: `${state.transferProgress}%` }}
+                    className="h-full bg-gradient-transfer origin-left"
+                    initial={{ scaleX: 0 }}
+                    animate={{ scaleX: state.transferProgress / 100 }}
                   />
                 </div>
               )}

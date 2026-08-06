@@ -28,6 +28,7 @@ export class TransferSession {
 
   private receiveBuffer: ArrayBuffer[] = [];
   private receivedSize = 0;
+  private receivedChunksSinceProgress = 0;
   private metadata: FileDescriptor | null = null;
   private pendingFileList: File[] | null = null;
   private pendingFileDescriptors: FileDescriptor[] = [];
@@ -109,7 +110,11 @@ export class TransferSession {
     const buffer = data instanceof ArrayBuffer ? data : new Uint8Array(data as ArrayBuffer).buffer;
     this.receiveBuffer.push(buffer);
     this.receivedSize += buffer.byteLength;
-    this.events.onProgress(Math.min((this.receivedSize / this.metadata.size) * 100, 99));
+    this.receivedChunksSinceProgress++;
+    if (this.receivedChunksSinceProgress >= PROGRESS_EVERY || this.receivedSize >= this.metadata.size) {
+      this.events.onProgress(Math.min((this.receivedSize / this.metadata.size) * 100, 99));
+      this.receivedChunksSinceProgress = 0;
+    }
   }
 
   // ─── Sender API ─────────────────────────────────────────────────────────

@@ -1,7 +1,6 @@
 name = "aurashare"
 main = "worker/index.ts"
-compatibility_date = "2024-11-01"
-compatibility_flags = ["nodejs_compat"]
+compatibility_date = "2026-07-28"
 
 # Static assets: Vite build output served directly by the Worker platform.
 # SPA fallback handles deep-link routing (no _redirects needed).

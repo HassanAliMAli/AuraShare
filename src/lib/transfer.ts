@@ -29,7 +29,7 @@ export class TransferSession {
   private receiveBuffer: ArrayBuffer[] = [];
   private receivedSize = 0;
   private metadata: FileDescriptor | null = null;
-  private pendingFileList: FileList | null = null;
+  private pendingFileList: File[] | null = null;
   private pendingFileDescriptors: FileDescriptor[] = [];
   private isProcessingTransfer = false;
   private pendingFileIndicesQueue: number[] = [];
@@ -115,7 +115,7 @@ export class TransferSession {
 
   sendMeta(files: FileList | File[]): void {
     const fileArray = files instanceof FileList ? Array.from(files) : files;
-    this.pendingFileList = files instanceof FileList ? files : null;
+    this.pendingFileList = fileArray;
     if (this.dc.readyState !== 'open' || fileArray.length === 0) return;
     const descriptors: FileDescriptor[] = fileArray.map((file, idx) => ({
       name: file.name,

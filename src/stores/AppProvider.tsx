@@ -13,7 +13,7 @@ import type { AppActions } from './appStore';
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, initialState);
   const managerRef = useRef<P2PManager | null>(null);
-  const pendingFilesRef = useRef<FileList | null>(null);
+  const pendingFilesRef = useRef<File[] | null>(null);
   const pendingTextRef = useRef<string | null>(null);
 
   // Single source of truth for the download queue: when `downloadingFileIndex`
@@ -44,14 +44,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         onConnected: () => {},
         onReceiverConnected: () => {
           dispatch({ type: 'SET_RECEIVER_READY' });
-          if (pendingFilesRef.current) {
-            const arr = Array.from(pendingFilesRef.current);
+          const fileArr = pendingFilesRef.current ?? [];
+          if (fileArr.length > 0) {
             dispatch({
               type: 'SET_SENT_FILES',
-              files: arr.map((f) => ({ name: f.name, size: f.size, type: f.type })),
+              files: fileArr.map((f) => ({ name: f.name, size: f.size, type: f.type })),
             });
           }
-          mgr.sendMeta(pendingFilesRef.current ?? []);
+          mgr.sendMeta(fileArr);
           if (pendingTextRef.current) {
             mgr.sendText(pendingTextRef.current);
           }

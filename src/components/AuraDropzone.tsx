@@ -7,7 +7,7 @@ import { validateFileList } from '../lib/validation';
 import { BLOB_RADIUS_KEYFRAMES, pulseRingVariants, floatVariants, EASE_ORGANIC } from '../lib/motion';
 
 interface AuraDropzoneProps {
-  onFileDrop: (files: FileList) => void;
+  onFileDrop: (files: File[]) => void;
   className?: string;
 }
 
@@ -23,9 +23,7 @@ export function AuraDropzone({ onFileDrop, className }: AuraDropzoneProps) {
       setValidationErrors(errors.map((e) => `${e.fileName}: ${e.error.message}`));
     }
     if (valid.length > 0) {
-      // Pass the full FileList — the sender flow needs it for streaming.
-      // Validation has already filtered; invalid files won't be transferred.
-      onFileDrop(files);
+      onFileDrop(valid);
     }
   };
 

@@ -136,7 +136,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
  * side-effects; the reducer stays pure.
  */
 export type AppActions = {
-  startShare: (files?: FileList, text?: string) => void;
+  startShare: (files?: File[], text?: string) => void;
   startReceive: () => void;
   cancelReceive: () => void;
   setShareMode: (mode: ShareMode) => void;

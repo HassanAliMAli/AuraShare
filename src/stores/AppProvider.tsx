@@ -5,6 +5,8 @@ import { sanitizeFilename } from '../lib/validation';
 import { AppContext, appReducer, initialState } from './appStore';
 import type { AppActions } from './appStore';
 
+const CONNECT_TIMEOUT_MS = 30_000;
+
 /**
  * Owns the reducer + P2P manager lifecycle and exposes state + actions via
  * context. The single integration point; Phase 2 swaps the P2PManager internals
@@ -15,18 +17,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const managerRef = useRef<P2PManager | null>(null);
   const pendingFilesRef = useRef<File[] | null>(null);
   const pendingTextRef = useRef<string | null>(null);
+  const connectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastRequestedIndexRef = useRef<number | null>(null);
 
   // Single source of truth for the download queue: when `downloadingFileIndex`
-  // changes to a non-null value, request that file from the peer. Replaces the
-  // fragile setTimeout chain and the duplicate downloadTrack ref.
+  // changes to a non-null value, request that file from the peer. Deduped
+  // against StrictMode double-invocation via a ref guard.
   useEffect(() => {
     if (state.downloadingFileIndex === null) return;
+    if (lastRequestedIndexRef.current === state.downloadingFileIndex) return;
+    lastRequestedIndexRef.current = state.downloadingFileIndex;
     managerRef.current?.requestFile(state.downloadingFileIndex);
   }, [state.downloadingFileIndex]);
 
   // Tear down the peer connection on unmount.
   useEffect(() => {
     return () => {
+      if (connectTimeoutRef.current) clearTimeout(connectTimeoutRef.current);
       managerRef.current?.close();
       managerRef.current = null;
     };
@@ -84,10 +91,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (normalized.length !== 6 || !/^[A-Z0-9]+$/.test(normalized)) return;
       dispatch({ type: 'SET_STATUS', status: 'connecting' });
       managerRef.current?.close();
+      if (connectTimeoutRef.current) clearTimeout(connectTimeoutRef.current);
 
       const mgr = new P2PManager({
         onProgress: (p) => dispatch({ type: 'SET_PROGRESS', progress: p }),
-        onConnected: () => {},
+        onConnected: () => {
+          if (connectTimeoutRef.current) {
+            clearTimeout(connectTimeoutRef.current);
+            connectTimeoutRef.current = null;
+          }
+        },
         onDisconnected: () => { /* wait for user */ },
         onFileDescriptorsReceived: (files) => dispatch({ type: 'RECEIVE_DESCRIPTORS', files }),
         onFileComplete: (index, file) => {
@@ -99,6 +112,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         onError: (err) => dispatch({ type: 'SET_ERROR', message: err }),
       });
       managerRef.current = mgr;
+
+      connectTimeoutRef.current = setTimeout(() => {
+        mgr.close();
+        dispatch({ type: 'SET_ERROR', message: 'Room not found or peer never connected' });
+      }, CONNECT_TIMEOUT_MS);
 
       mgr.join(normalized).catch(() => {
         dispatch({ type: 'SET_ERROR', message: 'Cosmic Link Broken' });

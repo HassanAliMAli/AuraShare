@@ -32,6 +32,7 @@ export class TransferSession {
   private pendingFileList: File[] | null = null;
   private pendingFileDescriptors: FileDescriptor[] = [];
   private isProcessingTransfer = false;
+  private currentProcessingIndex = -1;
   private pendingFileIndicesQueue: number[] = [];
 
   constructor(dc: RTCDataChannel, events: TransferEvents) {
@@ -139,6 +140,7 @@ export class TransferSession {
 
   handleFileRequest(index: number): void {
     if (this.dc.readyState !== 'open') return;
+    if (this.currentProcessingIndex === index) return;
     if (this.isProcessingTransfer) {
       if (!this.pendingFileIndicesQueue.includes(index)) {
         this.pendingFileIndicesQueue.push(index);
@@ -147,12 +149,16 @@ export class TransferSession {
     }
     const file = this.pendingFileList?.[index];
     if (!file) return;
+    this.currentProcessingIndex = index;
     this.isProcessingTransfer = true;
     void this.sendFileChunked(file, index);
   }
 
   private async sendFileChunked(file: File, fileIndex: number): Promise<void> {
-    if (this.dc.readyState !== 'open') return;
+    if (this.dc.readyState !== 'open') {
+      this.isProcessingTransfer = false;
+      return;
+    }
     this.send({
       kind: 'file-metadata',
       name: file.name,
@@ -163,27 +169,35 @@ export class TransferSession {
 
     let offset = 0;
     let chunksSinceProgress = 0;
-    while (offset < file.size) {
-      if (this.dc.readyState !== 'open') break;
-      if (this.dc.bufferedAmount > BUFFER_HIGH_WATER) {
-        await this.waitForDrain();
+    try {
+      while (offset < file.size) {
+        if (this.dc.readyState !== 'open') break;
+        if (this.dc.bufferedAmount > BUFFER_HIGH_WATER) {
+          await this.waitForDrain();
+        }
+        if (this.dc.readyState !== 'open') break;
+        const slice = file.slice(offset, Math.min(offset + CHUNK_SIZE, file.size));
+        const buffer = await slice.arrayBuffer();
+        this.dc.send(buffer);
+        offset += buffer.byteLength;
+        chunksSinceProgress++;
+        if (chunksSinceProgress >= PROGRESS_EVERY) {
+          this.events.onProgress(Math.min((offset / file.size) * 100, 99));
+          chunksSinceProgress = 0;
+        }
       }
-      if (this.dc.readyState !== 'open') break;
-      const slice = file.slice(offset, Math.min(offset + CHUNK_SIZE, file.size));
-      const buffer = await slice.arrayBuffer();
-      this.dc.send(buffer);
-      offset += buffer.byteLength;
-      chunksSinceProgress++;
-      if (chunksSinceProgress >= PROGRESS_EVERY) {
-        this.events.onProgress(Math.min((offset / file.size) * 100, 99));
-        chunksSinceProgress = 0;
-      }
-    }
 
-    this.send({ kind: 'transfer-complete', fileIndex });
-    this.events.onProgress(100);
-    this.events.onTransferComplete();
-    this.isProcessingTransfer = false;
+      if (offset >= file.size) {
+        this.send({ kind: 'transfer-complete', fileIndex });
+        this.events.onProgress(100);
+        this.events.onTransferComplete();
+      }
+    } catch (err) {
+      console.error('[transfer] sendFileChunked failed:', err);
+    } finally {
+      this.isProcessingTransfer = false;
+      this.currentProcessingIndex = -1;
+    }
 
     const next = this.pendingFileIndicesQueue.shift();
     if (next !== undefined) this.handleFileRequest(next);

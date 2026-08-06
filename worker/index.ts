@@ -100,21 +100,19 @@ async function getIceServers(env: Env): Promise<IceServer[]> {
   }
 }
 
-const CORS: Record<string, string> = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+const SECURITY_HEADERS: Record<string, string> = {
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'X-Frame-Options': 'DENY',
+  'Cache-Control': 'no-store',
 };
-
-function withCors(res: Response): Response {
-  const headers = new Headers(res.headers);
-  for (const [k, v] of Object.entries(CORS)) headers.set(k, v);
-  return new Response(res.body, { status: res.status, headers });
-}
 
 function json(data: unknown): Response {
   return new Response(JSON.stringify(data), {
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...SECURITY_HEADERS,
+    },
   });
 }
 
@@ -123,14 +121,14 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
-    if (request.method === 'OPTIONS') return withCors(new Response(null));
+    if (request.method === 'OPTIONS') return new Response(null);
 
     if (path === '/api/ice-servers' && request.method === 'GET') {
-      return withCors(json({ iceServers: await getIceServers(env) }));
+      return json({ iceServers: await getIceServers(env) });
     }
 
     if (path === '/api/room' && request.method === 'POST') {
-      return withCors(json({ roomId: generateRoomCode() }));
+      return json({ roomId: generateRoomCode() });
     }
 
     const wsMatch = path.match(/^\/api\/room\/([A-Z0-9]{6})\/ws$/);

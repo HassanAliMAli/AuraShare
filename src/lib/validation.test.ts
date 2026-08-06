@@ -20,7 +20,8 @@ describe('validateFile', () => {
   });
 
   it('rejects files exceeding MAX_FILE_SIZE', () => {
-    const file = createFile('huge.bin', MAX_FILE_SIZE + 1, 'application/octet-stream');
+    const file = createFile('huge.bin', 1, 'application/octet-stream');
+    Object.defineProperty(file, 'size', { value: MAX_FILE_SIZE + 1 });
     const result = validateFile(file);
     expect(result.success).toBe(false);
     if (!result.success) expect(result.error.code).toBe('too_large');

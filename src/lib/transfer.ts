@@ -18,6 +18,7 @@ export type TransferEvents = {
 };
 
 const CHUNK_SIZE = 64 * 1024;
+const MAX_TEXT_SIZE = 1024 * 1024; // 1 MiB — larger text should use file sharing
 const BUFFER_HIGH_WATER = 256 * 1024;
 const BUFFER_LOW_WATER = 64 * 1024;
 const PROGRESS_EVERY = 50;
@@ -135,6 +136,10 @@ export class TransferSession {
 
   sendText(text: string): void {
     if (this.dc.readyState !== 'open') return;
+    if (text.length > MAX_TEXT_SIZE) {
+      console.warn('[transfer] text too large, truncating');
+      text = text.substring(0, MAX_TEXT_SIZE);
+    }
     this.send({ kind: 'text', text });
   }
 

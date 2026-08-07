@@ -14,7 +14,6 @@ export type AppStatus =
   | 'idle'
   | 'sharing'
   | 'connected'
-  | 'downloading'
   | 'success'
   | 'error'
   | 'connecting';

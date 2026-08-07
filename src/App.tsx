@@ -49,8 +49,6 @@ function AppShell() {
               <SharingView key="sharing" />
             ) : state.status === 'connected' ? (
               <ReceiverFileList key="connected" />
-            ) : state.status === 'downloading' ? (
-              <LoaderView key="downloading" label="Receiving" hint={`${Math.round(state.transferProgress)}%`} />
             ) : state.status === 'success' ? (
               <SuccessView key="success" />
             ) : state.status === 'error' ? (

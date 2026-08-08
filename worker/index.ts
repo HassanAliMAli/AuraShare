@@ -164,22 +164,23 @@ export class RoomDO {
       return new Response('Expected Upgrade: websocket', { status: 426 });
     }
 
+    // Check capacity BEFORE accepting: a third peer must be rejected at the
+    // handshake. Closing a server socket synchronously here would leave the
+    // client with a dead-but-open connection (no close frame delivered).
+    const existing = this.state.getWebSockets();
+    if (existing.length >= 2) {
+      return new Response('Room full', { status: 409 });
+    }
+
     const pair = new WebSocketPair();
     const client = pair[0];
     const server = pair[1];
 
     this.state.acceptWebSocket(server);
 
-    const sockets = this.state.getWebSockets();
-    if (sockets.length > 2) {
-      // Third peer — reject.
-      server.close(4000, 'room full');
-      return new Response(null, { status: 101, webSocket: client });
-    }
-
-    if (sockets.length === 2) {
-      // Second peer joined — notify both that a peer is present.
-      for (const s of sockets) {
+    if (existing.length === 1) {
+      // Second peer joined — notify the first that a peer is present.
+      for (const s of existing) {
         s.send(JSON.stringify({ type: 'peer-present' }));
       }
     }

@@ -7,7 +7,7 @@ export function SiteNav() {
   const { actions } = useAppStore();
 
   return (
-    <nav className="absolute top-0 left-0 right-0 p-4 md:p-8 flex justify-between items-center z-50">
+    <nav className="absolute top-0 left-0 right-0 px-4 md:px-8 pt-[calc(1rem+env(safe-area-inset-top))] md:pt-[calc(2rem+env(safe-area-inset-top))] flex justify-between items-center z-50">
       <motion.button
         type="button"
         variants={fadeLeftVariants}

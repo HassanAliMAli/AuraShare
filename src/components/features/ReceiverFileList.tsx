@@ -30,7 +30,7 @@ export function ReceiverFileList() {
             {formatBytes(totalBytes)} total
           </div>
         </div>
-        <div className="w-full bg-bright/5 border border-bright/10 rounded-2xl md:rounded-3xl p-4 md:p-6 max-h-[40vh] overflow-y-auto scrollbar-hide">
+        <div className="w-full bg-bright/5 border border-bright/10 rounded-2xl md:rounded-3xl p-4 md:p-6 max-h-[40dvh] overflow-y-auto scrollbar-hide">
           {state.receivedFiles.map((file, i) => (
             <div key={i} className="py-3 border-b border-bright/5 last:border-0">
               <div className="flex items-center gap-3 overflow-hidden mb-2">

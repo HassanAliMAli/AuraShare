@@ -20,7 +20,7 @@ export function AuraTextarea({ onTextShare, className }: AuraTextareaProps) {
   };
 
   return (
-    <div className={`relative w-full h-full flex flex-col items-center justify-center p-8 ${className}`}>
+    <div className={`relative w-full h-full flex flex-col items-center justify-center p-4 md:p-8 ${className}`}>
       {/* Liquid Aura Background for Text Mode */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden opacity-40" aria-hidden="true">
         <svg className="w-full h-full">
@@ -58,7 +58,7 @@ export function AuraTextarea({ onTextShare, className }: AuraTextareaProps) {
           onChange={(e) => setText(e.target.value)}
           placeholder="Paste or type something to share..."
           aria-label="Text to share"
-          className="w-full h-64 bg-transparent border-none text-text-primary placeholder-text-ghost resize-none focus:outline-none focus-visible:ring-2 focus-visible:ring-signal rounded-2xl text-lg leading-relaxed font-light scrollbar-hide"
+          className="w-full h-48 md:h-64 bg-transparent border-none text-text-primary placeholder-text-ghost resize-none focus:outline-none focus-visible:ring-2 focus-visible:ring-signal rounded-2xl text-lg leading-relaxed font-light scrollbar-hide"
         />
 
         <div className="flex justify-between items-center px-2">

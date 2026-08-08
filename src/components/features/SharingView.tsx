@@ -64,7 +64,7 @@ export function SharingView() {
     >
       <div className="text-center w-full relative z-50">
         <div className="text-warn font-black text-[10px] md:text-xs tracking-[0.4em] mb-4 md:mb-8 uppercase">Transmission Code</div>
-        <div className="text-5xl md:text-8xl text-text-primary font-black tracking-[0.2em] md:tracking-[0.3em] bg-bright/5 border border-bright/10 rounded-3xl md:rounded-[56px] py-8 md:py-12 px-4 md:px-16 mb-6 md:mb-10 shadow-2xl backdrop-blur-2xl inline-block w-full max-w-sm md:max-w-none">
+        <div className="text-4xl sm:text-5xl md:text-8xl text-text-primary font-black tracking-[0.15em] md:tracking-[0.3em] bg-bright/5 border border-bright/10 rounded-3xl md:rounded-[56px] py-6 md:py-12 px-4 md:px-16 mb-6 md:mb-10 shadow-2xl backdrop-blur-2xl inline-block w-full max-w-sm md:max-w-none whitespace-nowrap">
           {state.roomId}
         </div>
         {state.receiverReady ? (

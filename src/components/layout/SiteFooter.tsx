@@ -4,7 +4,7 @@ import { fadeUpVariants } from '../../lib/motion';
 /** Footer status strip: P2P / E2E / capacity badges. */
 export function SiteFooter() {
   return (
-    <footer className="absolute bottom-6 md:bottom-12 left-0 right-0 flex justify-center z-50 pointer-events-none px-4">
+    <footer className="absolute bottom-[calc(1.5rem+env(safe-area-inset-bottom))] md:bottom-[calc(3rem+env(safe-area-inset-bottom))] left-0 right-0 flex justify-center z-50 pointer-events-none px-4">
       <motion.div
         variants={fadeUpVariants}
         initial="hidden"

@@ -65,7 +65,7 @@ export function AuraDropzone({ onFileDrop, className }: AuraDropzoneProps) {
       aria-label="Drop files to share, or activate to browse"
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleButtonClick(); }}
       className={cn(
-        "relative w-full aspect-square max-w-[400px] md:max-w-[500px] flex items-center justify-center cursor-pointer group mx-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal rounded-full",
+        "relative aspect-square w-[min(82vw,52dvh,400px)] md:w-[min(70vw,52dvh,500px)] flex items-center justify-center cursor-pointer group mx-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal rounded-full",
         className
       )}
     >

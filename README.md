@@ -20,6 +20,16 @@ Peer-to-peer file sharing with an ambient, organic UI. No servers, no limits, en
 ## Architecture
 
 ```
+/        → marketing landing page (hero, how it works, privacy, FAQ, CTA)
+/app     → the AuraShare P2P transfer app (lazy-loaded — WebRTC stays out of
+           the landing-page bundle)
+```
+
+Routing uses a tiny zero-dependency pushState/popstate router in
+`src/lib/router.ts` (no react-router). Deep links already work because the
+Worker serves the SPA with `not_found_handling = "single-page-application"`.
+
+```
 Browser A (Sender)                         Browser B (Receiver)
      │                                          │
      │  POST /api/room → mint 6-char code        │

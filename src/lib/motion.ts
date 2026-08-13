@@ -76,3 +76,59 @@ const floatTransition: Transition = { duration: 4, repeat: Infinity, ease: 'ease
 export const floatVariants = {
   animate: { y: [0, -10, 0], transition: floatTransition },
 };
+
+/* ─── Landing page variants ─────────────────────────────────────────────── */
+
+/** Section fade-up + blur on scroll into view. Use with whileInView, once. */
+export const sectionRevealVariants = {
+  hidden: { opacity: 0, y: 24, filter: 'blur(8px)' },
+  visible: {
+    opacity: 1,
+    y: 0,
+    filter: 'blur(0px)',
+    transition: { duration: 0.5, ease: EASE_ORGANIC },
+  },
+};
+
+/** Stagger a list of cards. Children animate with staggerItem. */
+export const staggerContainer = {
+  hidden: {},
+  visible: {
+    transition: { staggerChildren: 0.08, delayChildren: 0.1 },
+  },
+};
+
+export const staggerItem = {
+  hidden: { opacity: 0, y: 24, filter: 'blur(8px)' },
+  visible: {
+    opacity: 1,
+    y: 0,
+    filter: 'blur(0px)',
+    transition: { duration: 0.45, ease: EASE_ORGANIC },
+  },
+};
+
+/** Vertical beam growth in the hero device-flow (origin-top). */
+const flowTransition: Transition = {
+  duration: 3.2,
+  repeat: Infinity,
+  repeatDelay: 1.2,
+  ease: 'easeInOut',
+};
+
+export const beamVariants = {
+  animate: {
+    scaleY: [0, 1, 1, 0],
+    opacity: [0, 1, 1, 0],
+    transition: flowTransition,
+  },
+};
+
+/** Traveling packet down a beam (top: 0% → 100%). */
+export const packetVariants = {
+  animate: {
+    top: ['0%', '100%'],
+    opacity: [0, 1, 1, 0],
+    transition: flowTransition,
+  },
+};

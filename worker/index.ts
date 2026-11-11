@@ -202,7 +202,12 @@ export class RoomDO {
     for (const s of this.state.getWebSockets()) {
       if (s !== ws) s.send(JSON.stringify({ type: 'peer-left' }));
     }
-    ws.close(code, reason);
+    try {
+      ws.close(code, reason);
+    } catch {
+      // workerd may close the socket before invoking this handler; a second
+      // close() throws and would otherwise surface as an uncaught DO error.
+    }
   }
 
   async webSocketError(ws: WebSocket, error: unknown): Promise<void> {

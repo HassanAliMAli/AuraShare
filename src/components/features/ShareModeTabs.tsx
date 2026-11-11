@@ -24,6 +24,7 @@ export function ShareModeTabs() {
         <button
           key={mode}
           type="button"
+          aria-pressed={state.shareMode === mode}
           onClick={() => actions.setShareMode(mode)}
           className={cn(
             "relative px-6 md:px-10 py-2 md:py-3 rounded-xl md:rounded-2xl text-[10px] md:text-xs font-black uppercase tracking-[0.2em] transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal",

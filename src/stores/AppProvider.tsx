@@ -139,6 +139,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
 
     reset: () => {
+      if (connectTimeoutRef.current) {
+        clearTimeout(connectTimeoutRef.current);
+        connectTimeoutRef.current = null;
+      }
       managerRef.current?.close();
       managerRef.current = null;
       pendingFilesRef.current = null;

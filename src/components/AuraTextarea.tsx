@@ -35,6 +35,7 @@ export function AuraTextarea({ onTextShare, className }: AuraTextareaProps) {
             <motion.circle
               cx="50%"
               cy="50%"
+              initial={{ r: 100, fill: '#6c7cf8' }}
               animate={
                 prefersReduced
                   ? { r: 100 }

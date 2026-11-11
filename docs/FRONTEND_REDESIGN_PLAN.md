@@ -132,7 +132,6 @@ frontend/
     main.tsx
   vite.config.ts
 backend/
-  wrangler.toml
   index.ts
   modules/           routes.ts, turn.ts, room-code.ts, room-do.ts, errors.ts
 docs/
@@ -143,7 +142,16 @@ test/
   shared/            fixtures.tsx, setup.ts
   <block>/           landing, app, features, layout, lib, p2p, store, worker
   e2e/
+wrangler.toml       ← stays at the root (project deployment descriptor)
 ```
+
+> **`wrangler.toml` stays at the repository root** — the one deliberate exception to
+> "server configs live in backend/". It is the project-level *deployment descriptor*:
+> it binds the Worker (`backend/index.ts`) **and** the SPA assets that the frontend
+> build emits to `dist/`. The Cloudflare Workers Builds integration runs
+> `npx wrangler deploy` from the repository root, and wrangler only searches the
+> working directory and its ancestors — it cannot discover a config inside a
+> subdirectory. All server *code* lives in `backend/` exactly as the standard requires.
 
 ---
 
@@ -160,11 +168,10 @@ Durable Object + a genuine WebRTC data channel, byte-compared download).
 3. `git mv public frontend/public`
 4. `git mv index.html frontend/index.html`
 5. `git mv vite.config.ts frontend/vite.config.ts`
-6. `git mv wrangler.toml backend/wrangler.toml`
-7. `git mv src/test/setup.ts test/shared/setup.ts`
-8. Move the 13 co-located `src/**/*.test.*` files into `test/<block>/` (dedupe against the
+6. `git mv src/test/setup.ts test/shared/setup.ts`
+7. Move the 13 co-located `src/**/*.test.*` files into `test/<block>/` (dedupe against the
    existing block tests — do not keep both).
-9. Config edits:
+8. Config edits:
    - `frontend/vite.config.ts` — `root: __dirname`, `build.outDir: '../dist'`,
      alias `@ → ./frontend/src`
    - `vitest.config.ts` — alias `@ → ./frontend/src`, `setupFiles → './test/shared/setup.ts'`,
@@ -172,14 +179,15 @@ Durable Object + a genuine WebRTC data channel, byte-compared download).
    - `tsconfig.app.json` — `include: ["frontend/src"]`, `paths {"@/*": ["./frontend/src/*"]}`
    - `tsconfig.test.json` — `paths {"@/*": ["./frontend/src/*"]}`
    - `tsconfig.worker.json` — `include: ["backend"]`
-   - `backend/wrangler.toml` — `main = "index.ts"`, `assets.directory = "../dist"`
+   - `wrangler.toml` — **stays at the repo root**, `main = "backend/index.ts"`,
+     `assets.directory = "./dist"` (see the note below)
    - `eslint.config.js` — split `globals.browser` (frontend) from worker globals (backend)
-10. `package.json` scripts — **keep every script name identical** so CI needs no edits:
-    - `dev` → `vite --config frontend/vite.config.ts`
-    - `dev:worker` → `wrangler dev -c backend/wrangler.toml`
-    - `build` → `tsc -b && vite build --config frontend/vite.config.ts`
-    - `test` / `test:coverage` / `test:e2e` unchanged
-11. Delete dead files: `src/stores/index.ts` (imported by nobody),
+9. `package.json` scripts — **keep every script name identical** so CI needs no edits:
+   - `dev` → `vite --config frontend/vite.config.ts`
+   - `dev:worker` → `wrangler dev`
+   - `build` → `tsc -b && vite build --config frontend/vite.config.ts`
+   - `test` / `test:coverage` / `test:e2e` unchanged
+10. Delete dead files: `src/stores/index.ts` (imported by nobody),
     `src/components/landing/index.ts` trimmed to the exports actually used.
 
 ### Gotchas (already mapped)
@@ -189,8 +197,9 @@ Durable Object + a genuine WebRTC data channel, byte-compared download).
 | `dist/` must stay at repo root | `build.outDir: '../dist'`; CI's e2e job assumes `assets.directory` exists |
 | `@` alias lives in 4 places | vite, vitest, tsconfig.app, tsconfig.test — all four updated together |
 | Playwright pins `:5173` / `:8787` | `root` set explicitly in the new vite config so the dev server serves `frontend/` |
-| `.wrangler/` state now under `backend/` | Vite's `server.watch.ignored: ['**/.wrangler/**']` matches at any depth ✅ |
+| `.wrangler/` state dir | Vite's `server.watch.ignored: ['**/.wrangler/**']` matches at any depth ✅ |
 | ESLint spans two runtimes | Explicit `files` split for `frontend/**` vs `backend/**` |
+| **`wrangler.toml` must stay at the repo root** | The Cloudflare Workers Builds integration runs `npx wrangler deploy` from the root. Wrangler only searches the working directory and its ancestors — it cannot find a config inside a subdirectory, so hiding it in `backend/` fails the dashboard build with *"Missing entry-point to Worker script or to assets directory"*. The file is the project-level **deployment descriptor** (Worker entry **and** SPA assets), not private server config; all server *code* still lives in `backend/`. |
 
 ### PR 1 acceptance
 

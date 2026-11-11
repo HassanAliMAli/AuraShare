@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { LandingPage } from '@/components/landing/LandingPage';
 import { DeviceFlowVisual } from '@/components/landing/DeviceFlowVisual/DeviceFlowVisual';
+import { Hero } from '@/components/landing/Hero/Hero';
 import {
   FAQS,
   FINAL_CTA,
@@ -88,6 +89,44 @@ describe('landing/landing — page composition', () => {
 
     await user.click(cta);
     expect(getRoute()).toBe('/app');
+  });
+});
+
+describe('landing/landing — section content', () => {
+  beforeEach(() => resetRoute('/'));
+
+  it('renders the hero subtitle and trust strip', () => {
+    renderWithStore(<Hero />);
+    expect(screen.getByText(HERO.subtitle)).toBeInTheDocument();
+    for (const item of HERO.trust) {
+      expect(screen.getByText(item)).toBeInTheDocument();
+    }
+  });
+
+  it('points the hero secondary CTA at the how-it-works section', () => {
+    renderWithStore(<Hero />);
+    expect(screen.getByRole('link', { name: HERO.ctaSecondary })).toHaveAttribute(
+      'href',
+      '#how-it-works',
+    );
+  });
+
+  it('renders the mechanism tail under the step list', () => {
+    renderWithStore(<LandingPage />);
+    expect(screen.getByText(HOW_IT_WORKS.mechanismTail)).toBeInTheDocument();
+  });
+
+  it('renders every feature description alongside its heading', () => {
+    renderWithStore(<LandingPage />);
+    for (const feature of WHY_AURASHARE.features) {
+      expect(screen.getByText(feature.description)).toBeInTheDocument();
+    }
+  });
+
+  it('labels both the relay and the direct peer-to-peer path', () => {
+    renderWithStore(<LandingPage />);
+    expect(screen.getByText(PRIVACY.relayLabel)).toBeInTheDocument();
+    expect(screen.getByText(PRIVACY.directLabel)).toBeInTheDocument();
   });
 });
 

@@ -3,18 +3,29 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 
+// This config lives in frontend/, so the Vite root is this directory and the
+// production bundle is emitted to the repository-level dist/ that the Worker
+// serves (see backend/wrangler.toml → assets.directory).
+const root = import.meta.dirname
+
 export default defineConfig({
+  root,
   plugins: [
     react(),
     tailwindcss(),
   ],
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./src"),
+      "@": path.resolve(root, './src'),
     },
   },
   build: {
     target: 'es2022',
+    // Relative to `root` (frontend/), so the bundle lands in <repo>/dist.
+    outDir: path.resolve(root, '../dist'),
+    // The outDir sits outside the Vite root — without this Vite refuses to
+    // clear it and prints a warning on every build.
+    emptyOutDir: true,
     minify: 'esbuild',
     rollupOptions: {
       output: {
@@ -27,9 +38,10 @@ export default defineConfig({
   },
   server: {
     // Wrangler writes Durable Object state and build output into .wrangler/
-    // inside the project root. Without this the dev server watches those
-    // files and can full-reload the page mid-transfer, which breaks any
-    // browser-driven session (including the Playwright E2E suite).
+    // (backend/.wrangler/ when running from the backend config). Without this
+    // the dev server watches those files and can full-reload the page
+    // mid-transfer, which breaks any browser-driven session (including the
+    // Playwright E2E suite).
     watch: {
       ignored: ['**/.wrangler/**'],
     },

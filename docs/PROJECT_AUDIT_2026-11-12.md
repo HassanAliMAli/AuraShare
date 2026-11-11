@@ -75,6 +75,8 @@
 7. **Layout and test organization conflict with the supplied standards.**  
    The repository uses `src/` + `worker/` at the root; the audit standards require `frontend/` + `backend/` + `test/` + `docs/`. It also keeps 13 co-located tests in `src/` and 20 block tests in `test/`, duplicating coverage. **Fix:** choose one layout. If the audit standard is authoritative, move `src/`→`frontend/`, `worker/`→`backend/`, and all tests to `test/<block>/`. If AGENTS is authoritative, amend the standard to document the exception and remove the duplicate tests.
 
+   > **Resolved 2026-11-12.** The audit standard was treated as authoritative. The tree is now `frontend/` (React app + Vite config + `public/`), `backend/` (Worker + `wrangler.toml`), `test/` (every test — the 13 co-located files were folded into the block suites, with their unique assertions merged into `test/landing/landing.test.tsx`), and `docs/`. All npm script names were kept identical, so CI needed no edits; the Playwright E2E suite (4 passed, byte-identical download over a real WebRTC data channel) proves the move is behaviour-neutral. Coverage is 93.97% statements / 84.64% branches / 90.86% functions / 95.38% lines. See `docs/FRONTEND_REDESIGN_PLAN.md` for the remaining redesign work.
+
 8. **Design-token drift.**  
    49 arbitrary px/radius utilities across 15 component files bypass the spacing/type/radius scale; `AuraTextarea.tsx:41` hardcodes `#6c7cf8`/`#22d3a8`; `--space-*`, `--font-mono`, and several `--duration-*`/`--ease-*` tokens have no consumers; the fluid `--text-*` scale from AGENTS §3.2 was never implemented. **Fix:** replace arbitrary sizes with tokens, use `var(--color-*)` in the SVG, delete unused tokens, and either implement or remove the fluid typography promise.
 

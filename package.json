@@ -4,10 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "dev:worker": "wrangler dev",
-    "build": "tsc -b && vite build",
-    "deploy": "npm run build && wrangler deploy",
+    "dev": "vite --config frontend/vite.config.ts",
+    "dev:worker": "wrangler dev -c backend/wrangler.toml",
+    "build": "tsc -b && vite build --config frontend/vite.config.ts",
+    "deploy": "npm run build && wrangler deploy -c backend/wrangler.toml",
     "lint": "eslint .",
     "typecheck": "tsc -b",
     "test": "vitest run",
@@ -15,7 +15,7 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:e2e:report": "playwright show-report",
-    "preview": "vite preview"
+    "preview": "vite preview --config frontend/vite.config.ts"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.2.8",

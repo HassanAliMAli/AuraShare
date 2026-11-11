@@ -23,7 +23,9 @@ export default defineConfig({
   // The bad-code path waits out the app's 30s connect timeout.
   timeout: 90_000,
   expect: { timeout: 15_000 },
-  reporter: process.env.CI ? [['github'], ['list']] : [['list']],
+  reporter: process.env.CI
+    ? [['github'], ['html', { open: 'never' }], ['list']]
+    : [['list']],
   use: {
     baseURL: 'http://localhost:5173',
     channel: 'chrome',

@@ -97,3 +97,11 @@ CI me `Playwright E2E` job add kiya gaya hai (`.github/workflows/ci.yml`).
 ## CI gates
 
 `quality` job ab `npm run test:coverage` chalata hai (poore `src/` par 80% thresholds — measured 94.09% statements / 84.64% branches) aur `npm audit --audit-level=high` (abhi 0 high/critical advisories; 13 moderate, blocking nahi). Coverage report artifact ke roop me upload hota hai.
+
+Real GitHub Actions par dono jobs green: `Lint + Typecheck + Build + Test + Audit` (50s) aur `Playwright E2E` (1m20s), artifacts `coverage-report` aur `playwright-report` upload ho gaye.
+
+### Do CI-only bugs jo sirf asli Actions par hi pakde gaye
+
+1. **`dist/` missing** — `wrangler dev` `assets.directory` ke absent hone par start hi nahi hota, aur `e2e` job build nahi karti thi. Fix: e2e job me `npm run build` add kiya.
+2. **Node 20** — Wrangler 4 ko Node `>= 22.12.0` chahiye, workflow Node 20 pin karta tha. Local Node 24 par ye dikhai nahi diya. Fix: dono jobs ab Node 22 (Vite 8 aur Wrangler 4 dono ke liye floor), actions v4 → v7.
+3. **Khali Playwright artifact** — CI reporter me `html` nahi tha, is liye `playwright-report/` banta hi nahi tha aur upload step ko "No files were found" mila. Fix: CI reporter me `html` add kiya.

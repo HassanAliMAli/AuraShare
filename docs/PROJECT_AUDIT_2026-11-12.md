@@ -84,7 +84,7 @@
 10. **No automated end-to-end coverage and no coverage gate in CI.**  
     `.github/workflows/ci.yml` runs lint, typecheck, build, and `npm test` only. There is no `test/e2e` directory, no Playwright flow, no `npm audit`, and no coverage step. **Fix:** add one happy-path E2E (text + file + bad code) and wire `test:coverage` plus `npm audit --audit-level=high` into CI.
 
-    > **Resolved 2026-11-12.** `test/e2e/` now holds a Playwright suite covering text share, file share (download compared byte-for-byte) and the malformed-code path, driven by a `Playwright E2E` CI job. The `quality` job now runs `npm run test:coverage` (80% thresholds over all of `src/`) and `npm audit --audit-level=high`, and publishes the coverage report as an artifact. The suite also surfaced a live bug — a malformed code enabled "Establish Link" and then did nothing — now fixed and guarded by tests.
+    > **Resolved 2026-11-12.** `test/e2e/` now holds a Playwright suite covering text share, file share (download compared byte-for-byte) and the malformed-code path, driven by a `Playwright E2E` CI job. The `quality` job now runs `npm run test:coverage` (80% thresholds over all of `src/`) and `npm audit --audit-level=high`, and publishes the coverage report as an artifact. The suite also surfaced a live bug — a malformed code enabled "Establish Link" and then did nothing — now fixed and guarded by tests. Both jobs verified green on GitHub Actions (run 43114395061).
 
 ---
 

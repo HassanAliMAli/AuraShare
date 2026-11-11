@@ -33,7 +33,8 @@ Worker serves the SPA with `not_found_handling = "single-page-application"`.
 
 ```
 frontend/   React app — components, hooks, stores, lib, types, styles, Vite config
-backend/    Cloudflare Worker — Durable Object relay, TURN credentials, wrangler.toml
+backend/    Cloudflare Worker — Durable Object relay, TURN credentials
+wrangler.toml  deployment descriptor (Worker entry + SPA assets)
 test/       Every test, mirrored by block (lib, p2p, features, landing, e2e, …)
 docs/       API contract, test report, audits, redesign plan
 ```

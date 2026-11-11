@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite --config frontend/vite.config.ts",
-    "dev:worker": "wrangler dev -c backend/wrangler.toml",
+    "dev:worker": "wrangler dev",
     "build": "tsc -b && vite build --config frontend/vite.config.ts",
-    "deploy": "npm run build && wrangler deploy -c backend/wrangler.toml",
+    "deploy": "npm run build && wrangler deploy",
     "lint": "eslint .",
     "typecheck": "tsc -b",
     "test": "vitest run",

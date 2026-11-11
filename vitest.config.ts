@@ -18,7 +18,11 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],
-      include: ['src/lib/**', 'src/hooks/**'],
+      // Cover the whole app, not just the pure helpers — the stores and the
+      // components are where the real behaviour lives. main.tsx is the entry
+      // point and is only exercised by the browser suite.
+      include: ['src/**'],
+      exclude: ['src/main.tsx'],
       thresholds: {
         statements: 80,
         branches: 80,

@@ -9,6 +9,10 @@
 
 **Automated E2E:** PASS — `npm run test:e2e` (Playwright, `test/e2e/`) reports 4 passed covering text share, file share (byte-identical download), the unknown-code error path, and the malformed-code path.
 
+**Coverage:** PASS — `npm run test:coverage` enforces 80% thresholds over all of `src/` (measured 94.09% statements, 84.64% branches, 91.34% functions, 95.52% lines).
+
+**Audit:** PASS — `npm audit --audit-level=high` exits 0 (13 advisories, all moderate).
+
 ## Block Results
 
 | Block | Result | Tests |
@@ -89,3 +93,7 @@ Playwright suite — do browser contexts, live Wrangler Durable Object signaling
 | Malformed code | PASS — `AB!12Z` par button disabled + reason message; valid code par button enable |
 
 CI me `Playwright E2E` job add kiya gaya hai (`.github/workflows/ci.yml`).
+
+## CI gates
+
+`quality` job ab `npm run test:coverage` chalata hai (poore `src/` par 80% thresholds — measured 94.09% statements / 84.64% branches) aur `npm audit --audit-level=high` (abhi 0 high/critical advisories; 13 moderate, blocking nahi). Coverage report artifact ke roop me upload hota hai.

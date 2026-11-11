@@ -1,6 +1,13 @@
 @import "tailwindcss";
 
-@custom-variant xs (&:where(@media (min-width: 480px)));
+/* Custom breakpoint: 480px.
+   Must use the @slot form — a media query inside &:where() compiles to an
+   invalid selector and the whole variant is dropped by the browser. */
+@custom-variant xs {
+  @media (min-width: 480px) {
+    @slot;
+  }
+}
 
 @theme {
   /* Twilight surface system */

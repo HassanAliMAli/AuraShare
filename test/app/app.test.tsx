@@ -172,7 +172,7 @@ describe('app/app — end-to-end text sharing flow', () => {
     await screen.findByRole('button', { name: 'Receive' });
 
     await user.click(screen.getByRole('button', { name: 'Receive' }));
-    const input = screen.getByLabelText('6-digit cosmic code');
+    const input = screen.getByLabelText('6-character cosmic code');
     await user.type(input, 'abc123');
     expect(input).toHaveValue('ABC123');
 
@@ -212,7 +212,7 @@ describe('app/app — end-to-end text sharing flow', () => {
     await screen.findByRole('button', { name: 'Receive' });
 
     await user.click(screen.getByRole('button', { name: 'Receive' }));
-    await user.type(screen.getByLabelText('6-digit cosmic code'), 'ABC123');
+    await user.type(screen.getByLabelText('6-character cosmic code'), 'ABC123');
     await user.click(screen.getByRole('button', { name: 'Establish Link' }));
 
     expect(await screen.findByText('Cosmic Link Broken')).toBeInTheDocument();

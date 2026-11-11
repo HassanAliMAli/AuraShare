@@ -124,6 +124,36 @@ describe('stores/appStore — reducer', () => {
     expect(state.status).toBe('error');
   });
 
+  it('reports a rejected code inline without leaving the idle state', () => {
+    const state = appReducer(makeState(), {
+      type: 'SET_JOIN_CODE_ERROR',
+      message: 'Codes use 0-9 and A-Z — no I, L, O or U.',
+    });
+
+    expect(state.joinCodeError).toBe('Codes use 0-9 and A-Z — no I, L, O or U.');
+    expect(state.status).toBe('idle');
+  });
+
+  it('clears a stale code error as soon as the user types again', () => {
+    const rejected = appReducer(makeState({ joinCodeError: 'bad code' }), {
+      type: 'SET_JOIN_CODE_ERROR',
+      message: 'bad code',
+    });
+
+    const retyped = appReducer(rejected, { type: 'SET_JOIN_CODE', code: 'AB12CD' });
+    expect(retyped.joinCodeError).toBeNull();
+    expect(retyped.joinCode).toBe('AB12CD');
+  });
+
+  it('clears the code error when receive mode is re-entered', () => {
+    const rejected = appReducer(makeState({ joinCodeError: 'bad code' }), {
+      type: 'SET_JOIN_CODE_ERROR',
+      message: 'bad code',
+    });
+
+    expect(appReducer(rejected, { type: 'START_RECEIVE' }).joinCodeError).toBeNull();
+  });
+
   it('resets every slice, including sets, to initial values', () => {
     const dirty = makeState({
       status: 'error',

@@ -58,7 +58,7 @@ export async function readCode(page: Page): Promise<string> {
 }
 
 /** Switch a peer into receiver mode. */
-async function openReceiver(page: Page): Promise<void> {
+export async function openReceiver(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Receive' }).click();
   await expect(page.getByRole('textbox', { name: /cosmic code/i })).toBeVisible();
 }

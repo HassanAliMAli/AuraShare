@@ -2,6 +2,7 @@ import { useReducer, useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { P2PManager } from '../lib/webrtc';
 import { sanitizeFilename } from '../lib/validation';
+import { isRoomCode, normalizeRoomCode, ROOM_CODE_HINT } from '../lib/roomCode';
 import { AppContext, appReducer, initialState } from './appStore';
 import type { AppActions } from './appStore';
 
@@ -87,8 +88,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setJoinCode: (code) => dispatch({ type: 'SET_JOIN_CODE', code }),
 
     join: (code) => {
-      const normalized = code.toUpperCase().trim();
-      if (normalized.length !== 6 || !/^[A-Z0-9]+$/.test(normalized)) return;
+      const normalized = normalizeRoomCode(code);
+      if (!isRoomCode(normalized)) {
+        // Never swallow this: a rejected code used to look like a dead button.
+        dispatch({ type: 'SET_JOIN_CODE_ERROR', message: ROOM_CODE_HINT });
+        return;
+      }
+      dispatch({ type: 'SET_JOIN_CODE_ERROR', message: null });
       dispatch({ type: 'SET_STATUS', status: 'connecting' });
       managerRef.current?.close();
       if (connectTimeoutRef.current) clearTimeout(connectTimeoutRef.current);

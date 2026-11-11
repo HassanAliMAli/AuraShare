@@ -5,9 +5,9 @@
 **New suites:** `test/` (existing `src/**/*.test.*` untouched)
 **Build:** PASS (`npm run build`)
 
-**Post-fix status:** PASS — the three failures below are fixed; `npm test` now reports 31 files / 308 tests passing. The failure analysis is preserved for the record.
+**Post-fix status:** PASS — the three failures below are fixed; `npm test` now reports 32 files / 329 tests passing. The failure analysis is preserved for the record.
 
-**Automated E2E:** PASS — `npm run test:e2e` (Playwright, `test/e2e/`) reports 3 passed covering text share, file share (byte-identical download), and the unknown-code error path.
+**Automated E2E:** PASS — `npm run test:e2e` (Playwright, `test/e2e/`) reports 4 passed covering text share, file share (byte-identical download), the unknown-code error path, and the malformed-code path.
 
 ## Block Results
 
@@ -70,6 +70,12 @@ npx vitest run test/<block>
 - **Dev reload blocker** → **Fixed.** `vite.config.ts` ab `server.watch.ignored: ['**/.wrangler/**']` set karta hai, to Wrangler ke `.wrangler/state/*.sqlite` writes dev server ka watcher trigger nahi karte. Reproduce nahi hua aur ab structurally block hai.
 - **Worker startup blocker** → **Resolved.** wrangler `4.160.1` (dependency refresh ke baad) `2026-07-28` compatibility date support karta hai; `npm run dev:worker` seedha chalta hai, workaround ki zaroorat nahi.
 - **Console error** → **Fixed.** Commit `3b8b248` ne aura circle ko initial radius diya; `/app` par ab console clean hai.
+- **Bad-input UX** → **Fixed.** Root cause teen hisson ka combination tha, teeno band kiye gaye:
+  1. Button sirf `.length !== 6` check karta tha → `AB!12Z` par enable ho jata tha. Ab `isRoomCode()` (Crockford base32) se validate hota hai.
+  2. `AppProvider.join()` guard silent `return` karta tha → ab `SET_JOIN_CODE_ERROR` dispatch karta hai, jis se inline message dikhta hai.
+  3. "Valid code" ka definition client aur worker ke beech mismatch tha (client `[A-Z0-9]`, worker Crockford). Ab dono `src/lib/roomCode.ts` me ek hi alphabet use karte hain — `I, L, O, U` wale codes turant reject hote hain, 30s wait nahi.
+
+  UI: invalid code par button disabled rehta hai aur "Codes use 0-9 and A-Z — no I, L, O or U." message input ke niche aata hai (`role="alert"`, `aria-invalid`). Copy bhi theek ki: "6-DIGIT" → "6-CHARACTER".
 
 ## Automated E2E (`test/e2e/`)
 
@@ -80,5 +86,6 @@ Playwright suite — do browser contexts, live Wrangler Durable Object signaling
 | Text share | PASS — payload receiver tak intact pahuncha |
 | File share | PASS — `README.md` download hua, byte-identical |
 | Unknown code | PASS — 30s timeout → "Cosmos Disrupted" → "Try Re-Alignment" se idle state |
+| Malformed code | PASS — `AB!12Z` par button disabled + reason message; valid code par button enable |
 
 CI me `Playwright E2E` job add kiya gaya hai (`.github/workflows/ci.yml`).

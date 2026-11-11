@@ -3,10 +3,17 @@ import { Check, Clock } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { FileIcon } from '../ui/FileIcon';
 import { viewVariants, receiveFormVariants } from '../../lib/motion';
+import { isRoomCode, normalizeRoomCode, ROOM_CODE_HINT } from '../../lib/roomCode';
 
 /** Receiver's code-entry form (idle + isReceiving). */
 export function ReceiveCodeForm() {
   const { state, actions } = useAppStore();
+
+  const code = normalizeRoomCode(state.joinCode);
+  const codeIsValid = isRoomCode(code);
+  // Only call out the format once the field is full — nagging mid-typing is noise.
+  const hint =
+    state.joinCodeError ?? (code.length === 6 && !codeIsValid ? ROOM_CODE_HINT : null);
 
   return (
     <motion.div
@@ -17,7 +24,7 @@ export function ReceiveCodeForm() {
       className="z-40 bg-bright/5 backdrop-blur-3xl p-6 md:p-12 rounded-3xl md:rounded-[48px] border border-bright/10 w-full max-w-sm md:max-w-md shadow-2xl mx-auto"
     >
       <h2 className="text-2xl md:text-3xl text-text-primary font-black mb-2 tracking-tighter">Receive Aura</h2>
-      <p className="text-text-secondary text-xs md:text-sm mb-6 md:mb-10 leading-relaxed uppercase tracking-widest font-bold">Input the 6-digit cosmic code.</p>
+      <p className="text-text-secondary text-xs md:text-sm mb-6 md:mb-10 leading-relaxed uppercase tracking-widest font-bold">Input the 6-character cosmic code.</p>
       <form
         onSubmit={(e) => { e.preventDefault(); actions.join(state.joinCode); }}
         className="flex flex-col gap-4 relative z-50"
@@ -28,12 +35,23 @@ export function ReceiveCodeForm() {
           value={state.joinCode}
           onChange={(e) => actions.setJoinCode(e.target.value.toUpperCase())}
           placeholder="A1B2C3"
-          aria-label="6-digit cosmic code"
+          aria-label="6-character cosmic code"
+          aria-invalid={code.length > 0 && !codeIsValid}
+          aria-describedby={hint ? 'join-code-hint' : undefined}
           className="w-full bg-bright/5 border border-bright/10 rounded-xl md:rounded-2xl px-4 py-4 md:py-6 text-text-primary text-2xl md:text-4xl font-black tracking-[0.4em] text-center uppercase focus:outline-none focus-visible:ring-2 focus-visible:ring-signal focus:border-signal transition-colors placeholder:text-text-ghost"
         />
+        {hint && (
+          <p
+            id="join-code-hint"
+            role="alert"
+            className="text-[10px] md:text-xs text-error font-bold uppercase tracking-widest text-center bg-error/10 border border-error/20 rounded-xl px-3 py-2"
+          >
+            {hint}
+          </p>
+        )}
         <button
           type="submit"
-          disabled={state.joinCode.length !== 6}
+          disabled={!codeIsValid}
           className="w-full py-4 md:py-5 rounded-xl md:rounded-2xl bg-bright text-void font-black uppercase tracking-widest disabled:opacity-20 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl text-xs md:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal"
         >
           Establish Link

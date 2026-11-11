@@ -73,6 +73,7 @@ function Probe() {
       <span data-testid="selected">{[...state.selectedFiles].join(',')}</span>
       <span data-testid="received-text">{state.receivedText ?? 'none'}</span>
       <span data-testid="error">{state.errorMessage ?? 'none'}</span>
+      <span data-testid="join-code-error">{state.joinCodeError ?? 'none'}</span>
 
       <button type="button" onClick={() => actions.startShare([SHARED_FILE], 'hello peer')}>
         share
@@ -216,6 +217,28 @@ describe('stores/AppProvider — lifecycle and actions', () => {
 
     expect(hoisted.managers).toHaveLength(0);
     expect(screen.getByTestId('status')).toHaveTextContent('idle');
+  });
+
+  it('reports a malformed join code instead of swallowing it', () => {
+    renderProvider();
+    fireEvent.click(screen.getByRole('button', { name: 'join invalid' }));
+
+    expect(screen.getByTestId('join-code-error')).toHaveTextContent(
+      'Codes use 0-9 and A-Z — no I, L, O or U.',
+    );
+    expect(hoisted.managers).toHaveLength(0);
+    expect(screen.getByTestId('status')).toHaveTextContent('idle');
+  });
+
+  it('clears the code error once a valid code is joined', async () => {
+    renderProvider();
+    fireEvent.click(screen.getByRole('button', { name: 'join invalid' }));
+    expect(screen.getByTestId('join-code-error')).not.toHaveTextContent('none');
+
+    fireEvent.click(screen.getByRole('button', { name: 'join' }));
+
+    expect(screen.getByTestId('join-code-error')).toHaveTextContent('none');
+    expect(lastManager().join).toHaveBeenCalledWith('ABC123');
   });
 
   it('normalizes a valid join code and receives descriptors', async () => {

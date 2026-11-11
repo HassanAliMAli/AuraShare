@@ -13,6 +13,8 @@ export type AppState = {
   shareMode: ShareMode;
   receivedText: string | null;
   errorMessage: string | null;
+  /** Inline feedback for the code field — set when a code is rejected. */
+  joinCodeError: string | null;
   roomId: string | null;
   receivedFiles: FileDescriptor[];
   downloadedFiles: Set<number>;
@@ -33,6 +35,7 @@ export const initialState: AppState = {
   shareMode: 'text',
   receivedText: null,
   errorMessage: null,
+  joinCodeError: null,
   roomId: null,
   receivedFiles: [],
   downloadedFiles: new Set(),
@@ -61,6 +64,7 @@ export type AppAction =
   | { type: 'FILE_ACKNOWLEDGED'; index: number }
   | { type: 'RECEIVE_TEXT'; text: string }
   | { type: 'SET_ERROR'; message: string }
+  | { type: 'SET_JOIN_CODE_ERROR'; message: string | null }
   | { type: 'RESET' };
 
 export function appReducer(state: AppState, action: AppAction): AppState {
@@ -70,11 +74,11 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case 'SET_PROGRESS':
       return { ...state, transferProgress: action.progress };
     case 'SET_JOIN_CODE':
-      return { ...state, joinCode: action.code };
+      return { ...state, joinCode: action.code, joinCodeError: null };
     case 'SET_SHARE_MODE':
       return { ...state, shareMode: action.mode };
     case 'START_RECEIVE':
-      return { ...state, isReceiving: true, status: 'idle' };
+      return { ...state, isReceiving: true, status: 'idle', joinCodeError: null };
     case 'CANCEL_RECEIVE':
       return { ...state, isReceiving: false };
     case 'SET_ROOM':
@@ -124,6 +128,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, receivedText: action.text, status: 'success' };
     case 'SET_ERROR':
       return { ...state, errorMessage: action.message, status: 'error' };
+    case 'SET_JOIN_CODE_ERROR':
+      return { ...state, joinCodeError: action.message };
     case 'RESET':
       return { ...initialState };
     default:

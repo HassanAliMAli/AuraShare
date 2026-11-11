@@ -8,6 +8,10 @@
 
 import type { FileDescriptor, SignalingMessage, WireSignal } from '../types';
 import { MAX_FILE_SIZE, sanitizeFilename } from './validation';
+import { isRoomCode } from './roomCode';
+
+/** Re-exported so wire-protocol consumers keep a single import site. */
+export { isRoomCode };
 
 /** Maximum number of files a single transfer may announce. */
 export const MAX_FILES_PER_TRANSFER = 32;
@@ -189,11 +193,6 @@ export function isIceServerList(value: unknown): value is { iceServers: RTCIceSe
       server.urls.every((url) => typeof url === 'string')
     );
   });
-}
-
-/** A room code minted by the Worker (Crockford base32, 6 characters). */
-export function isRoomCode(value: unknown): value is string {
-  return typeof value === 'string' && /^[A-Z0-9]{6}$/.test(value);
 }
 
 /** Validate the room-minting response body. */

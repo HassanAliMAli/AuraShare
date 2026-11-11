@@ -26,6 +26,13 @@ export default defineConfig({
     },
   },
   server: {
+    // Wrangler writes Durable Object state and build output into .wrangler/
+    // inside the project root. Without this the dev server watches those
+    // files and can full-reload the page mid-transfer, which breaks any
+    // browser-driven session (including the Playwright E2E suite).
+    watch: {
+      ignored: ['**/.wrangler/**'],
+    },
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:8787',

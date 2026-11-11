@@ -84,6 +84,8 @@
 10. **No automated end-to-end coverage and no coverage gate in CI.**  
     `.github/workflows/ci.yml` runs lint, typecheck, build, and `npm test` only. There is no `test/e2e` directory, no Playwright flow, no `npm audit`, and no coverage step. **Fix:** add one happy-path E2E (text + file + bad code) and wire `test:coverage` plus `npm audit --audit-level=high` into CI.
 
+    > **Resolved 2026-11-12.** `test/e2e/` now holds a Playwright suite covering text share, file share (download compared byte-for-byte) and the malformed-code path, driven by a `Playwright E2E` CI job. The `quality` job now runs `npm run test:coverage` (80% thresholds over all of `src/`) and `npm audit --audit-level=high`, and publishes the coverage report as an artifact. The suite also surfaced a live bug — a malformed code enabled "Establish Link" and then did nothing — now fixed and guarded by tests.
+
 ---
 
 ## Minor
@@ -111,7 +113,7 @@
 | §5 PeerJS/P2P | **Fail** | The entire chapter describes PeerJS; implementation is raw WebRTC + Durable Objects. |
 | §6 Code quality | Partial | Lint/typecheck pass; console-only error paths, no transfer worker, a11y contrast/state gaps. |
 | §7 Debt registry | Partial | TD-006 claims a chunker worker that does not exist; other TD items look resolved. |
-| §8 Testing | **Fail** | 3 failing tests; block suite untracked; no E2E; coverage gate not in CI; tests split across `src/` and `test/`. |
+| §8 Testing | Partial | 329 unit tests across 32 files pass; a Playwright E2E suite covers the main flows; coverage and `npm audit --audit-level=high` are CI gates. Still split across `src/` and `test/`. |
 | §9 Commands | Partial | Main commands work; `dev:worker` is broken; mock/e2e commands do not exist. |
 | §10 Git | Not verified | On `main` with uncommitted work; CI exists; PR policy cannot be verified from the tree. |
 | §11 Environment | **Fail** | No `VITE_MOCK_PEER` or PeerJS env files; no secrets found (good), but the documented contract is stale. |

@@ -5,10 +5,12 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Lets a failed pipeline be re-run on demand without a new commit.
+  workflow_dispatch:
 
 jobs:
   quality:
-    name: Lint + Typecheck + Build + Test
+    name: Lint + Typecheck + Build + Test + Audit
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,8 +31,23 @@ jobs:
       - name: Build
         run: npm run build
 
+      # Same suite as `npm run test`, plus the coverage thresholds enforced in
+      # vitest.config.ts. A drop below the threshold fails the job.
       - name: Test
-        run: npm run test
+        run: npm run test:coverage
+
+      # Fails the job on a high or critical advisory. Moderate ones are
+      # reported but do not block.
+      - name: Audit
+        run: npm audit --audit-level=high
+
+      - name: Upload coverage report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 7
 
   e2e:
     name: Playwright E2E
@@ -44,6 +61,11 @@ jobs:
           cache: npm
 
       - run: npm ci
+
+      # The Worker refuses to start when the assets directory is missing, and
+      # `assets.directory` points at ./dist — so the app must be built first.
+      - name: Build
+        run: npm run build
 
       # The suite drives the system Google Chrome (channel: 'chrome'), which the
       # ubuntu runner images already ship — no browser download needed.

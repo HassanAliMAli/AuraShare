@@ -5,6 +5,7 @@ import {
   expectPeerConnected,
   joinRoom,
   openApp,
+  openReceiver,
   shareFile,
   shareText,
 } from './helpers';
@@ -77,5 +78,22 @@ test.describe('AuraShare peer-to-peer transfer', () => {
     // ...and the peer can start a fresh receiver session from there.
     await receiver.getByRole('button', { name: 'Receive' }).click();
     await expect(receiver.getByRole('textbox', { name: /cosmic code/i })).toBeVisible();
+  });
+
+  test('a malformed code never opens a link', async ({ browser }) => {
+    const receiver = await openApp(browser);
+
+    await openReceiver(receiver);
+    await receiver.getByRole('textbox', { name: /cosmic code/i }).fill('AB!12Z');
+
+    // The button must stay disabled and the reason must be on screen — a
+    // dead button with no explanation is the bug this guards against.
+    await expect(receiver.getByRole('button', { name: 'Establish Link' })).toBeDisabled();
+    await expect(receiver.getByRole('alert')).toContainText('no I, L, O or U');
+
+    // A well-formed code still opens the link.
+    await receiver.getByRole('textbox', { name: /cosmic code/i }).fill('AB12CD');
+    await expect(receiver.getByRole('button', { name: 'Establish Link' })).toBeEnabled();
+    await expect(receiver.getByRole('alert')).toHaveCount(0);
   });
 });

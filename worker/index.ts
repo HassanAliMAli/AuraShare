@@ -45,7 +45,14 @@ const STUN_ONLY_FALLBACK: IceServer[] = [
 /** Crockford base32 — excludes I, L, O, U to avoid ambiguity. */
 const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 
-function generateRoomCode(): string {
+/**
+ * The only room codes this Worker can ever serve. Kept derived from
+ * CROCKFORD so the route and the mint can never drift apart — an impossible
+ * code must not be able to allocate a Durable Object.
+ */
+const ROOM_CODE_PATTERN = new RegExp(`^/api/room/([${CROCKFORD}]{6})/ws$`);
+
+export function generateRoomCode(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(6));
   let code = '';
   for (const b of bytes) {
@@ -131,7 +138,7 @@ export default {
       return json({ roomId: generateRoomCode() });
     }
 
-    const wsMatch = path.match(/^\/api\/room\/([A-Z0-9]{6})\/ws$/);
+    const wsMatch = path.match(ROOM_CODE_PATTERN);
     if (wsMatch) {
       const code = wsMatch[1];
       if (!code) return new Response('Bad room code', { status: 400 });

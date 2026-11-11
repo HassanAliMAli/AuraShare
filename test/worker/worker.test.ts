@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import worker, { RoomDO } from '../../worker/index';
+import worker, { RoomDO, generateRoomCode } from '../../worker/index';
+import { isRoomCode, ROOM_CODE_ALPHABET } from '@/lib/roomCode';
 
 type WorkerEnv = Parameters<typeof worker.fetch>[1];
 
@@ -94,6 +95,32 @@ describe('worker/worker — HTTP routes', () => {
       env(),
     );
     expect(response.status).toBe(404);
+  });
+
+  it('refuses a room code the Worker could never have minted', async () => {
+    // I, L, O and U are not in the Crockford alphabet, so such a code must not
+    // be able to allocate a Durable Object.
+    const response = await worker.fetch(
+      new Request('http://local/api/room/IL0OU1/ws', {
+        headers: { Upgrade: 'websocket' },
+      }),
+      env(),
+    );
+    expect(response.status).toBe(404);
+  });
+
+  it('mints codes the client accepts', () => {
+    for (let i = 0; i < 50; i += 1) {
+      expect(isRoomCode(generateRoomCode())).toBe(true);
+    }
+  });
+
+  it('shares one alphabet with the client', () => {
+    // The client and the Worker must agree, or a code typed on one end never
+    // resolves on the other.
+    for (const char of ROOM_CODE_ALPHABET) {
+      expect(isRoomCode(char.repeat(6))).toBe(true);
+    }
   });
 
   it('forwards an upgraded websocket request to the room Durable Object', async () => {

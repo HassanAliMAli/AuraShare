@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { LoaderView } from '@/components/features/LoaderView';
 import { ReceiveCodeForm, SharingView } from '@/components/features/SharingView';
 import { AppContext, type AppState } from '@/stores/appStore';
+import { ROOM_CODE_HINT } from '@/lib/roomCode';
 import { makeActions, makeState, renderWithStore } from '../shared/fixtures';
 
 function ControlledReceiveForm({
@@ -31,12 +32,12 @@ function ControlledReceiveForm({
 }
 
 describe('features/share-flow — ReceiveCodeForm', () => {
-  it('uppercases input, enables at six characters, and submits the code', async () => {
+  it('uppercases input, enables at six valid characters, and submits the code', async () => {
     const user = userEvent.setup();
     const join = vi.fn();
     render(<ControlledReceiveForm join={join} />);
 
-    const input = screen.getByLabelText('6-digit cosmic code');
+    const input = screen.getByLabelText('6-character cosmic code');
     const submit = screen.getByRole('button', { name: 'Establish Link' });
     expect(submit).toBeDisabled();
 
@@ -53,13 +54,66 @@ describe('features/share-flow — ReceiveCodeForm', () => {
     const join = vi.fn();
     render(<ControlledReceiveForm join={join} initial={{ joinCode: 'ZXCV12' }} />);
 
-    await user.type(screen.getByLabelText('6-digit cosmic code'), '{enter}');
+    await user.type(screen.getByLabelText('6-character cosmic code'), '{enter}');
     expect(join).toHaveBeenCalledWith('ZXCV12');
   });
 
   it('keeps submission disabled for five characters', () => {
     render(<ControlledReceiveForm initial={{ joinCode: 'ABCDE' }} />);
     expect(screen.getByRole('button', { name: 'Establish Link' })).toBeDisabled();
+  });
+
+  it('keeps the link disabled for a code the Worker could never mint', () => {
+    render(<ControlledReceiveForm initial={{ joinCode: 'AB!12Z' }} />);
+
+    expect(screen.getByRole('button', { name: 'Establish Link' })).toBeDisabled();
+    expect(screen.getByRole('alert')).toHaveTextContent(ROOM_CODE_HINT);
+  });
+
+  it('rejects a well-formed code that contains an ambiguous character', () => {
+    render(<ControlledReceiveForm initial={{ joinCode: 'IL0OU1' }} />);
+
+    expect(screen.getByRole('button', { name: 'Establish Link' })).toBeDisabled();
+    expect(screen.getByRole('alert')).toHaveTextContent(ROOM_CODE_HINT);
+  });
+
+  it('says nothing while the code is still being typed', () => {
+    render(<ControlledReceiveForm initial={{ joinCode: 'AB' }} />);
+
+    expect(screen.getByRole('button', { name: 'Establish Link' })).toBeDisabled();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('stays quiet for a valid code', () => {
+    render(<ControlledReceiveForm initial={{ joinCode: 'AB12CD' }} />);
+
+    expect(screen.getByRole('button', { name: 'Establish Link' })).toBeEnabled();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('surfaces the rejection the store reports', () => {
+    render(
+      <ControlledReceiveForm
+        initial={{ joinCode: 'AB!12Z', joinCodeError: 'Code rejected' }}
+      />,
+    );
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Code rejected');
+  });
+
+  it('marks the field invalid only once something was typed', () => {
+    const { unmount } = render(<ControlledReceiveForm initial={{ joinCode: '' }} />);
+    expect(screen.getByLabelText('6-character cosmic code')).toHaveAttribute(
+      'aria-invalid',
+      'false',
+    );
+    unmount();
+
+    render(<ControlledReceiveForm initial={{ joinCode: 'AB!12Z' }} />);
+    expect(screen.getByLabelText('6-character cosmic code')).toHaveAttribute(
+      'aria-invalid',
+      'true',
+    );
   });
 
   it('cancels the connection', async () => {

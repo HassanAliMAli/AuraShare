@@ -20,7 +20,7 @@ describe('lib/validation — validateFile', () => {
     if (!result.success) expect(result.error.code).toBe('empty');
   });
 
-  it('accepts a file exactly at the 2 GiB boundary', () => {
+  it('accepts a file exactly at the size limit', () => {
     const result = validateFile(createFile('boundary.bin', MAX_FILE_SIZE, 'application/octet-stream'));
     expect(result.success).toBe(true);
   });
@@ -34,7 +34,7 @@ describe('lib/validation — validateFile', () => {
       expect(result.error.code).toBe('too_large');
       expect(result.error.maxSize).toBe(MAX_FILE_SIZE);
       expect(result.error.actualSize).toBe(MAX_FILE_SIZE + 1);
-      expect(result.error.message).toContain('2 GiB');
+      expect(result.error.message).toContain('256 MiB');
     }
   });
 

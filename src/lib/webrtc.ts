@@ -7,7 +7,7 @@
  */
 
 import { SignalingChannel, fetchIceServers, mintRoom } from './signaling';
-import type { WireSignal } from './signaling';
+import type { WireSignal } from '../types';
 import { TransferSession } from './transfer';
 import type { TransferEvents } from './transfer';
 
@@ -102,15 +102,25 @@ export class P2PManager {
 
   private async handleOffer(sdp: RTCSessionDescriptionInit): Promise<void> {
     if (!this.pc) return;
-    await this.pc.setRemoteDescription(sdp);
-    const answer = await this.pc.createAnswer();
-    await this.pc.setLocalDescription(answer);
-    this.signaling.send({ type: 'answer', sdp: answer });
+    try {
+      await this.pc.setRemoteDescription(sdp);
+      const answer = await this.pc.createAnswer();
+      await this.pc.setLocalDescription(answer);
+      this.signaling.send({ type: 'answer', sdp: answer });
+    } catch (err) {
+      console.error('[RTC] could not answer the offer:', err);
+      this.events.onError('Could not establish the connection');
+    }
   }
 
   private async handleAnswer(sdp: RTCSessionDescriptionInit): Promise<void> {
     if (!this.pc) return;
-    await this.pc.setRemoteDescription(sdp);
+    try {
+      await this.pc.setRemoteDescription(sdp);
+    } catch (err) {
+      console.error('[RTC] could not apply the answer:', err);
+      this.events.onError('Could not establish the connection');
+    }
   }
 
   // ─── Peer connection + data channel ─────────────────────────────────────
@@ -135,7 +145,10 @@ export class P2PManager {
   }
 
   private attachDataChannel(dc: RTCDataChannel): void {
-    this.transfer = new TransferSession(dc, this.events);
+    this.transfer = new TransferSession(dc, {
+      ...this.events,
+      onProtocolError: (message) => this.events.onError(message),
+    });
     dc.onopen = () => {
       if (this.role === 'sender') this.events.onReceiverConnected?.();
       else this.events.onConnected();

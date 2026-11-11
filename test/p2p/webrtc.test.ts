@@ -310,3 +310,47 @@ describe('p2p/webrtc — P2PManager setup', () => {
     expect(lastChannel().close).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('p2p/webrtc — hostile signaling input', () => {
+  beforeEach(() => {
+    hoisted.channels.length = 0;
+    hoisted.fetchIceServers.mockReset();
+    hoisted.mintRoom.mockReset();
+    installPeerConnection();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('surfaces an error instead of crashing when the offer cannot be applied', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const events = makeEvents();
+    await joinReceiver(events);
+    const pc = lastPeerConnection();
+    pc.setRemoteDescription.mockRejectedValueOnce(new Error('bad sdp'));
+
+    signal({ type: 'offer', sdp: { type: 'offer', sdp: 'remote-offer' } });
+
+    await vi.waitFor(() => {
+      expect(events.onError).toHaveBeenCalledWith('Could not establish the connection');
+    });
+    expect(errorSpy).toHaveBeenCalled();
+  });
+
+  it('surfaces an error when the answer cannot be applied', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const events = makeEvents();
+    await initializeSender(events);
+    const pc = lastPeerConnection();
+    pc.setRemoteDescription.mockRejectedValueOnce(new Error('bad sdp'));
+
+    signal({ type: 'answer', sdp: { type: 'answer', sdp: 'remote-answer' } });
+
+    await vi.waitFor(() => {
+      expect(events.onError).toHaveBeenCalledWith('Could not establish the connection');
+    });
+    expect(errorSpy).toHaveBeenCalled();
+  });
+});

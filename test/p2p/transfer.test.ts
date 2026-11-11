@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TransferSession } from '@/lib/transfer';
+import {
+  Crc32,
+  MAX_FILES_PER_TRANSFER,
+  MAX_TEXT_BYTES,
+  MAX_TRANSFER_BYTES,
+} from '@/lib/protocol';
 import { FakeDataChannel, makeEvents } from './fakes';
 
 function setup() {
@@ -153,11 +159,11 @@ describe('p2p/transfer — receiving a file', () => {
         name: 'match.txt',
         size: 1,
         type: 'text/plain',
-        index: 99,
+        index: 5,
       }),
     );
     dc.emit(new Uint8Array([1]).buffer);
-    dc.emit(JSON.stringify({ kind: 'transfer-complete', fileIndex: 99 }));
+    dc.emit(JSON.stringify({ kind: 'transfer-complete', fileIndex: 5 }));
 
     expect(events.onFileComplete).toHaveBeenCalledWith(0, expect.any(File));
     expect(dc.sent.some((entry) => typeof entry === 'string' && entry.includes('"index":0'))).toBe(
@@ -247,7 +253,9 @@ describe('p2p/transfer — sender API', () => {
     expect(chunks[2]?.byteLength).toBe(2 * 1024);
 
     const last = sentJson(dc, dc.sent.length - 1);
-    expect(last).toEqual({ kind: 'transfer-complete', fileIndex: 0 });
+    expect(last.kind).toBe('transfer-complete');
+    expect(last.fileIndex).toBe(0);
+    expect(typeof last.crc).toBe('number');
     expect(events.onProgress).toHaveBeenCalledWith(100);
   });
 
@@ -345,5 +353,180 @@ describe('p2p/transfer — sender API', () => {
 
     expect(events.onTransferComplete).not.toHaveBeenCalled();
     expect(binaryChunks(dc)).toHaveLength(0);
+  });
+});
+
+describe('p2p/transfer — hardening against a hostile peer', () => {
+  it('ignores a control message with an unknown kind', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { dc, events } = setup();
+
+    dc.emit(JSON.stringify({ kind: 'drop-everything' }));
+
+    expect(warn).toHaveBeenCalled();
+    expect(events.onFileDescriptorsReceived).not.toHaveBeenCalled();
+    expect(events.onTextReceived).not.toHaveBeenCalled();
+  });
+
+  it('ignores a descriptors message whose files field is not an array', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { dc, events } = setup();
+
+    dc.emit(JSON.stringify({ kind: 'file-descriptors', files: 'not-an-array' }));
+
+    expect(events.onFileDescriptorsReceived).not.toHaveBeenCalled();
+  });
+
+  it('ignores metadata that announces a size above the transfer limit', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { dc, events } = setup();
+
+    dc.emit(
+      JSON.stringify({
+        kind: 'file-metadata',
+        name: 'huge.bin',
+        size: MAX_TRANSFER_BYTES + 1,
+        type: 'application/octet-stream',
+        index: 0,
+      }),
+    );
+    dc.emit(new ArrayBuffer(16));
+
+    expect(events.onProgress).not.toHaveBeenCalled();
+    expect(events.onFileComplete).not.toHaveBeenCalled();
+  });
+
+  it('drops the transfer when the peer sends more bytes than it announced', () => {
+    const { dc, events } = setup();
+
+    dc.emit(
+      JSON.stringify({
+        kind: 'file-metadata',
+        name: 'small.bin',
+        size: 4,
+        type: 'application/octet-stream',
+        index: 0,
+      }),
+    );
+    dc.emit(new ArrayBuffer(64));
+
+    expect(events.onProtocolError).toHaveBeenCalled();
+    dc.emit(JSON.stringify({ kind: 'transfer-complete', fileIndex: 0 }));
+    expect(events.onFileComplete).not.toHaveBeenCalled();
+  });
+
+  it('rejects a file whose checksum does not match', () => {
+    const { dc, events } = setup();
+
+    dc.emit(
+      JSON.stringify({
+        kind: 'file-descriptors',
+        files: [{ name: 'data.bin', size: 4, type: 'application/octet-stream', index: 0 }],
+      }),
+    );
+    dc.emit(
+      JSON.stringify({
+        kind: 'file-metadata',
+        name: 'data.bin',
+        size: 4,
+        type: 'application/octet-stream',
+        index: 0,
+      }),
+    );
+    dc.emit(new Uint8Array([1, 2, 3, 4]).buffer);
+    dc.emit(JSON.stringify({ kind: 'transfer-complete', fileIndex: 0, crc: 12345 }));
+
+    expect(events.onFileComplete).not.toHaveBeenCalled();
+    expect(events.onProtocolError).toHaveBeenCalled();
+  });
+
+  it('accepts a file whose checksum matches', () => {
+    const { dc, events } = setup();
+    const crc = new Crc32();
+    crc.update(new Uint8Array([1, 2, 3, 4]));
+
+    dc.emit(
+      JSON.stringify({
+        kind: 'file-descriptors',
+        files: [{ name: 'data.bin', size: 4, type: 'application/octet-stream', index: 0 }],
+      }),
+    );
+    dc.emit(
+      JSON.stringify({
+        kind: 'file-metadata',
+        name: 'data.bin',
+        size: 4,
+        type: 'application/octet-stream',
+        index: 0,
+      }),
+    );
+    dc.emit(new Uint8Array([1, 2, 3, 4]).buffer);
+    dc.emit(JSON.stringify({ kind: 'transfer-complete', fileIndex: 0, crc: crc.value }));
+
+    expect(events.onFileComplete).toHaveBeenCalledTimes(1);
+    expect(events.onProtocolError).not.toHaveBeenCalled();
+  });
+
+  it('truncates oversized text', () => {
+    const { dc, events } = setup();
+
+    dc.emit(JSON.stringify({ kind: 'text', text: 'a'.repeat(MAX_TEXT_BYTES + 100) }));
+
+    const received = events.onTextReceived.mock.calls[0]?.[0] as string;
+    expect(new TextEncoder().encode(received).byteLength).toBeLessThanOrEqual(MAX_TEXT_BYTES);
+  });
+
+  it('ignores a payload that is not binary data', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { dc, events } = setup();
+
+    dc.emit(
+      JSON.stringify({
+        kind: 'file-metadata',
+        name: 'data.bin',
+        size: 4,
+        type: 'application/octet-stream',
+        index: 0,
+      }),
+    );
+    dc.emit({ not: 'binary' });
+
+    expect(warn).toHaveBeenCalled();
+    expect(events.onProgress).not.toHaveBeenCalled();
+  });
+
+  it('refuses to announce more files than the protocol allows', () => {
+    const { dc, session, events } = setup();
+    const files = Array.from(
+      { length: MAX_FILES_PER_TRANSFER + 1 },
+      (_, i) => new File(['x'], `f${i}.txt`),
+    );
+
+    session.sendMeta(files);
+
+    expect(dc.sent).toHaveLength(0);
+    expect(events.onProtocolError).toHaveBeenCalled();
+  });
+
+  it('refuses to send a file larger than the transfer limit', () => {
+    const { dc, session, events } = setup();
+    const file = new File(['x'], 'huge.bin');
+    Object.defineProperty(file, 'size', { value: MAX_TRANSFER_BYTES + 1 });
+
+    session.sendMeta([file]);
+
+    expect(dc.sent).toHaveLength(0);
+    expect(events.onProtocolError).toHaveBeenCalled();
+  });
+
+  it('ignores a file request for an index that was never announced', () => {
+    const { dc, session, events } = setup();
+    session.sendMeta([new File(['abc'], 'a.txt', { type: 'text/plain' })]);
+    dc.sent = [];
+
+    session.handleFileRequest(7);
+
+    expect(dc.sent).toHaveLength(0);
+    expect(events.onTransferComplete).not.toHaveBeenCalled();
   });
 });

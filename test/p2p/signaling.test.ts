@@ -163,3 +163,67 @@ describe('p2p/signaling — SignalingChannel', () => {
     expect(callbacks.onClose).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('p2p/signaling — hostile frames and responses', () => {
+  beforeEach(() => {
+    installWebSocket();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  async function openChannel() {
+    const callbacks = makeCallbacks();
+    const channel = new SignalingChannel(callbacks);
+    const promise = channel.open('ABC123', 'sender');
+    const socket = FakeWebSocket.instances.at(-1);
+    if (!socket) throw new Error('WebSocket was not created');
+    socket.triggerOpen();
+    await promise;
+    return { callbacks, socket };
+  }
+
+  it('ignores a frame that is not text', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { callbacks, socket } = await openChannel();
+
+    socket.onmessage?.({ data: 42 } as unknown as MessageEvent);
+
+    expect(warn).toHaveBeenCalled();
+    expect(callbacks.onMessage).not.toHaveBeenCalled();
+  });
+
+  it('ignores a frame with an unexpected shape', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { callbacks, socket } = await openChannel();
+
+    socket.triggerMessage(JSON.stringify({ type: 'offer' }));
+    socket.triggerMessage(JSON.stringify({ type: 'hello', role: 'observer' }));
+
+    expect(warn).toHaveBeenCalled();
+    expect(callbacks.onMessage).not.toHaveBeenCalled();
+  });
+
+  it('falls back to STUN when the worker returns a malformed payload', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ iceServers: 'stun' }), { status: 200 })),
+    );
+
+    const servers = await fetchIceServers();
+
+    expect(servers).toHaveLength(2);
+    expect(servers[0]?.urls).toBe('stun:stun.l.google.com:19302');
+  });
+
+  it('throws when the worker returns a malformed room id', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ roomId: 'nope' }), { status: 200 })),
+    );
+
+    await expect(mintRoom()).rejects.toThrow('Invalid room response');
+  });
+});

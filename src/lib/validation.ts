@@ -3,7 +3,12 @@
  * Pure functions — no React imports.
  */
 
-export const MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024; // 2 GiB
+/**
+ * Hard ceiling for a single file.
+ * The receiver assembles files in memory, so the limit is deliberately
+ * conservative — a 256 MiB file peaks at roughly twice that in RAM.
+ */
+export const MAX_FILE_SIZE = 256 * 1024 * 1024; // 256 MiB
 
 const ALLOWED_MIME_PREFIXES = [
   'image/',
@@ -86,6 +91,6 @@ export function sanitizeFilename(name: string): string {
 }
 
 function formatMaxSize(): string {
-  const gb = MAX_FILE_SIZE / (1024 * 1024 * 1024);
-  return `${gb} GiB`;
+  const mb = Math.round(MAX_FILE_SIZE / (1024 * 1024));
+  return `${mb} MiB`;
 }

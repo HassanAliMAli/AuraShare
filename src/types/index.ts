@@ -26,5 +26,14 @@ export type SignalingMessage =
   | { kind: 'file-metadata'; name: string; size: number; type: string; index: number }
   | { kind: 'file-request'; index: number }
   | { kind: 'file-acknowledged'; index: number }
-  | { kind: 'transfer-complete'; fileIndex: number }
+  | { kind: 'transfer-complete'; fileIndex: number; crc?: number }
   | { kind: 'text'; text: string };
+
+/** Discriminated union of every frame exchanged over the signaling socket. */
+export type WireSignal =
+  | { type: 'hello'; role: 'sender' | 'receiver' }
+  | { type: 'peer-present' }
+  | { type: 'peer-left' }
+  | { type: 'offer'; sdp: RTCSessionDescriptionInit }
+  | { type: 'answer'; sdp: RTCSessionDescriptionInit }
+  | { type: 'ice'; candidate: RTCIceCandidateInit };

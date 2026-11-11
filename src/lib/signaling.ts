@@ -1,15 +1,15 @@
 /**
  * Signaling transport: WebSocket relay to the RoomDO + ICE/room helpers.
  * Exchanges SDP offer/answer and trickle ICE candidates between the two peers.
+ *
+ * Frames arrive from the peer through the Worker relay, so every payload is
+ * validated before it reaches the WebRTC layer.
  */
 
-export type WireSignal =
-  | { type: 'hello'; role: 'sender' | 'receiver' }
-  | { type: 'peer-present' }
-  | { type: 'peer-left' }
-  | { type: 'offer'; sdp: RTCSessionDescriptionInit }
-  | { type: 'answer'; sdp: RTCSessionDescriptionInit }
-  | { type: 'ice'; candidate: RTCIceCandidateInit };
+import type { WireSignal } from '../types';
+import { isIceServerList, isRoomResponse, parseWireSignal } from './protocol';
+
+export type { WireSignal } from '../types';
 
 const DEFAULT_ICE: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
@@ -21,8 +21,8 @@ export async function fetchIceServers(): Promise<RTCIceServer[]> {
   try {
     const res = await fetch('/api/ice-servers');
     if (res.ok) {
-      const data = (await res.json()) as { iceServers?: RTCIceServer[] };
-      if (data.iceServers && data.iceServers.length > 0) return data.iceServers;
+      const data: unknown = await res.json();
+      if (isIceServerList(data) && data.iceServers.length > 0) return data.iceServers;
     }
   } catch (err) {
     console.warn('[RTC] ice-servers fetch failed, using STUN defaults:', err);
@@ -34,7 +34,8 @@ export async function fetchIceServers(): Promise<RTCIceServer[]> {
 export async function mintRoom(): Promise<string> {
   const res = await fetch('/api/room', { method: 'POST' });
   if (!res.ok) throw new Error('Failed to mint room');
-  const data = (await res.json()) as { roomId: string };
+  const data: unknown = await res.json();
+  if (!isRoomResponse(data)) throw new Error('Invalid room response');
   return data.roomId;
 }
 
@@ -64,11 +65,23 @@ export class SignalingChannel {
         resolve();
       };
       ws.onmessage = (e) => {
+        if (typeof e.data !== 'string') {
+          console.warn('[RTC] ignored non-text signaling frame');
+          return;
+        }
+        let parsed: unknown;
         try {
-          this.cb.onMessage(JSON.parse(e.data as string) as WireSignal);
+          parsed = JSON.parse(e.data);
         } catch (err) {
           console.warn('[RTC] bad signaling message:', err);
+          return;
         }
+        const msg = parseWireSignal(parsed);
+        if (!msg) {
+          console.warn('[RTC] rejected signaling message with an unexpected shape');
+          return;
+        }
+        this.cb.onMessage(msg);
       };
       ws.onerror = () => {
         this.cb.onError();

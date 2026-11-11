@@ -152,6 +152,7 @@ export function makeEvents() {
     onDisconnected: vi.fn(),
     onReceiverConnected: vi.fn(),
     onError: vi.fn(),
+    onProtocolError: vi.fn(),
   } satisfies P2PEvents;
 }
 

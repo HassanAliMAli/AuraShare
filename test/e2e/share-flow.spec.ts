@@ -1,0 +1,81 @@
+import { expect, test } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import {
+  expectPeerConnected,
+  joinRoom,
+  openApp,
+  shareFile,
+  shareText,
+} from './helpers';
+
+/**
+ * Full user flows over the real stack: two browser contexts, a live Wrangler
+ * Durable Object signaling relay, and a genuine WebRTC data channel.
+ *
+ * Every test in this file exercises one peer flow end to end.
+ */
+
+test.describe('AuraShare peer-to-peer transfer', () => {
+  test('text payload reaches the receiver intact', async ({ browser }) => {
+    const sender = await openApp(browser);
+    const receiver = await openApp(browser);
+
+    const payload = 'live e2e hello — 宇宙 ✨';
+    const code = await shareText(sender, payload);
+
+    await joinRoom(receiver, code);
+
+    await expectPeerConnected(sender);
+    await expect(receiver.getByText('Harmony Achieved')).toBeVisible();
+    await expect(receiver.getByText(`"${payload}"`)).toBeVisible();
+  });
+
+  test('file payload is received and downloaded byte-identical', async ({ browser }) => {
+    const sender = await openApp(browser);
+    const receiver = await openApp(browser);
+
+    // Resolve against the repo root so the spec does not depend on the cwd.
+    const source = path.resolve(import.meta.dirname, '../../README.md');
+    const expected = await readFile(source);
+
+    const code = await shareFile(sender, source);
+
+    await joinRoom(receiver, code);
+
+    await expectPeerConnected(sender);
+    await expect(receiver.getByText('1 file ready')).toBeVisible();
+    await expect(receiver.getByText('README.md').first()).toBeVisible();
+
+    await receiver.getByRole('checkbox', { name: 'Select README.md' }).check();
+    await receiver.getByRole('button', { name: /Download \(1\)/ }).click();
+
+    const download = await receiver.waitForEvent('download');
+    expect(download.suggestedFilename()).toBe('README.md');
+
+    const stream = await download.createReadStream();
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream) chunks.push(chunk as Buffer);
+    const received = Buffer.concat(chunks);
+
+    expect(received.equals(expected)).toBe(true);
+  });
+
+  test('an unknown code ends in a recoverable error', async ({ browser }) => {
+    const receiver = await openApp(browser);
+
+    await joinRoom(receiver, 'ZZZZZZ');
+
+    // The app waits out its 30s connect timeout before surfacing the failure.
+    await expect(receiver.getByText('Cosmos Disrupted')).toBeVisible({ timeout: 45_000 });
+    await expect(receiver.getByText('Try Re-Alignment')).toBeVisible();
+
+    // "Try Re-Alignment" must bring the peer back to a usable idle state.
+    await receiver.getByRole('button', { name: 'Try Re-Alignment' }).click();
+    await expect(receiver.getByRole('textbox', { name: 'Text to share' })).toBeVisible();
+
+    // ...and the peer can start a fresh receiver session from there.
+    await receiver.getByRole('button', { name: 'Receive' }).click();
+    await expect(receiver.getByRole('textbox', { name: /cosmic code/i })).toBeVisible();
+  });
+});

@@ -15,7 +15,7 @@ Peer-to-peer file sharing with an ambient, organic UI. No servers, no limits, en
 | Signaling | Cloudflare Durable Objects (Hibernatable WebSockets) |
 | Icons | lucide-react |
 | Fonts | @fontsource (self-hosted, no CDN) |
-| Tests | Vitest + React Testing Library |
+| Tests | Vitest + React Testing Library (unit) · Playwright (E2E) |
 
 ## Architecture
 
@@ -64,6 +64,7 @@ npm run lint             # ESLint
 npm run typecheck        # tsc --build (no emit)
 npm run test             # Vitest unit tests
 npm run test:coverage    # Vitest with coverage report
+npm run test:e2e         # Playwright end-to-end tests (test/e2e)
 npm run preview          # Preview production build locally
 ```
 
@@ -85,4 +86,17 @@ Before committing, run the full check suite:
 npm run lint
 npm run typecheck
 npm run test
+npm run test:e2e
 ```
+
+### End-to-end tests
+
+`test/e2e/` drives the real stack with Playwright: two browser contexts, a live
+Wrangler Durable Object signaling relay, and a genuine WebRTC data channel.
+Covered flows are text share, file share (download verified byte-identical),
+and the unknown-code error path.
+
+The suite starts both servers itself (Vite on `:5173`, Wrangler on `:8787`) via
+`webServer` in `playwright.config.ts`, so `npm run test:e2e` is a one-liner.
+It drives the system Google Chrome (`channel: 'chrome'`) instead of downloading
+a bundled Chromium.

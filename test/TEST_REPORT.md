@@ -7,6 +7,8 @@
 
 **Post-fix status:** PASS — the three failures below are fixed; `npm test` now reports 31 files / 308 tests passing. The failure analysis is preserved for the record.
 
+**Automated E2E:** PASS — `npm run test:e2e` (Playwright, `test/e2e/`) reports 3 passed covering text share, file share (byte-identical download), and the unknown-code error path.
+
 ## Block Results
 
 | Block | Result | Tests |
@@ -62,3 +64,21 @@ npx vitest run test/<block>
 - **Worker startup blocker:** `npm run dev:worker` fail hota hai — `wrangler.toml:3` compatibility date `2026-07-28` installed workerd ke max `2026-07-02` se aage hai. Workaround: `npm run dev:worker -- --compatibility-date 2026-07-02`.
 - **Console error:** `/app` text mode par `<circle> attribute r: Expected length, "undefined"` aata hai; `motion.circle` par initial `r` missing hai (`src/components/AuraTextarea.tsx:35`).
 - **Bad-input UX:** 6-character invalid code jaise `AB!12Z` "Establish Link" enable karta hai, lekin submit par kuch nahi hota — koi error feedback nahi (`src/stores/AppProvider.tsx:91`).
+
+## Status of the live findings
+
+- **Dev reload blocker** → **Fixed.** `vite.config.ts` ab `server.watch.ignored: ['**/.wrangler/**']` set karta hai, to Wrangler ke `.wrangler/state/*.sqlite` writes dev server ka watcher trigger nahi karte. Reproduce nahi hua aur ab structurally block hai.
+- **Worker startup blocker** → **Resolved.** wrangler `4.160.1` (dependency refresh ke baad) `2026-07-28` compatibility date support karta hai; `npm run dev:worker` seedha chalta hai, workaround ki zaroorat nahi.
+- **Console error** → **Fixed.** Commit `3b8b248` ne aura circle ko initial radius diya; `/app` par ab console clean hai.
+
+## Automated E2E (`test/e2e/`)
+
+Playwright suite — do browser contexts, live Wrangler Durable Object signaling relay, asli WebRTC data channel. `npm run test:e2e` dono servers khud start karta hai (Vite `:5173`, Wrangler `:8787`).
+
+| Flow | Result |
+|---|---|
+| Text share | PASS — payload receiver tak intact pahuncha |
+| File share | PASS — `README.md` download hua, byte-identical |
+| Unknown code | PASS — 30s timeout → "Cosmos Disrupted" → "Try Re-Alignment" se idle state |
+
+CI me `Playwright E2E` job add kiya gaya hai (`.github/workflows/ci.yml`).

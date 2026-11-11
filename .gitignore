@@ -10,6 +10,12 @@ lerna-debug.log*
 # Test coverage output (vitest --coverage)
 coverage/
 
+# Playwright output (test/e2e)
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+
 node_modules
 dist
 dist-ssr

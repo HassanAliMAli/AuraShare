@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import worker, { RoomDO, generateRoomCode } from '../../worker/index';
+import worker, { RoomDO, generateRoomCode } from '../../backend/index';
 import { isRoomCode, ROOM_CODE_ALPHABET } from '@/lib/roomCode';
 
 type WorkerEnv = Parameters<typeof worker.fetch>[1];
@@ -175,7 +175,7 @@ describe('worker/worker — TURN credential generation', () => {
     );
     vi.stubGlobal('fetch', fetchSpy);
 
-    const fresh = (await import('../../worker/index')).default;
+    const fresh = (await import('../../backend/index')).default;
     const response = await fresh.fetch(
       new Request('http://local/api/ice-servers'),
       env({ TURN_KEY_ID: 'key', TURN_KEY_API_TOKEN: 'token' }),
@@ -196,7 +196,7 @@ describe('worker/worker — TURN credential generation', () => {
     );
     vi.stubGlobal('fetch', fetchSpy);
 
-    const fresh = (await import('../../worker/index')).default;
+    const fresh = (await import('../../backend/index')).default;
     const roomEnv = env({ TURN_KEY_ID: 'key', TURN_KEY_API_TOKEN: 'token' });
     await fresh.fetch(new Request('http://local/api/ice-servers'), roomEnv);
     const second = await fresh.fetch(new Request('http://local/api/ice-servers'), roomEnv);
@@ -210,7 +210,7 @@ describe('worker/worker — TURN credential generation', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     vi.stubGlobal('fetch', vi.fn(async () => new Response('nope', { status: 500 })));
 
-    const fresh = (await import('../../worker/index')).default;
+    const fresh = (await import('../../backend/index')).default;
     const response = await fresh.fetch(
       new Request('http://local/api/ice-servers'),
       env({ TURN_KEY_ID: 'key', TURN_KEY_API_TOKEN: 'token' }),
@@ -227,7 +227,7 @@ describe('worker/worker — TURN credential generation', () => {
       vi.fn(async () => new Response(JSON.stringify({ iceServers: [] }), { status: 200 })),
     );
 
-    const fresh = (await import('../../worker/index')).default;
+    const fresh = (await import('../../backend/index')).default;
     const response = await fresh.fetch(
       new Request('http://local/api/ice-servers'),
       env({ TURN_KEY_ID: 'key', TURN_KEY_API_TOKEN: 'token' }),
@@ -246,7 +246,7 @@ describe('worker/worker — TURN credential generation', () => {
       }),
     );
 
-    const fresh = (await import('../../worker/index')).default;
+    const fresh = (await import('../../backend/index')).default;
     const response = await fresh.fetch(
       new Request('http://local/api/ice-servers'),
       env({ TURN_KEY_ID: 'key', TURN_KEY_API_TOKEN: 'token' }),

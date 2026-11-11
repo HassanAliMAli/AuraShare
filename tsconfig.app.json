@@ -9,7 +9,7 @@
     "ignoreDeprecations": "6.0",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./frontend/src/*"]
     },
 
     /* Bundler mode */
@@ -29,5 +29,5 @@
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  "include": ["frontend/src"]
 }

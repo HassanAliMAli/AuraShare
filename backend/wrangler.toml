@@ -1,11 +1,13 @@
 name = "aurashare"
-main = "worker/index.ts"
+# Paths in this file are relative to backend/ — the directory holding it.
+main = "index.ts"
 compatibility_date = "2026-07-28"
 
-# Static assets: Vite build output served directly by the Worker platform.
+# Static assets: the Vite build output served directly by the Worker platform.
+# The frontend builds to <repo>/dist (frontend/vite.config.ts → build.outDir).
 # SPA fallback handles deep-link routing (no _redirects needed).
 [assets]
-directory = "./dist"
+directory = "../dist"
 not_found_handling = "single-page-application"
 
 # Durable Object: one RoomDO instance per room code (real-time signaling relay).

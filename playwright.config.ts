@@ -49,7 +49,7 @@ export default defineConfig({
       stderr: 'pipe',
     },
     {
-      command: 'npx wrangler dev --port 8787 --ip 127.0.0.1',
+      command: 'npx wrangler dev -c backend/wrangler.toml --port 8787 --ip 127.0.0.1',
       url: 'http://127.0.0.1:8787/api/ice-servers',
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,

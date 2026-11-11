@@ -26,8 +26,17 @@ Peer-to-peer file sharing with an ambient, organic UI. No servers, no limits, en
 ```
 
 Routing uses a tiny zero-dependency pushState/popstate router in
-`src/lib/router.ts` (no react-router). Deep links already work because the
+`frontend/src/lib/router.ts` (no react-router). Deep links already work because the
 Worker serves the SPA with `not_found_handling = "single-page-application"`.
+
+### Repository layout
+
+```
+frontend/   React app — components, hooks, stores, lib, types, styles, Vite config
+backend/    Cloudflare Worker — Durable Object relay, TURN credentials, wrangler.toml
+test/       Every test, mirrored by block (lib, p2p, features, landing, e2e, …)
+docs/       API contract, test report, audits, redesign plan
+```
 
 ```
 Browser A (Sender)                         Browser B (Receiver)
@@ -93,7 +102,7 @@ npm run test:e2e
 ```
 
 CI runs the same gates and additionally enforces the coverage thresholds
-(`npm run test:coverage`, 80% over all of `src/`) and `npm audit
+(`npm run test:coverage`, 80% over all of `frontend/src/`) and `npm audit
 --audit-level=high`. Both the coverage report and the Playwright report are
 published as workflow artifacts.
 

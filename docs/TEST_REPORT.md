@@ -2,16 +2,23 @@
 
 **Date:** 2026-11-12
 **Verdict:** FAIL (original run — see post-fix status)
-**New suites:** `test/` (existing `src/**/*.test.*` untouched)
+**New suites:** `test/` (the 13 co-located `src/**/*.test.*` files were folded into the block suites during the restructure; every test now lives under `test/`)
 **Build:** PASS (`npm run build`)
 
 **Post-fix status:** PASS — the three failures below are fixed; `npm test` now reports 32 files / 329 tests passing. The failure analysis is preserved for the record.
 
 **Automated E2E:** PASS — `npm run test:e2e` (Playwright, `test/e2e/`) reports 4 passed covering text share, file share (byte-identical download), the unknown-code error path, and the malformed-code path.
 
-**Coverage:** PASS — `npm run test:coverage` enforces 80% thresholds over all of `src/` (measured 94.09% statements, 84.64% branches, 91.34% functions, 95.52% lines).
+**Coverage:** PASS — `npm run test:coverage` enforces 80% thresholds over all of `frontend/src/` (measured 94.09% statements, 84.64% branches, 91.34% functions, 95.52% lines).
 
 **Audit:** PASS — `npm audit --audit-level=high` exits 0 (13 advisories, all moderate).
+
+> **Restructure note (2026-11-12).** The repo moved to `frontend/ backend/ docs/ test/`. The
+> failure analysis below is the original record and its paths (`src/…`) are as they were at
+> the time of the original run; today the same files live under `frontend/src/…`.
+> Current numbers after the restructure: **19 files / 279 tests** passing,
+> coverage **93.97% statements / 84.64% branches / 90.86% functions / 95.38% lines**,
+> E2E **4 passed**.
 
 ## Block Results
 

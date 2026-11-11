@@ -13,11 +13,13 @@ jobs:
     name: Lint + Typecheck + Build + Test + Audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          # Wrangler 4 requires Node >= 22.12.0, and Vite 8 requires
+          # ^20.19.0 || >=22.12.0 — 22 is the floor that satisfies both.
+          node-version: 22
           cache: npm
 
       - run: npm ci
@@ -43,7 +45,7 @@ jobs:
 
       - name: Upload coverage report
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: coverage/
@@ -53,11 +55,12 @@ jobs:
     name: Playwright E2E
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: 20
+          # Wrangler 4 requires Node >= 22.12.0 — the e2e job starts Wrangler.
+          node-version: 22
           cache: npm
 
       - run: npm ci
@@ -79,7 +82,7 @@ jobs:
 
       - name: Upload Playwright report
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report
           path: playwright-report/

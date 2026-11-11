@@ -5,7 +5,7 @@
 **New suites:** `test/` (existing `src/**/*.test.*` untouched)
 **Build:** PASS (`npm run build`)
 
-**Post-fix status:** PASS — the three failures below are fixed; `npm test` now reports 30 files / 266 tests passing. The failure analysis is preserved for the record.
+**Post-fix status:** PASS — the three failures below are fixed; `npm test` now reports 31 files / 308 tests passing. The failure analysis is preserved for the record.
 
 ## Block Results
 

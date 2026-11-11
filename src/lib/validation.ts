@@ -1,5 +1,5 @@
 /**
- * File security validation + sanitization (AGENTS.md §12).
+ * File security validation + sanitization.
  * Pure functions — no React imports.
  */
 
@@ -72,7 +72,7 @@ export function validateFileList(files: FileList | File[]): {
 }
 
 /**
- * Sanitize a filename for safe download (AGENTS.md §12).
+ * Sanitize a filename for safe download.
  * Strips path separators, control chars, and non-safe characters.
  * Caps at 255 chars.
  */

@@ -1,7 +1,7 @@
 /**
  * Shared Framer Motion variants + animation constants.
- * Defined outside components so variant objects are not recreated per render
- * (AGENTS.md §4.2). The golden easing curve is the default for UI transitions.
+ * Defined outside components so variant objects are not recreated per render.
+ * The golden easing curve is the default for UI transitions.
  */
 
 import type { Transition } from 'framer-motion';

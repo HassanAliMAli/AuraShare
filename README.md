@@ -7,7 +7,7 @@ Peer-to-peer file sharing with an ambient, organic UI. No servers, no limits, en
 | Layer | Technology |
 |---|---|
 | Framework | React 19 |
-| Language | TypeScript 5 (strict mode) |
+| Language | TypeScript 6 (strict mode) |
 | Build | Vite 8 |
 | Styling | Tailwind CSS 4 (`@theme` tokens) |
 | Animation | Motion 12 (Framer Motion) |
@@ -69,12 +69,20 @@ npm run preview          # Preview production build locally
 
 ## Deploy
 
-See [DEPLOYMENT.md](./DEPLOYMENT.md) for the full Cloudflare deployment guide including TURN configuration.
+Authenticate Wrangler once with `npx wrangler login`, then deploy the Worker and the built assets:
 
 ```bash
 npm run deploy
 ```
 
-## Project Rules
+TURN credentials are optional and configured with `wrangler secret` — see the comments in `wrangler.toml`.
 
-All contributors (human or AI) must follow the rules in [AGENTS.md](./AGENTS.md) — the project's ground-truth contract covering stack, architecture, design system, motion, security, and quality standards.
+## Quality
+
+Before committing, run the full check suite:
+
+```bash
+npm run lint
+npm run typecheck
+npm run test
+```

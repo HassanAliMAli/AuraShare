@@ -7,6 +7,9 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Test coverage output (vitest --coverage)
+coverage/
+
 node_modules
 dist
 dist-ssr
@@ -24,4 +27,8 @@ dist-ssr
 *.sw?
 
 # Local tool state
+.claude/
+.serena/
 .commandcode/
+.wrangler/
+.playwright-mcp/

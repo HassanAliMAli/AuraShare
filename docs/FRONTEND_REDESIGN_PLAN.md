@@ -152,13 +152,15 @@ test/
 wrangler.toml       ← stays at the root (project deployment descriptor)
 ```
 
-> **`wrangler.toml` stays at the repository root** — the one deliberate exception to
-> "server configs live in backend/". It is the project-level *deployment descriptor*:
-> it binds the Worker (`backend/index.ts`) **and** the SPA assets that the frontend
-> build emits to `dist/`. The Cloudflare Workers Builds integration runs
-> `npx wrangler deploy` from the repository root, and wrangler only searches the
-> working directory and its ancestors — it cannot discover a config inside a
-> subdirectory. All server *code* lives in `backend/` exactly as the standard requires.
+> **`wrangler.toml` stays at the repository root** — an approved exception to "server
+> configs live in backend/". It is the project-level *deployment descriptor*: it binds
+> the Worker (`backend/index.ts`) **and** the SPA assets that the frontend build emits
+> to `dist/`. The Cloudflare Workers Builds integration runs `npx wrangler deploy` from
+> the repository root, and wrangler only searches the working directory and its
+> ancestors — it cannot discover a config inside a subdirectory, so hiding it in
+> `backend/` breaks the deploy pipeline. All server *code* lives in `backend/` exactly
+> as the standard requires. **Approved by the maintainer, 2026-11-12**, and recorded in
+> `backend-standards` so it is not moved back.
 
 ---
 

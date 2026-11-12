@@ -98,6 +98,19 @@
 - **Motion details:** `src/lib/motion.ts:130` animates `top` (layout property) instead of `y`; a few inline `animate={{...}}` objects bypass the variant pool (`AuraDropzone.tsx:144`, `ReceiverFileList.tsx:59,77`); persistent blobs have no `will-change: transform`; reduced motion is handled per-component but not globally for Framer.
 - **Component hygiene:** `SharingView.tsx` hosts `ReceiveCodeForm` + `SharingView`; `SuccessView.tsx` hosts `SuccessView` + `ErrorView`; `Section.tsx` hosts `SectionHeader` + `Section`. `WhyAuraShare` hardcodes its subtitle in JSX and uses template-string classes instead of `cn()`; `AuraTextarea` uses template-string classes. `AuraDropzone` never clears stale validation errors and silently ignores dropped folders. `AuraTextarea` silently truncates text over 1 MiB. The test report notes a dev-only `<circle r="undefined">` warning at `AuraTextarea.tsx:35`; not reproduced in the production preview.
 - **AI-slop tells:** the page uses a centered hero with two CTAs, three equal icon cards (twice), indigo/teal gradients, heavy glassmorphism/backdrop blur, and a pulsing dot with no state. These are intentional in the "Liquid Cloud" contract, but they are exactly the generic patterns the frontend standard asks to avoid. Keep only if they are a deliberate brand decision.
+
+  > **Resolved 2026-11-12 (PR #5).** The "Liquid Cloud" look was not a deliberate brand
+  > decision — it was the default output of an un-guided generator, so the frontend was
+  > rebuilt from scratch under a new, explicitly chosen direction ("Field Instrument":
+  > Archivo + IBM Plex Sans + JetBrains Mono, one amber accent on a warm neutral base,
+  > hairline rules instead of elevation). The centered hero is now a left-aligned split
+  > with a single CTA; the two three-icon-card rows are now a numbered protocol sheet
+  > and a real comparison table; the gradient blob logo, the glass panels, the glow
+  > shadows, the pulsing dot and the cosmic copy are all gone. Measured in the rendered
+  > DOM: **0** `backdrop-blur`, **0** glow shadows, **0** gradients, **0**
+  > `rounded-2xl`/`rounded-3xl`, and **0** elements with text under 12px. The palette is
+  > contrast-validated against WCAG AA on every surface, enforced by
+  > `test/lib/tokens.test.ts`. See `docs/FRONTEND_REDESIGN_PLAN.md`.
 - **Copy mismatch:** `SharingView` says "6-digit" twice, but room codes are alphanumeric (Crockford). `landingCopy.ts` correctly says "6-character".
 - **Prior docs:** `test/TEST_REPORT.md` is a report inside `test/`; move it to `docs/`. The two old audit documents in `docs/` should be archived or replaced by this one.
 

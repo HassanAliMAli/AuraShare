@@ -75,6 +75,11 @@ export const HOW_IT_WORKS = {
 /**
  * AuraShare against the tools people already use. Every cell is a verifiable
  * property of the named product, not a claim about AuraShare.
+ *
+ * These third-party limits change. WeTransfer's free tier was 2 GB and is now
+ * 3 GB (wetransfer.com/resources/free-file-transfer/wetransfer-file-size-limit,
+ * checked 2026-11-12). Re-verify every cell before release, and keep the
+ * "Free tier" wording for products that also sell a paid plan.
  */
 export const COMPARISON = {
   eyebrow: 'Comparison',
@@ -92,7 +97,7 @@ export const COMPARISON = {
     },
     {
       label: 'Max file size',
-      values: ['2 GiB', '2 GB', '5 TB', 'Limited by device'],
+      values: ['2 GiB', '3 GB', '5 TB', 'Limited by device'],
     },
     {
       label: 'Cost',

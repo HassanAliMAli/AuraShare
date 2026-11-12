@@ -70,10 +70,17 @@ jobs:
       - name: Build
         run: npm run build
 
-      # The suite drives the system Google Chrome (channel: 'chrome'), which the
-      # ubuntu runner images already ship — no browser download needed.
+      # The Chromium projects drive the system Google Chrome (channel: 'chrome'),
+      # which the ubuntu runner images already ship — no browser download needed.
       - name: Verify Chrome is available
         run: google-chrome --version
+
+      # The WebKit projects need Playwright's own WebKit build, plus the system
+      # libraries it links against (fontconfig, woff2, gstreamer, webp, ...).
+      # Without `--with-deps` the browser fails to start rather than failing a
+      # test, which is a much harder failure to read.
+      - name: Install WebKit
+        run: npx playwright install --with-deps webkit
 
       # Playwright starts the Vite dev server (:5173) and the Wrangler worker
       # (:8787, Durable Object signaling relay) itself via `webServer`.

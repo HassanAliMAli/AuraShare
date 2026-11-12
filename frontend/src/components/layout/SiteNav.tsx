@@ -19,7 +19,10 @@ export function SiteNav() {
           initial="hidden"
           animate="visible"
           onClick={actions.reset}
-          className="flex items-center gap-2.5"
+          // The negative margin keeps the visual position while the padding
+          // gives the control a 44px tap target — WCAG 2.2 sets 24px as the
+          // minimum, but a phone thumb wants the Apple HIG's 44pt.
+          className="flex items-center gap-2.5 py-2 -my-2"
           aria-label="AuraShare — start over"
         >
           <img src="/logo.svg" alt="" className="h-7 w-7" />
@@ -37,7 +40,7 @@ export function SiteNav() {
           <button
             type="button"
             onClick={actions.startReceive}
-            className="text-sm text-text-2 transition-colors hover:text-accent"
+            className="py-3 -my-3 text-sm text-text-2 transition-colors hover:text-accent"
           >
             Receive
           </button>

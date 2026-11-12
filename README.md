@@ -116,5 +116,48 @@ the unknown-code error path, and the malformed-code path.
 
 The suite starts both servers itself (Vite on `:5173`, Wrangler on `:8787`) via
 `webServer` in `playwright.config.ts`, so `npm run test:e2e` is a one-liner.
-It drives the system Google Chrome (`channel: 'chrome'`) instead of downloading
-a bundled Chromium.
+
+#### Browser matrix
+
+The suite runs against four configurations, because the design uses three
+things that engines disagree about — a variable-font width axis (`font-stretch`),
+`dvh` units, and a viewport-filling flex shell — and AuraShare is used from
+phones:
+
+| Project | Engine | Viewport |
+|---|---|---|
+| `chromium` | system Google Chrome | desktop |
+| `webkit` | Playwright's WebKit build | desktop |
+| `mobile-chromium` | system Google Chrome | Pixel 7 (touch) |
+| `mobile-webkit` | Playwright's WebKit build | iPhone 13 (touch) |
+
+Run one with `--project=mobile-webkit`, or all of them with the default
+`npm run test:e2e`.
+
+The Chromium projects use the system Chrome (`channel: 'chrome'`), which is
+already installed. **WebKit is Playwright's own build and has to be downloaded
+once:**
+
+```bash
+npx playwright install --with-deps webkit
+```
+
+CI does this automatically. On Linux it also needs the shared libraries
+WebKit links against (`libevent`, `libavif`, `libmanette`, `libyuv`, `libgav1`);
+`--with-deps` installs them.
+
+> **Running inside a snap-confined editor?** VS Code installed as a snap
+> exports `GIO_MODULE_DIR`, and the snap's GIO proxy modules carry an RPATH into
+> core20 — which breaks WebKit's network process with
+> `page.goto: WebKit encountered an internal error` on every navigation.
+> `playwright.config.ts` clears the variable for the WebKit projects, so the
+> suite works either way.
+
+#### Mobile layout checks
+
+`test/e2e/mobile-layout.spec.ts` runs only on the mobile projects (it skips
+itself on desktop) and asserts the three things a desktop-only matrix never
+checks: nothing overflows the viewport horizontally, no input is under 16px
+(iOS Safari zooms the page on focus below that), and every control meets the
+24×24px minimum of WCAG 2.2 SC 2.5.8.
+

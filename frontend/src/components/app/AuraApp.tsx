@@ -42,7 +42,7 @@ function AppShell() {
         <div className="relative flex w-full max-w-4xl items-center justify-center">
           <AnimatePresence mode="wait">
             {state.status === 'idle' && !state.isReceiving ? (
-              <ShareInputView key={state.shareMode} />
+              <ShareInputView />
             ) : state.status === 'idle' && state.isReceiving ? (
               <ReceiveCodeForm key="receive-form" />
             ) : state.status === 'connecting' ? (

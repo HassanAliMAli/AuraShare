@@ -1,8 +1,15 @@
 # AuraShare — Frontend Redesign & Restructure Plan
 
 **Date:** 2026-11-12
-**Status:** Proposed — awaiting approval
+**Status:** **Delivered** — PR #3 (this plan), PR #4 (restructure), PR #5 (redesign)
 **Scope:** Frontend only for PRs 1–2. PR 3 is backend and is listed for completeness.
+
+> **Outcome.** The redesign shipped as PR #5 with the "Field Instrument" direction
+> exactly as specified below: Archivo + IBM Plex Sans + JetBrains Mono, one amber
+> accent on a warm neutral base, the eight-step type scale, hairline rules instead
+> of elevation, and every banned layout replaced. Two silent, page-wide bugs
+> surfaced during the work and are now covered by regression tests — see
+> "Bugs found while building this" at the end of the document.
 **Standard:** `.opencode/skills/frontend-standards` (plus `backend-standards`, `testing-standards`)
 
 ---
@@ -341,3 +348,36 @@ structure lands.
 3. **PR 3** — `docs/api.md` → backend module split
 
 Each PR branches from `main`, opens a PR, waits for CI, and is merged only when green.
+
+
+---
+
+## Bugs found while building this
+
+Both were invisible to the test suite and only appeared when the rendered result
+was measured in a browser. They are recorded here because they are the kind of
+defect a design system has to defend against, not just a one-off fix.
+
+1. **Tailwind namespace collision.** A `--color-base` token made Tailwind v4
+   resolve `text-base` as a *colour* rule instead of a font-size (`.text-base`
+   resolved to `color: var(--color-base)`), which painted a button's label the
+   same colour as its own background. Tailwind checks the colour namespace for
+   an ambiguous `text-<name>` utility, so a colour token must never share a
+   name with a size token. The colour is now `--color-canvas`.
+
+2. **Rem basis.** `font-size: var(--text-base)` on `:root` moved the rem basis
+   from 16px to 14px, silently rescaling every rem-based size in the system
+   (Tailwind's spacing included). A body copy element was computing to
+   12.25px. The root font size now stays at `1rem`; the token is applied to
+   `body` instead.
+
+`test/lib/tokens.test.ts` now asserts both — and the guard tests were verified
+to fail when each bug is reintroduced.
+
+## A third defect, in the test suite
+
+The Playwright download test registered `waitForEvent('download')` *after* the
+click. Playwright does not buffer events, so a download that landed in that gap
+was lost, and the test waited out its full 90-second timeout for an event that
+had already fired. The previous UI was slow enough to hide the race; the
+redesigned one is not. The listener is now registered before the click.

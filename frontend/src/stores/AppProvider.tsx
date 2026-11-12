@@ -77,7 +77,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       mgr.initialize().then((code) => {
         dispatch({ type: 'SET_ROOM', roomId: code });
       }).catch(() => {
-        dispatch({ type: 'SET_ERROR', message: 'Alignment Failed' });
+        dispatch({ type: 'SET_ERROR', message: 'Could not open a room' });
       });
     },
 
@@ -125,7 +125,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }, CONNECT_TIMEOUT_MS);
 
       mgr.join(normalized).catch(() => {
-        dispatch({ type: 'SET_ERROR', message: 'Cosmic Link Broken' });
+        dispatch({ type: 'SET_ERROR', message: 'The peer disconnected' });
       });
     },
 

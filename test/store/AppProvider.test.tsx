@@ -207,7 +207,7 @@ describe('stores/AppProvider — lifecycle and actions', () => {
     hoisted.initializeRejects = true;
     fireEvent.click(screen.getByRole('button', { name: 'share' }));
 
-    expect(await screen.findByText('Alignment Failed')).toBeInTheDocument();
+    expect(await screen.findByText('Could not open a room')).toBeInTheDocument();
     expect(screen.getByTestId('status')).toHaveTextContent('error');
   });
 

@@ -1,12 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none">
-  <defs>
-    <linearGradient id="aura-grad" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#6c7cf8"/>
-      <stop offset="0.5" stop-color="#22d3a8"/>
-      <stop offset="1" stop-color="#f59e0b"/>
-    </linearGradient>
-  </defs>
-  <path d="M256 72c-28 0-54 12-72 32-8-2-16-4-24-4-44 0-80 36-80 80 0 8 2 16 4 24-20 18-32 44-32 72 0 44 36 80 80 80 8 0 16-2 24-4 18 20 44 32 72 32s54-12 72-32c8 2 16 4 24 4 44 0 80-36 80-80 0-8-2-16-4-24 20-18 32-44 32-72 0-44-36-80-80-80-8 0-16 2-24 4-18-20-44-32-72-32z" fill="url(#aura-grad)" fill-opacity="0.15"/>
-  <path d="M256 72c-28 0-54 12-72 32-8-2-16-4-24-4-44 0-80 36-80 80 0 8 2 16 4 24-20 18-32 44-32 72 0 44 36 80 80 80 8 0 16-2 24-4 18 20 44 32 72 32s54-12 72-32c8 2 16 4 24 4 44 0 80-36 80-80 0-8-2-16-4-24 20-18 32-44 32-72 0-44-36-80-80-80-8 0-16 2-24 4-18-20-44-32-72-32z" stroke="url(#aura-grad)" stroke-width="12"/>
-  <circle cx="256" cy="256" r="48" fill="url(#aura-grad)"/>
+  <!-- Two endpoints joined by one link: peer to peer.
+       Flat, single colour, no gradient, no blur, no opacity tricks. -->
+  <path d="M140 372 L372 140" stroke="#e8a33d" stroke-width="22" stroke-linecap="round" />
+  <rect x="76" y="308" width="128" height="128" rx="18" fill="#e8a33d" />
+  <rect x="308" y="76" width="128" height="128" rx="18" fill="#e8a33d" />
 </svg>

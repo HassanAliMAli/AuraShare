@@ -112,8 +112,8 @@ describe('app/app — routing shell', () => {
   it('lazy-loads the app shell at /app', async () => {
     await renderAppAt('/app');
     expect(await screen.findByRole('button', { name: 'Receive' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'text' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'files' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'text' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'files' })).toBeInTheDocument();
     expect(screen.getByLabelText('Text to share')).toBeInTheDocument();
   });
 
@@ -121,11 +121,11 @@ describe('app/app — routing shell', () => {
     const { user } = await renderAppAt('/app');
     await screen.findByLabelText('Text to share');
 
-    await user.click(screen.getByRole('button', { name: 'files' }));
+    await user.click(screen.getByRole('tab', { name: 'files' }));
     expect(screen.getByRole('button', { name: /drop files to share/i })).toBeInTheDocument();
     expect(screen.queryByLabelText('Text to share')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'text' }));
+    await user.click(screen.getByRole('tab', { name: 'text' }));
     expect(screen.getByLabelText('Text to share')).toBeInTheDocument();
   });
 });
@@ -152,10 +152,10 @@ describe('app/app — end-to-end text sharing flow', () => {
     await screen.findByLabelText('Text to share');
 
     await user.type(screen.getByLabelText('Text to share'), 'hello peer');
-    await user.click(screen.getByRole('button', { name: 'Share Aura' }));
+    await user.click(screen.getByRole('button', { name: 'Send text' }));
 
     expect(await screen.findByText('ABC123')).toBeInTheDocument();
-    expect(screen.getByText(/waiting for cosmic alignment/i)).toBeInTheDocument();
+    expect(screen.getByText(/Waiting for the other device/i)).toBeInTheDocument();
     expect(lastManager().initialize).toHaveBeenCalledTimes(1);
 
     act(() => lastManager().events.onReceiverConnected?.());
@@ -172,12 +172,12 @@ describe('app/app — end-to-end text sharing flow', () => {
     await screen.findByRole('button', { name: 'Receive' });
 
     await user.click(screen.getByRole('button', { name: 'Receive' }));
-    const input = screen.getByLabelText('6-character cosmic code');
+    const input = screen.getByLabelText('Six-character code');
     await user.type(input, 'abc123');
     expect(input).toHaveValue('ABC123');
 
-    await user.click(screen.getByRole('button', { name: 'Establish Link' }));
-    expect(screen.getByText('Establishing Link')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Establish connection' }));
+    expect(screen.getByText('Establishing a direct connection')).toBeInTheDocument();
     expect(lastManager().join).toHaveBeenCalledWith('ABC123');
 
     act(() =>
@@ -202,8 +202,8 @@ describe('app/app — end-to-end text sharing flow', () => {
 
     act(() => lastManager().events.onTextReceived?.('the message'));
 
-    expect(screen.getByText('"the message"')).toBeInTheDocument();
-    expect(screen.getByText('Harmony Achieved')).toBeInTheDocument();
+    expect(screen.getByText('the message')).toBeInTheDocument();
+    expect(screen.getByText('Transfer complete')).toBeInTheDocument();
   });
 
   it('surfaces a join failure and recovers from the error view', async () => {
@@ -212,14 +212,14 @@ describe('app/app — end-to-end text sharing flow', () => {
     await screen.findByRole('button', { name: 'Receive' });
 
     await user.click(screen.getByRole('button', { name: 'Receive' }));
-    await user.type(screen.getByLabelText('6-character cosmic code'), 'ABC123');
-    await user.click(screen.getByRole('button', { name: 'Establish Link' }));
+    await user.type(screen.getByLabelText('Six-character code'), 'ABC123');
+    await user.click(screen.getByRole('button', { name: 'Establish connection' }));
 
-    expect(await screen.findByText('Cosmic Link Broken')).toBeInTheDocument();
-    expect(screen.getByText('Cosmos Disrupted')).toBeInTheDocument();
+    expect(await screen.findByText('The peer disconnected')).toBeInTheDocument();
+    expect(screen.getByText('Connection failed')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Try Re-Alignment' }));
-    expect(screen.getByRole('button', { name: 'files' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(screen.getByRole('tab', { name: 'files' })).toBeInTheDocument();
   });
 
   it('returns to the idle share screen from End Session', async () => {
@@ -227,10 +227,10 @@ describe('app/app — end-to-end text sharing flow', () => {
     await screen.findByLabelText('Text to share');
 
     await user.type(screen.getByLabelText('Text to share'), 'bye');
-    await user.click(screen.getByRole('button', { name: 'Share Aura' }));
+    await user.click(screen.getByRole('button', { name: 'Send text' }));
     await screen.findByText('ABC123');
 
-    await user.click(screen.getByRole('button', { name: 'End Session' }));
+    await user.click(screen.getByRole('button', { name: 'End session' }));
     expect(screen.getByLabelText('Text to share')).toBeInTheDocument();
     expect(getRoute()).toBe('/app');
   });

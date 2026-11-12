@@ -1,51 +1,69 @@
 import { motion } from 'framer-motion';
 import { ArrowUp } from 'lucide-react';
-import { FOOTER } from '../../lib/landingCopy';
+import { FOOTER, NAV_LINKS } from '../../lib/landingCopy';
 import { fadeUpVariants } from '../../lib/motion';
 
-/** Landing footer: brand, tagline, trust strip, back-to-top. */
+/** Landing footer: brand, explore links, guarantees, back-to-top. */
 export function LandingFooter() {
   return (
-    <footer className="border-t border-bright/5 py-12 md:py-16">
+    <footer className="border-t border-border px-4 py-12 md:py-16">
       <motion.div
         variants={fadeUpVariants}
         initial="hidden"
         whileInView="visible"
         viewport={{ once: true, margin: '-40px' }}
-        className="max-w-6xl mx-auto px-4 md:px-8 flex flex-col items-center gap-6 text-center"
+        className="mx-auto grid max-w-6xl gap-10 md:grid-cols-12"
       >
-        <a
-          href="#top"
-          className="flex items-center gap-2 md:gap-3 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal"
-          aria-label="AuraShare — back to top"
-        >
-          <div className="w-8 h-8 rounded-xl overflow-hidden flex items-center justify-center bg-bright/5 border border-bright/10">
-            <img src="/logo.svg" alt="" className="w-full h-full object-cover" />
-          </div>
-          <span className="text-lg font-bold tracking-tighter text-text-primary logo-font">
-            AuraShare
-          </span>
-        </a>
-
-        <p className="text-sm text-text-secondary max-w-md leading-relaxed">{FOOTER.tagline}</p>
-
-        <div className="flex flex-wrap items-center justify-center gap-4 md:gap-8 text-[9px] md:text-[10px] uppercase tracking-[0.3em] text-text-ghost font-black">
-          {FOOTER.trust.map((item, i) => (
-            <span key={item} className="flex items-center gap-4 md:gap-8">
-              {i > 0 && <span className="hidden xs:block opacity-50">•</span>}
-              {item}
+        <div className="md:col-span-5">
+          <a href="#top" className="flex items-center gap-2.5" aria-label="AuraShare — back to top">
+            <img src="/logo.svg" alt="" className="h-6 w-6" />
+            <span className="font-display text-md font-semibold tracking-tight text-text [font-stretch:108%]">
+              AuraShare
             </span>
-          ))}
+          </a>
+          <p className="mt-4 max-w-xs text-sm leading-relaxed text-text-2">{FOOTER.tagline}</p>
         </div>
 
+        <div className="md:col-span-4">
+          <h2 className="font-mono text-xs uppercase tracking-[0.14em] text-text-3">Explore</h2>
+          <ul className="mt-4 space-y-2.5">
+            {NAV_LINKS.map((link) => (
+              <li key={link.href}>
+                <a
+                  href={link.href}
+                  className="text-sm text-text-2 transition-colors hover:text-text"
+                >
+                  {link.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="md:col-span-3">
+          <h2 className="font-mono text-xs uppercase tracking-[0.14em] text-text-3">Guarantees</h2>
+          <ul className="mt-4 space-y-2.5">
+            {FOOTER.trust.map((item) => (
+              <li
+                key={item}
+                className="font-mono text-xs uppercase tracking-[0.14em] text-text-2"
+              >
+                {item}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </motion.div>
+
+      <div className="mx-auto mt-12 max-w-6xl border-t border-border pt-6">
         <a
           href="#top"
-          className="mt-2 flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-text-ghost hover:text-text-primary transition-colors rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal"
+          className="inline-flex items-center gap-1.5 font-mono text-xs uppercase tracking-[0.14em] text-text-3 transition-colors hover:text-accent"
         >
-          <ArrowUp className="w-3 h-3" aria-hidden="true" />
+          <ArrowUp className="h-3 w-3" aria-hidden="true" />
           {FOOTER.backToTop}
         </a>
-      </motion.div>
+      </div>
     </footer>
   );
 }

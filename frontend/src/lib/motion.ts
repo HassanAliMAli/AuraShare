@@ -1,134 +1,98 @@
 /**
- * Shared Framer Motion variants + animation constants.
- * Defined outside components so variant objects are not recreated per render.
- * The golden easing curve is the default for UI transitions.
+ * Shared Motion variants.
+ *
+ * Rules for this project:
+ *  - Motion carries meaning (a view entering, a row expanding, a bar filling).
+ *  - No infinite decorative loops, no blur filters, no scale-overs.
+ *  - One easing curve, three durations, mapped to the --duration-* tokens.
+ *  - `prefers-reduced-motion` is honoured globally by <MotionConfig> in App.tsx,
+ *    so individual components do not need to branch on it.
  */
 
 import type { Transition } from 'framer-motion';
 
-export const EASE_ORGANIC: [number, number, number, number] = [0.16, 1, 0.3, 1];
-export const EASE_EXIT: [number, number, number, number] = [0.4, 0, 1, 1];
+/** The single easing curve. */
+export const EASE_OUT: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
-/** Blob border-radius keyframes — mirrors the --radius-blob design token. */
-export const BLOB_RADIUS_KEYFRAMES: string[] = [
-  '60% 40% 30% 70% / 60% 30% 70% 40%',
-  '30% 60% 70% 40% / 30% 70% 40% 60%',
-  '50% 60% 30% 60% / 40% 40% 60% 30%',
-  '60% 40% 30% 70% / 60% 30% 70% 40%',
-];
+export const DURATION_MICRO = 0.12;
+export const DURATION_STANDARD = 0.2;
+export const DURATION_ENTER = 0.32;
 
-/** Status-view entry/exit (blur + scale). Used by every routed feature view. */
+/** Status-view entry/exit. Used by every routed feature view. */
 export const viewVariants = {
-  hidden: { opacity: 0, scale: 0.9, filter: 'blur(10px)' },
-  visible: { opacity: 1, scale: 1, filter: 'blur(0px)', transition: { duration: 0.4, ease: EASE_ORGANIC } },
-  exit: { opacity: 0, scale: 1.1, transition: { duration: 0.2, ease: EASE_EXIT } },
+  hidden: { opacity: 0, y: 8 },
+  visible: { opacity: 1, y: 0, transition: { duration: DURATION_ENTER, ease: EASE_OUT } },
+  exit: { opacity: 0, y: -4, transition: { duration: DURATION_STANDARD, ease: EASE_OUT } },
 };
 
-/** Share-input entry/exit (blur + slight scale, keyed on mode switch). */
+/** Share-input entry/exit (keyed on mode switch). */
 export const shareInputVariants = {
-  hidden: { opacity: 0, scale: 0.95, filter: 'blur(10px)' },
-  visible: { opacity: 1, scale: 1, filter: 'blur(0px)', transition: { duration: 0.4, ease: EASE_ORGANIC } },
-  exit: { opacity: 0, scale: 1.05, filter: 'blur(10px)', transition: { duration: 0.2, ease: EASE_EXIT } },
+  hidden: { opacity: 0, y: 6 },
+  visible: { opacity: 1, y: 0, transition: { duration: DURATION_ENTER, ease: EASE_OUT } },
+  exit: { opacity: 0, y: -4, transition: { duration: DURATION_STANDARD, ease: EASE_OUT } },
 };
 
-/** Tabs slide-in from top. */
+/** Mode switcher. */
 export const tabsVariants = {
-  hidden: { opacity: 0, y: -20 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.3, ease: EASE_ORGANIC } },
-  exit: { opacity: 0, y: -20, transition: { duration: 0.2, ease: EASE_EXIT } },
+  hidden: { opacity: 0, y: -6 },
+  visible: { opacity: 1, y: 0, transition: { duration: DURATION_STANDARD, ease: EASE_OUT } },
+  exit: { opacity: 0, y: -6, transition: { duration: DURATION_MICRO, ease: EASE_OUT } },
 };
 
-/** Receive-form slide-in from bottom. */
+/** Receive-form. */
 export const receiveFormVariants = {
-  hidden: { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.3, ease: EASE_ORGANIC } },
-  exit: { opacity: 0, y: -20, transition: { duration: 0.2, ease: EASE_EXIT } },
+  hidden: { opacity: 0, y: 10 },
+  visible: { opacity: 1, y: 0, transition: { duration: DURATION_ENTER, ease: EASE_OUT } },
+  exit: { opacity: 0, y: -4, transition: { duration: DURATION_STANDARD, ease: EASE_OUT } },
 };
 
 /** Brand fade-up (nav, footer). */
 export const fadeUpVariants = {
-  hidden: { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: EASE_ORGANIC } },
+  hidden: { opacity: 0, y: 6 },
+  visible: { opacity: 1, y: 0, transition: { duration: DURATION_STANDARD, ease: EASE_OUT } },
 };
 
 export const fadeLeftVariants = {
-  hidden: { opacity: 0, x: -20 },
-  visible: { opacity: 1, x: 0, transition: { duration: 0.4, ease: EASE_ORGANIC } },
+  hidden: { opacity: 0, x: -8 },
+  visible: { opacity: 1, x: 0, transition: { duration: DURATION_STANDARD, ease: EASE_OUT } },
 };
 
 export const fadeRightVariants = {
-  hidden: { opacity: 0, x: 20 },
-  visible: { opacity: 1, x: 0, transition: { duration: 0.4, ease: EASE_ORGANIC } },
-};
-
-/** Pulsing outer ring on the dropzone (loop). */
-const loopTransition: Transition = { duration: 4, repeat: Infinity, ease: 'easeInOut' };
-export const pulseRingVariants = {
-  animate: {
-    scale: [1, 1.05, 1],
-    opacity: [0.2, 0.4, 0.2],
-    transition: loopTransition,
-  },
-};
-
-/** Gentle vertical float (loop). */
-const floatTransition: Transition = { duration: 4, repeat: Infinity, ease: 'easeInOut' };
-export const floatVariants = {
-  animate: { y: [0, -10, 0], transition: floatTransition },
+  hidden: { opacity: 0, x: 8 },
+  visible: { opacity: 1, x: 0, transition: { duration: DURATION_STANDARD, ease: EASE_OUT } },
 };
 
 /* ─── Landing page variants ─────────────────────────────────────────────── */
 
-/** Section fade-up + blur on scroll into view. Use with whileInView, once. */
+/** Section reveal on scroll into view. Use with whileInView, once. */
 export const sectionRevealVariants = {
-  hidden: { opacity: 0, y: 24, filter: 'blur(8px)' },
+  hidden: { opacity: 0, y: 12 },
   visible: {
     opacity: 1,
     y: 0,
-    filter: 'blur(0px)',
-    transition: { duration: 0.5, ease: EASE_ORGANIC },
+    transition: { duration: DURATION_ENTER, ease: EASE_OUT },
   },
 };
 
-/** Stagger a list of cards. Children animate with staggerItem. */
-export const staggerContainer = {
+/** Stagger a list of rows. Children animate with staggerItem. */
+export const staggerContainer: { hidden: Record<string, never>; visible: { transition: Transition } } = {
   hidden: {},
   visible: {
-    transition: { staggerChildren: 0.08, delayChildren: 0.1 },
+    transition: { staggerChildren: 0.05, delayChildren: 0.05 },
   },
 };
 
 export const staggerItem = {
-  hidden: { opacity: 0, y: 24, filter: 'blur(8px)' },
+  hidden: { opacity: 0, y: 10 },
   visible: {
     opacity: 1,
     y: 0,
-    filter: 'blur(0px)',
-    transition: { duration: 0.45, ease: EASE_ORGANIC },
+    transition: { duration: DURATION_STANDARD, ease: EASE_OUT },
   },
 };
 
-/** Vertical beam growth in the hero device-flow (origin-top). */
-const flowTransition: Transition = {
-  duration: 3.2,
-  repeat: Infinity,
-  repeatDelay: 1.2,
-  ease: 'easeInOut',
-};
-
-export const beamVariants = {
-  animate: {
-    scaleY: [0, 1, 1, 0],
-    opacity: [0, 1, 1, 0],
-    transition: flowTransition,
-  },
-};
-
-/** Traveling packet down a beam (top: 0% → 100%). */
-export const packetVariants = {
-  animate: {
-    top: ['0%', '100%'],
-    opacity: [0, 1, 1, 0],
-    transition: flowTransition,
-  },
+/** Progress bar fill. The scale is the meaning — no loop. */
+export const progressVariants = {
+  hidden: { scaleX: 0 },
+  visible: { scaleX: 1, transition: { duration: DURATION_ENTER, ease: EASE_OUT } },
 };

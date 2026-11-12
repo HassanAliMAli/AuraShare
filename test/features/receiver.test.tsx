@@ -100,7 +100,7 @@ describe('features/receiver — ReceiverFileList', () => {
       actions: { reset },
     });
 
-    await user.click(screen.getByRole('button', { name: 'End Session' }));
+    await user.click(screen.getByRole('button', { name: 'End session' }));
     expect(reset).toHaveBeenCalledTimes(1);
   });
 });
@@ -114,7 +114,7 @@ describe('features/receiver — SuccessView', () => {
       actions: { copyText },
     });
 
-    expect(screen.getByText('"hello from the other side"')).toBeInTheDocument();
+    expect(screen.getByText('hello from the other side')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Copy received text to clipboard' }));
     expect(copyText).toHaveBeenCalledWith('hello from the other side');
   });
@@ -122,7 +122,7 @@ describe('features/receiver — SuccessView', () => {
   it('shows the generic success badge when no text was received', () => {
     renderWithStore(<SuccessView />, { state: { receivedText: null, status: 'success' } });
 
-    expect(screen.getByText('Harmony Achieved')).toBeInTheDocument();
+    expect(screen.getByText('Transfer complete')).toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Copy received text to clipboard' }),
     ).not.toBeInTheDocument();
@@ -136,7 +136,7 @@ describe('features/receiver — SuccessView', () => {
       actions: { reset },
     });
 
-    await user.click(screen.getByRole('button', { name: 'Begin New Cycle' }));
+    await user.click(screen.getByRole('button', { name: 'Start another transfer' }));
     expect(reset).toHaveBeenCalledTimes(1);
   });
 });
@@ -146,12 +146,12 @@ describe('features/receiver — ErrorView', () => {
     const user = userEvent.setup();
     const reset = vi.fn();
     renderWithStore(<ErrorView />, {
-      state: { errorMessage: 'Cosmic Link Broken', status: 'error' },
+      state: { errorMessage: 'The peer disconnected', status: 'error' },
       actions: { reset },
     });
 
-    expect(screen.getByText('Cosmic Link Broken')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Try Re-Alignment' }));
+    expect(screen.getByText('The peer disconnected')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Try again' }));
     expect(reset).toHaveBeenCalledTimes(1);
   });
 
@@ -159,6 +159,6 @@ describe('features/receiver — ErrorView', () => {
     renderWithStore(<ErrorView />, {
       state: { errorMessage: null, status: 'error' },
     });
-    expect(screen.getByText('Link Failed')).toBeInTheDocument();
+    expect(screen.getByText('Link failed')).toBeInTheDocument();
   });
 });

@@ -4,6 +4,8 @@ import { useAppStore } from '../../stores/appStore';
 import { FileIcon } from '../ui/FileIcon';
 import { viewVariants, receiveFormVariants } from '../../lib/motion';
 import { isRoomCode, normalizeRoomCode, ROOM_CODE_HINT } from '../../lib/roomCode';
+import { Button } from '../ui/Button';
+import { Panel } from '../ui/Panel';
 
 /** Receiver's code-entry form (idle + isReceiving). */
 export function ReceiveCodeForm() {
@@ -21,49 +23,62 @@ export function ReceiveCodeForm() {
       initial="hidden"
       animate="visible"
       exit="exit"
-      className="z-40 bg-bright/5 backdrop-blur-3xl p-6 md:p-12 rounded-3xl md:rounded-[48px] border border-bright/10 w-full max-w-sm md:max-w-md shadow-2xl mx-auto"
+      className="z-40 w-full max-w-md"
     >
-      <h2 className="text-2xl md:text-3xl text-text-primary font-black mb-2 tracking-tighter">Receive Aura</h2>
-      <p className="text-text-secondary text-xs md:text-sm mb-6 md:mb-10 leading-relaxed uppercase tracking-widest font-bold">Input the 6-character cosmic code.</p>
-      <form
-        onSubmit={(e) => { e.preventDefault(); actions.join(state.joinCode); }}
-        className="flex flex-col gap-4 relative z-50"
-      >
-        <input
-          type="text"
-          maxLength={6}
-          value={state.joinCode}
-          onChange={(e) => actions.setJoinCode(e.target.value.toUpperCase())}
-          placeholder="A1B2C3"
-          aria-label="6-character cosmic code"
-          aria-invalid={code.length > 0 && !codeIsValid}
-          aria-describedby={hint ? 'join-code-hint' : undefined}
-          className="w-full bg-bright/5 border border-bright/10 rounded-xl md:rounded-2xl px-4 py-4 md:py-6 text-text-primary text-2xl md:text-4xl font-black tracking-[0.4em] text-center uppercase focus:outline-none focus-visible:ring-2 focus-visible:ring-signal focus:border-signal transition-colors placeholder:text-text-ghost"
-        />
-        {hint && (
-          <p
-            id="join-code-hint"
-            role="alert"
-            className="text-[10px] md:text-xs text-error font-bold uppercase tracking-widest text-center bg-error/10 border border-error/20 rounded-xl px-3 py-2"
-          >
-            {hint}
-          </p>
-        )}
-        <button
-          type="submit"
-          disabled={!codeIsValid}
-          className="w-full py-4 md:py-5 rounded-xl md:rounded-2xl bg-bright text-void font-black uppercase tracking-widest disabled:opacity-20 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl text-xs md:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal"
+      <Panel className="p-6 md:p-8">
+        <h2 className="text-lg font-medium text-text">Receive a transfer</h2>
+        <p className="mt-2 text-sm text-text-2">
+          Enter the six-character code shown on the sending device.
+        </p>
+
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            actions.join(state.joinCode);
+          }}
+          className="mt-6 flex flex-col gap-4"
         >
-          Establish Link
+          <label htmlFor="join-code" className="sr-only">
+            Six-character code
+          </label>
+          <input
+            id="join-code"
+            type="text"
+            maxLength={6}
+            value={state.joinCode}
+            onChange={(e) => actions.setJoinCode(e.target.value.toUpperCase())}
+            placeholder="A1B2C3"
+            aria-invalid={code.length > 0 && !codeIsValid}
+            aria-describedby={hint ? 'join-code-hint' : undefined}
+            className="w-full rounded-md border border-border-strong bg-canvas px-4 py-4 text-center font-mono text-2xl font-medium uppercase tracking-[0.2em] text-text placeholder:text-text-3 transition-colors focus:border-accent focus:outline-none"
+          />
+          {hint && (
+            <p
+              id="join-code-hint"
+              role="alert"
+              className="rounded-md border border-error/30 bg-error/10 px-3 py-2 text-center text-xs text-error"
+            >
+              {hint}
+            </p>
+          )}
+          <Button
+            type="submit"
+            variant="primary"
+            disabled={!codeIsValid}
+            className="w-full"
+          >
+            Establish connection
+          </Button>
+        </form>
+
+        <button
+          type="button"
+          onClick={actions.reset}
+          className="mt-6 w-full text-sm text-text-3 transition-colors hover:text-accent"
+        >
+          Cancel
         </button>
-      </form>
-      <button
-        type="button"
-        onClick={actions.reset}
-        className="w-full mt-6 text-[10px] text-text-ghost hover:text-text-secondary font-black uppercase tracking-[0.2em] transition-colors relative z-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal rounded-xl"
-      >
-        Cancel Connection
-      </button>
+      </Panel>
     </motion.div>
   );
 }
@@ -78,44 +93,67 @@ export function SharingView() {
       initial="hidden"
       animate="visible"
       exit="exit"
-      className="z-40 flex flex-col items-center w-full px-4"
+      className="z-40 flex w-full flex-col items-center px-4"
     >
-      <div className="text-center w-full relative z-50">
-        <div className="text-warn font-black text-[10px] md:text-xs tracking-[0.4em] mb-4 md:mb-8 uppercase">Transmission Code</div>
-        <div className="text-4xl sm:text-5xl md:text-8xl text-text-primary font-black tracking-[0.15em] md:tracking-[0.3em] bg-bright/5 border border-bright/10 rounded-3xl md:rounded-[56px] py-6 md:py-12 px-4 md:px-16 mb-6 md:mb-10 shadow-2xl backdrop-blur-2xl inline-block w-full max-w-sm md:max-w-none whitespace-nowrap">
-          {state.roomId}
-        </div>
-        {state.receiverReady ? (
-          <p className="text-transfer uppercase tracking-[0.3em] text-[10px] font-black animate-pulse">Receiver Connected</p>
-        ) : (
-          <p className="text-text-ghost uppercase tracking-[0.3em] text-[10px] font-black animate-pulse">Waiting for cosmic alignment...</p>
-        )}
+      <div className="w-full max-w-md">
+        <Panel className="p-6">
+          <div className="flex items-baseline justify-between">
+            <span className="font-mono text-xs uppercase tracking-[0.18em] text-text-3">
+              Transmission code
+            </span>
+            <span className="font-mono text-xs text-text-3">6 characters</span>
+          </div>
+          <p className="mt-5 text-center font-mono text-3xl font-medium tracking-[0.18em] text-accent md:text-4xl">
+            {state.roomId}
+          </p>
+          <p className="mt-5 border-t border-border pt-4 text-sm leading-relaxed text-text-2">
+            Enter this code on the other device to open the link.
+          </p>
+        </Panel>
+
+        <p className="mt-5 text-center font-mono text-xs uppercase tracking-[0.14em] text-text-3">
+          {state.receiverReady ? 'Receiver connected' : 'Waiting for the other device'}
+        </p>
+
         {state.sentFiles.length > 0 && (
-          <div className="mt-6 w-full max-w-sm mx-auto">
-            <div className="text-text-secondary text-[10px] font-black uppercase tracking-widest mb-3">Files Sent</div>
-            <div className="space-y-2">
-              {state.sentFiles.map((file, i) => (
-                <div key={i} className="flex items-center justify-between bg-bright/5 rounded-xl px-4 py-3">
-                  <div className="flex items-center gap-3 overflow-hidden">
-                    <FileIcon name={file.name} type={file.type} className="w-5 h-5 text-text-secondary shrink-0" />
-                    <span className="text-text-primary text-sm font-bold truncate">{file.name}</span>
-                  </div>
-                  {state.acknowledgedFiles.has(i) ? (
-                    <Check className="w-4 h-4 text-transfer shrink-0" />
-                  ) : (
-                    <Clock className="w-4 h-4 text-text-ghost shrink-0" />
-                  )}
-                </div>
-              ))}
+          <div className="mt-8">
+            <div className="flex items-baseline justify-between border-b border-border pb-2">
+              <span className="font-mono text-xs uppercase tracking-[0.14em] text-text-3">
+                Files sent
+              </span>
+              <span className="font-mono text-xs text-text-3">{state.sentFiles.length}</span>
             </div>
+            <ul>
+              {state.sentFiles.map((file, i) => (
+                <li
+                  key={i}
+                  className="flex items-center justify-between gap-3 border-b border-border py-3"
+                >
+                  <span className="flex min-w-0 items-center gap-3">
+                    <FileIcon
+                      name={file.name}
+                      type={file.type}
+                      className="h-4 w-4 shrink-0 text-text-3"
+                    />
+                    <span className="truncate text-sm text-text">{file.name}</span>
+                  </span>
+                  {state.acknowledgedFiles.has(i) ? (
+                    <Check className="h-4 w-4 shrink-0 text-success" aria-hidden="true" />
+                  ) : (
+                    <Clock className="h-4 w-4 shrink-0 text-text-3" aria-hidden="true" />
+                  )}
+                </li>
+              ))}
+            </ul>
           </div>
         )}
+
         <button
           type="button"
           onClick={actions.reset}
-          className="mt-8 text-[10px] text-text-ghost hover:text-text-secondary font-black uppercase tracking-[0.2em] transition-colors relative z-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal rounded-xl"
+          className="mt-8 w-full text-sm text-text-3 transition-colors hover:text-accent"
         >
-          End Session
+          End session
         </button>
       </div>
     </motion.div>

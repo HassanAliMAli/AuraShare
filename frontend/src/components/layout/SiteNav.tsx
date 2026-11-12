@@ -2,43 +2,47 @@ import { motion } from 'framer-motion';
 import { useAppStore } from '../../stores/appStore';
 import { fadeLeftVariants, fadeRightVariants } from '../../lib/motion';
 
-/** Top navigation: brand (resets session) + Receive entry point. */
+/**
+ * Top navigation on the app screen: brand (resets the session) and the
+ * Receive entry point. The wordmark is a span, not a heading — the page owns
+ * the single <h1>.
+ */
 export function SiteNav() {
   const { actions } = useAppStore();
 
   return (
-    <nav className="absolute top-0 left-0 right-0 px-4 md:px-8 pt-[calc(1rem+env(safe-area-inset-top))] md:pt-[calc(2rem+env(safe-area-inset-top))] flex justify-between items-center z-50">
-      <motion.button
-        type="button"
-        variants={fadeLeftVariants}
-        initial="hidden"
-        animate="visible"
-        onClick={actions.reset}
-        className="flex items-center gap-2 md:gap-4 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal rounded-xl"
-        aria-label="AuraShare — start over"
-      >
-        <div className="w-8 h-8 md:w-10 md:h-10 rounded-xl md:rounded-2xl overflow-hidden flex items-center justify-center shadow-lg shadow-signal/20 bg-bright/5">
-          <img src="/logo.svg" alt="" className="w-full h-full object-cover" />
-        </div>
-        <h1 className="text-xl md:text-2xl font-bold tracking-tighter text-text-primary logo-font whitespace-nowrap">
-          AuraShare
-        </h1>
-      </motion.button>
-
-      <motion.div
-        variants={fadeRightVariants}
-        initial="hidden"
-        animate="visible"
-        className="flex items-center gap-4 md:gap-6 z-50"
-      >
-        <button
+    <nav className="absolute inset-x-0 top-0 z-50 px-4 pt-[calc(1rem+env(safe-area-inset-top))] md:px-8 md:pt-[calc(2rem+env(safe-area-inset-top))]">
+      <div className="flex items-center justify-between">
+        <motion.button
           type="button"
-          onClick={actions.startReceive}
-          className="text-xs md:text-sm font-bold uppercase tracking-widest text-text-primary/80 hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal rounded-xl"
+          variants={fadeLeftVariants}
+          initial="hidden"
+          animate="visible"
+          onClick={actions.reset}
+          className="flex items-center gap-2.5"
+          aria-label="AuraShare — start over"
         >
-          Receive
-        </button>
-      </motion.div>
+          <img src="/logo.svg" alt="" className="h-7 w-7" />
+          <span className="font-display text-md font-semibold tracking-tight text-text [font-stretch:108%]">
+            AuraShare
+          </span>
+        </motion.button>
+
+        <motion.div
+          variants={fadeRightVariants}
+          initial="hidden"
+          animate="visible"
+          className="flex items-center gap-6"
+        >
+          <button
+            type="button"
+            onClick={actions.startReceive}
+            className="text-sm text-text-2 transition-colors hover:text-accent"
+          >
+            Receive
+          </button>
+        </motion.div>
+      </div>
     </nav>
   );
 }

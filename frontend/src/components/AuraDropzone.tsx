@@ -1,27 +1,25 @@
 import { useState, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { UploadCloud } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { usePrefersReducedMotion } from '../hooks';
 import { validateFileList } from '../lib/validation';
-import { BLOB_RADIUS_KEYFRAMES, pulseRingVariants, floatVariants, EASE_ORGANIC } from '../lib/motion';
 
 interface AuraDropzoneProps {
   onFileDrop: (files: File[]) => void;
   className?: string;
 }
 
+/**
+ * A dashed drop target. Flat, static, and honest about what it accepts —
+ * no morphing blob, no rotation loop, no glow.
+ */
 export function AuraDropzone({ onFileDrop, className }: AuraDropzoneProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const prefersReduced = usePrefersReducedMotion();
 
   const handleFiles = (files: FileList) => {
     const { valid, errors } = validateFileList(files);
-    if (errors.length > 0) {
-      setValidationErrors(errors.map((e) => `${e.fileName}: ${e.error.message}`));
-    }
+    setValidationErrors(errors.map((e) => `${e.fileName}: ${e.error.message}`));
     if (valid.length > 0) {
       onFileDrop(valid);
     }
@@ -63,10 +61,15 @@ export function AuraDropzone({ onFileDrop, className }: AuraDropzoneProps) {
       role="button"
       tabIndex={0}
       aria-label="Drop files to share, or activate to browse"
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') handleButtonClick(); }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') handleButtonClick();
+      }}
       className={cn(
-        "relative aspect-square w-[min(82vw,52dvh,400px)] md:w-[min(70vw,52dvh,500px)] flex items-center justify-center cursor-pointer group mx-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal rounded-full",
-        className
+        'flex w-full flex-col items-center justify-center gap-4 rounded-lg border-2 border-dashed p-10 text-center transition-colors duration-[--duration-micro]',
+        isDragOver
+          ? 'border-accent bg-accent/5'
+          : 'border-border-strong hover:border-accent/60',
+        className,
       )}
     >
       <input
@@ -76,78 +79,34 @@ export function AuraDropzone({ onFileDrop, className }: AuraDropzoneProps) {
         className="hidden"
         multiple
         aria-hidden="true"
+        tabIndex={-1}
       />
 
-      {/* Pulsing Outer Ring */}
-      <motion.div
-        variants={pulseRingVariants}
-        animate={prefersReduced ? {} : isDragOver ? { scale: 1.1, opacity: 0.8 } : 'animate'}
-        className="absolute inset-0 rounded-full border-2 border-signal/30 blur-[2px]"
-      />
+      <span className="flex h-12 w-12 items-center justify-center rounded-md border border-border bg-raised">
+        <UploadCloud className="h-5 w-5 text-text-2" aria-hidden="true" />
+      </span>
 
-      {/* Main Liquid Blob */}
-      <motion.div
-        animate={
-          prefersReduced
-            ? { scale: isDragOver ? 1.05 : 1 }
-            : {
-                borderRadius: isDragOver ? '40%' : BLOB_RADIUS_KEYFRAMES,
-                rotate: [0, 90, 180, 360],
-                scale: isDragOver ? 1.05 : 1,
-              }
-        }
-        transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}
-        className={cn(
-          "w-[85%] h-[85%] bg-gradient-to-br from-signal/20 via-transfer/20 to-warn/20 backdrop-blur-2xl border border-bright/10 shadow-2xl flex flex-col items-center justify-center text-center p-8 transition-colors duration-500",
-          isDragOver ? "from-signal/40 via-transfer/40 to-warn/40" : ""
-        )}
-      >
-        <motion.div
-          variants={floatVariants}
-          animate={prefersReduced ? {} : 'animate'}
-          className="mb-6"
-        >
-          <div className="w-16 h-16 md:w-20 md:h-20 rounded-3xl bg-bright/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-xl">
-            <UploadCloud className="w-8 h-8 md:w-10 md:h-10 text-text-primary/80" aria-hidden="true" />
-          </div>
-        </motion.div>
-
-        <h3 className="text-xl md:text-2xl font-black text-text-primary mb-2 tracking-tighter uppercase">
-          {isDragOver ? "Release to Send" : "Release your files"}
+      <div>
+        <h3 className="text-md font-medium text-text">
+          {isDragOver ? 'Release to send' : 'Drop files here'}
         </h3>
-        <p className="text-text-secondary text-[10px] md:text-xs font-bold uppercase tracking-[0.2em] max-w-[200px]">
-          {isDragOver ? "Cosmic alignment ready" : "Drag & drop or click to browse the cosmos"}
+        <p className="mt-1.5 text-sm text-text-2">
+          or click to browse — up to 2 GiB per file
         </p>
+      </div>
 
-        {/* Hover Hint */}
-        <div className="absolute bottom-12 opacity-0 group-hover:opacity-100 transition-opacity">
-          <span className="text-[10px] text-signal font-black tracking-widest uppercase animate-pulse">Select Files</span>
-        </div>
-      </motion.div>
-
-      {/* Validation errors */}
       {validationErrors.length > 0 && (
-        <div className="absolute -bottom-20 left-1/2 -translate-x-1/2 w-full max-w-xs space-y-1" role="alert">
-          {validationErrors.map((err, i) => (
-            <p key={i} className="text-[10px] text-error font-bold text-center bg-error/10 rounded-lg px-3 py-2">
+        <div className="mt-2 w-full space-y-1" role="alert">
+          {validationErrors.map((err) => (
+            <p
+              key={err}
+              className="rounded-md border border-error/30 bg-error/10 px-3 py-2 text-left text-xs text-error"
+            >
               {err}
             </p>
           ))}
         </div>
       )}
-
-      {/* Floating Particles Around Blob */}
-      <AnimatePresence>
-        {isDragOver && (
-          <motion.div
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1.2, opacity: 1 }}
-            exit={{ scale: 1.5, opacity: 0 }}
-            transition={{ duration: 0.5, ease: EASE_ORGANIC }}
-            className="absolute z-0 w-full h-full rounded-full border-2 border-warn/50 blur-[1px]"
-          />
-        )}
-      </AnimatePresence>
     </div>
   );
 }

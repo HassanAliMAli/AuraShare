@@ -20,7 +20,6 @@ interface FileIconProps {
 
 /** Renders the correct lucide icon for a file based on its name/MIME type. */
 export function FileIcon({ name, type, className }: FileIconProps) {
-  const key = getFileIconKey(name, type);
-  const Icon = ICON_MAP[key] ?? File;
+  const Icon = ICON_MAP[getFileIconKey(name, type)];
   return <Icon className={className} aria-hidden="true" />;
 }

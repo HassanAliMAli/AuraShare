@@ -383,3 +383,62 @@ click. Playwright does not buffer events, so a download that landed in that gap
 was lost, and the test waited out its full 90-second timeout for an event that
 had already fired. The previous UI was slow enough to hide the race; the
 redesigned one is not. The listener is now registered before the click.
+
+## The browser matrix, and two more defects it found
+
+The redesign was verified in one browser on one screen size — Google Chrome, on
+a desktop viewport. Three things in it are exactly where engines disagree:
+`Archivo`'s `font-stretch` width axis (a variable-font feature), `dvh` units,
+and a flex shell that fills the viewport. And a file-sharing tool is used from
+phones. The E2E matrix therefore grew to four projects:
+
+| Project | Engine | Viewport |
+|---|---|---|
+| `chromium` | system Google Chrome | desktop |
+| `webkit` | Playwright's WebKit build | desktop |
+| `mobile-chromium` | system Google Chrome | Pixel 7 (touch) |
+| `mobile-webkit` | Playwright's WebKit build | iPhone 13 (touch) |
+
+Two further defects only appear once you look at it that way.
+
+1. **The file input was destroyed and recreated mid-interaction.** Framer
+   Motion's `AnimatePresence mode="wait"` re-keys its child once the outgoing
+   panel's exit animation finishes, and the share panel was keyed on the share
+   mode. The dropzone's `<input type="file">` was therefore unmounted and
+   remounted ~200ms after the files tab was tapped — exactly the length of the
+   `--duration-standard` exit transition.
+
+   The replacement is invisible to a person (by then the OS file picker is
+   open and the selection lands on the new node) but not to a machine: WebKit
+   applies the file list through the browser process, so a node replaced
+   before that round-trip completes never fires `change`, and **the chosen
+   file is silently dropped** — no error, no feedback, the share never starts.
+   Chrome sets the file list in-process, which is why only WebKit exposed it.
+   It showed up as an intermittent failure of the file-share test on WebKit,
+   roughly 1 run in 3.
+
+   The fix is to stop keying the panel on the share mode. `test/e2e/share-input.spec.ts`
+   samples the identity of the input across the transition window and fails if
+   it was ever a different DOM node — verified to fail on both engines when
+   the key is put back.
+
+2. **A 19px tap target.** At 390px, "Receive" measured 46×19px and the brand
+   link 120×28px — under the 24×24px minimum of WCAG 2.2 SC 2.5.8, and far
+   under the 44pt Apple HIG asks for. "Receive" is the primary way into
+   receive mode. Both now carry padding with a compensating negative margin,
+   so the hit area is 43px and 44px and the visual position is unchanged.
+
+`test/e2e/mobile-layout.spec.ts` runs only on the mobile projects and asserts
+what a desktop-only matrix never checks: nothing overflows the viewport
+horizontally (`body` sets `overflow-x: hidden`, so an over-wide element clips
+silently instead of scrolling), no input is under 16px (iOS Safari zooms on
+focus below that), and every control meets the 24×24px minimum.
+
+One environment note: a snap-confined editor (VS Code installed as a snap)
+exports `GIO_MODULE_DIR`, and the snap's GIO proxy modules carry an RPATH into
+core20. WebKit's network process then loads core20's `libpthread` against the
+system glibc and dies with `WebKit encountered an internal error` on every
+navigation, while Chromium is unaffected — so it reads as "WebKit is broken"
+rather than "the environment is leaking". `playwright.config.ts` clears the
+variable for the WebKit projects; it is a no-op outside a snap and irrelevant
+in CI.

@@ -28,8 +28,8 @@ Base URL: the same origin as the app. In development the Vite server on
 
 ## Conventions
 
-- All successful responses are `application/json`, and they carry the same
-  security headers: `X-Content-Type-Options: nosniff`, `Referrer-Policy:
+- Every response is `application/json` and carries the same security
+  headers: `X-Content-Type-Options: nosniff`, `Referrer-Policy:
   strict-origin-when-cross-origin`, `X-Frame-Options: DENY` and
   `Cache-Control: no-store`. Signalling responses are per-session state and
   must never be cached.
@@ -179,22 +179,26 @@ One `RoomDO` instance exists per transmission code, addressed by
 
 ## Errors
 
-Error bodies are **plain text**, not JSON. They are not part of the client
-contract: the client only checks the status code (`res.ok`) and never parses
-an error body.
+Every error response has the **same shape**, so a client can read it without
+checking which route it came from:
 
-| Status | When | Body |
+```json
+{ "error": { "code": "not_found", "message": "Not found" } }
+```
+
+`code` is the machine-readable value to branch on; `message` is for humans
+and for logs. Error responses carry the same security headers and the same
+`application/json` content type as successful ones.
+
+| Status | `code` | When |
 |---|---|---|
-| `400` | The room code in the path is empty. Defensive only — the route pattern requires exactly six characters, so this branch cannot currently be reached. | `Bad room code` |
-| `404` | The path does not match a route, the method is wrong for the path, or the room code is not one the Worker could have minted. | `Not found` |
-| `409` | A third peer tried to join a room that already has two. | `Room full` |
-| `426` | The WebSocket route was called without an `Upgrade: websocket` header. | `Expected Upgrade: websocket` |
+| `404` | `not_found` | The path does not match a route, the method is wrong for the path, or the room code is not one the Worker could have minted. |
+| `409` | `room_full` | A third peer tried to join a room that already has two. |
+| `426` | `upgrade_required` | The WebSocket route was called without an `Upgrade: websocket` header. |
 
-> **Known rough edges.** The error responses are built directly, so they carry
-> neither a JSON body nor the security headers that the successful responses
-> carry, and the `400` branch is unreachable. The module split that follows
-> this document replaces all of that with one shared error helper — one JSON
-> shape, the same headers on every response, and the unreachable branch gone.
+The client only checks the status code (`res.ok`) and never parses an error
+body, so the shape is free to change — but it is documented and tested so
+that it does not change by accident.
 
 ## Limits
 

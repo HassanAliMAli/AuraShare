@@ -1,231 +1,31 @@
 /**
  * AuraShare Worker — Durable Object signaling relay + static asset edge.
  *
- * One RoomDO instance per room code acts as a dumb WebSocket relay between two
- * peers, exchanging SDP offer/answer + trickle ICE candidates in real time.
+ * One RoomDO instance per room code acts as a dumb WebSocket relay between
+ * two peers, exchanging SDP offer/answer + trickle ICE candidates in real
+ * time.
  * No room state is persisted; the DO hibernates between messages (free-tier
  * friendly) and auto-evicts after ROOM_TTL_MS of inactivity.
+ *
+ * This file is only the entry point. The behaviour lives in `modules/`:
+ *
+ *   modules/routes.ts    the HTTP surface
+ *   modules/room-do.ts   the Durable Object that relays a room
+ *   modules/room-code.ts the transmission-code alphabet and mint
+ *   modules/turn.ts      ICE servers and ephemeral TURN credentials
+ *   modules/errors.ts    the one place a response is built
+ *
+ * The API contract these implement is in `docs/api.md`.
  */
 
-interface Env {
-  ROOMS: DurableObjectNamespace;
-  /** Cloudflare Calls TURN key ID + API token (set via `wrangler secret put`). */
-  TURN_KEY_ID?: string;
-  TURN_KEY_API_TOKEN?: string;
-}
+import { RoomDO } from './modules/room-do';
+import { handleRequest, type Env } from './modules/routes';
 
-/** ICE server config shape (the client casts this to RTCIceServer[]). */
-type IceServer = {
-  urls: string | string[];
-  username?: string;
-  credential?: string;
-};
-
-/** Response from the Cloudflare Calls credential-generation API. */
-type CloudflareIceResponse = {
-  iceServers: IceServer[];
-  // Cloudflare returns expiry info; we track it to refresh before TTL ends.
-  expiresOn?: string;
-};
-
-const ROOM_TTL_MS = 30 * 60 * 1000;
-const TURN_CREDENTIAL_TTL_SECONDS = 86400; // 24h — covers the longest expected session.
-const TURN_REFRESH_MARGIN_MS = 60 * 60 * 1000; // Refresh when <1h remains.
-
-/** Module-level cache so we don't call the CF API on every ice-servers request. */
-let cachedIceServers: IceServer[] | null = null;
-let cachedExpiry = 0;
-
-const STUN_ONLY_FALLBACK: IceServer[] = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'stun:stun.cloudflare.com:3478' },
-];
-
-/** Crockford base32 — excludes I, L, O, U to avoid ambiguity. */
-const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
-
-/**
- * The only room codes this Worker can ever serve. Kept derived from
- * CROCKFORD so the route and the mint can never drift apart — an impossible
- * code must not be able to allocate a Durable Object.
- */
-const ROOM_CODE_PATTERN = new RegExp(`^/api/room/([${CROCKFORD}]{6})/ws$`);
-
-export function generateRoomCode(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(6));
-  let code = '';
-  for (const b of bytes) {
-    code += CROCKFORD[b % 32] ?? '0';
-  }
-  return code;
-}
-
-/**
- * Returns ICE servers with ephemeral TURN credentials from Cloudflare Calls.
- * Caches the result until near-expiry; falls back to STUN-only on error or
- * when TURN secrets aren't configured.
- */
-async function getIceServers(env: Env): Promise<IceServer[]> {
-  if (!env.TURN_KEY_ID || !env.TURN_KEY_API_TOKEN) {
-    return STUN_ONLY_FALLBACK;
-  }
-  // Serve from cache if still fresh.
-  if (cachedIceServers && Date.now() < cachedExpiry - TURN_REFRESH_MARGIN_MS) {
-    return cachedIceServers;
-  }
-  try {
-    const res = await fetch(
-      `https://rtc.live.cloudflare.com/v1/turn/keys/${env.TURN_KEY_ID}/credentials/generate-ice-servers`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${env.TURN_KEY_API_TOKEN}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ ttl: TURN_CREDENTIAL_TTL_SECONDS }),
-      },
-    );
-    if (!res.ok) {
-      console.warn('[TURN] CF API returned', res.status, '— falling back to STUN-only');
-      return cachedIceServers ?? STUN_ONLY_FALLBACK;
-    }
-    const data = (await res.json()) as CloudflareIceResponse;
-    if (!data.iceServers || data.iceServers.length === 0) {
-      return STUN_ONLY_FALLBACK;
-    }
-    // Parse expiry if provided; otherwise assume TTL minus a safety margin.
-    const expiryMs = data.expiresOn
-      ? Date.parse(data.expiresOn)
-      : Date.now() + (TURN_CREDENTIAL_TTL_SECONDS * 1000);
-    cachedIceServers = data.iceServers;
-    cachedExpiry = expiryMs;
-    return data.iceServers;
-  } catch (err) {
-    console.error('[TURN] credential generation failed:', err);
-    return cachedIceServers ?? STUN_ONLY_FALLBACK;
-  }
-}
-
-const SECURITY_HEADERS: Record<string, string> = {
-  'X-Content-Type-Options': 'nosniff',
-  'Referrer-Policy': 'strict-origin-when-cross-origin',
-  'X-Frame-Options': 'DENY',
-  'Cache-Control': 'no-store',
-};
-
-function json(data: unknown): Response {
-  return new Response(JSON.stringify(data), {
-    headers: {
-      'Content-Type': 'application/json',
-      ...SECURITY_HEADERS,
-    },
-  });
-}
+export { RoomDO };
+export { generateRoomCode } from './modules/room-code';
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const url = new URL(request.url);
-    const path = url.pathname;
-
-    if (request.method === 'OPTIONS') return new Response(null);
-
-    if (path === '/api/ice-servers' && request.method === 'GET') {
-      return json({ iceServers: await getIceServers(env) });
-    }
-
-    if (path === '/api/room' && request.method === 'POST') {
-      return json({ roomId: generateRoomCode() });
-    }
-
-    const wsMatch = path.match(ROOM_CODE_PATTERN);
-    if (wsMatch) {
-      const code = wsMatch[1];
-      if (!code) return new Response('Bad room code', { status: 400 });
-      if (request.headers.get('Upgrade') !== 'websocket') {
-        return new Response('Expected Upgrade: websocket', { status: 426 });
-      }
-      const id = env.ROOMS.idFromName(code);
-      const stub = env.ROOMS.get(id);
-      // Forward the original request so the DO sees the Upgrade header.
-      return stub.fetch(request);
-    }
-
-    return new Response('Not found', { status: 404 });
+    return handleRequest(request, env);
   },
 };
-
-/**
- * Durable Object: one per room. Relays WebSocket messages between the two peers
- * and broadcasts `peer-present` when the second peer connects.
- */
-export class RoomDO {
-  private state: DurableObjectState;
-
-  constructor(state: DurableObjectState) {
-    this.state = state;
-  }
-
-  async fetch(request: Request): Promise<Response> {
-    if (request.headers.get('Upgrade') !== 'websocket') {
-      return new Response('Expected Upgrade: websocket', { status: 426 });
-    }
-
-    // Check capacity BEFORE accepting: a third peer must be rejected at the
-    // handshake. Closing a server socket synchronously here would leave the
-    // client with a dead-but-open connection (no close frame delivered).
-    const existing = this.state.getWebSockets();
-    if (existing.length >= 2) {
-      return new Response('Room full', { status: 409 });
-    }
-
-    const pair = new WebSocketPair();
-    const client = pair[0];
-    const server = pair[1];
-
-    this.state.acceptWebSocket(server);
-
-    if (existing.length === 1) {
-      // Second peer joined — notify the first that a peer is present.
-      for (const s of existing) {
-        s.send(JSON.stringify({ type: 'peer-present' }));
-      }
-    }
-
-    await this.state.storage.setAlarm(Date.now() + ROOM_TTL_MS);
-    return new Response(null, { status: 101, webSocket: client });
-  }
-
-  async webSocketMessage(ws: WebSocket, message: ArrayBuffer | string): Promise<void> {
-    // Refresh the eviction alarm on any activity.
-    await this.state.storage.setAlarm(Date.now() + ROOM_TTL_MS);
-    // Dumb relay: forward to every other socket in the room.
-    for (const s of this.state.getWebSockets()) {
-      if (s !== ws) s.send(message);
-    }
-  }
-
-  async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
-    for (const s of this.state.getWebSockets()) {
-      if (s !== ws) s.send(JSON.stringify({ type: 'peer-left' }));
-    }
-    try {
-      ws.close(code, reason);
-    } catch {
-      // workerd may close the socket before invoking this handler; a second
-      // close() throws and would otherwise surface as an uncaught DO error.
-    }
-  }
-
-  async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
-    console.error('[RoomDO] websocket error:', error);
-    ws.close(1011, 'WebSocket error');
-  }
-
-  async alarm(): Promise<void> {
-    // Idle TTL expired — close all sockets so the DO can evict.
-    for (const s of this.state.getWebSockets()) {
-      s.close(1000, 'room expired');
-    }
-  }
-}

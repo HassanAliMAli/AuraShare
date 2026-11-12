@@ -258,6 +258,80 @@ describe('worker/worker — TURN credential generation', () => {
   });
 });
 
+describe('worker/worker — documented API contract', () => {
+  /**
+   * `docs/api.md` is the contract. These assertions exist so the document
+   * cannot drift away from the Worker: every claim in the "Conventions" and
+   * "Errors" sections is checked here. If a change breaks one of them, the
+   * document changes in the same commit.
+   */
+
+  it('puts the documented security headers on every JSON response', async () => {
+    const response = await worker.fetch(
+      new Request('http://local/api/ice-servers'),
+      env(),
+    );
+
+    expect(response.headers.get('content-type')).toBe('application/json');
+    expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(response.headers.get('referrer-policy')).toBe('strict-origin-when-cross-origin');
+    expect(response.headers.get('x-frame-options')).toBe('DENY');
+    expect(response.headers.get('cache-control')).toBe('no-store');
+  });
+
+  it('answers a preflight with an empty 200 and no body', async () => {
+    const response = await worker.fetch(
+      new Request('http://local/api/room', { method: 'OPTIONS' }),
+      env(),
+    );
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe('');
+  });
+
+  it.each([
+    ['GET', '/api/room', 'Not found'],
+    ['POST', '/api/ice-servers', 'Not found'],
+    ['GET', '/missing', 'Not found'],
+  ])('answers %s %s with the documented 404 body', async (method, path, body) => {
+    const response = await worker.fetch(
+      new Request(`http://local${path}`, { method }),
+      env(),
+    );
+    expect(response.status).toBe(404);
+    expect(await response.text()).toBe(body);
+  });
+
+  it('answers the websocket route with the documented 426 body', async () => {
+    const response = await worker.fetch(new Request('http://local/api/room/ABC123/ws'), env());
+    expect(response.status).toBe(426);
+    expect(await response.text()).toBe('Expected Upgrade: websocket');
+  });
+
+  it('mints a code the documented alphabet allows', async () => {
+    const response = await worker.fetch(
+      new Request('http://local/api/room', { method: 'POST' }),
+      env(),
+    );
+    const body = (await response.json()) as { roomId: string };
+    expect(body.roomId).toMatch(/^[0-9A-HJKMNP-TV-Z]{6}$/);
+  });
+
+  it('serves STUN-only servers when TURN is not configured', async () => {
+    const response = await worker.fetch(
+      new Request('http://local/api/ice-servers'),
+      env(),
+    );
+    const body = (await response.json()) as { iceServers: { urls: string }[] };
+
+    // The three documented fallbacks, in order.
+    expect(body.iceServers.map((server) => server.urls)).toEqual([
+      'stun:stun.l.google.com:19302',
+      'stun:stun1.l.google.com:19302',
+      'stun:stun.cloudflare.com:3478',
+    ]);
+  });
+});
+
 describe('worker/worker — RoomDO relay', () => {
   it('rejects a non-websocket request', async () => {
     const room = new RoomDO(makeState());

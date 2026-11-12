@@ -36,6 +36,5 @@ dist-ssr
 .claude/
 .serena/
 .commandcode/
-.opencode/
 .wrangler/
 .playwright-mcp/

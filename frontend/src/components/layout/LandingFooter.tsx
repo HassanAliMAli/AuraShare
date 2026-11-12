@@ -15,7 +15,11 @@ export function LandingFooter() {
         className="mx-auto grid max-w-6xl gap-10 md:grid-cols-12"
       >
         <div className="md:col-span-5">
-          <a href="#top" className="flex items-center gap-2.5" aria-label="AuraShare — back to top">
+          <a
+            href="#top"
+            className="flex items-center gap-2.5 py-2 -my-2"
+            aria-label="AuraShare — back to top"
+          >
             <img src="/logo.svg" alt="" className="h-6 w-6" />
             <span className="font-display text-md font-semibold tracking-tight text-text [font-stretch:108%]">
               AuraShare
@@ -26,12 +30,12 @@ export function LandingFooter() {
 
         <div className="md:col-span-4">
           <h2 className="font-mono text-xs uppercase tracking-[0.14em] text-text-3">Explore</h2>
-          <ul className="mt-4 space-y-2.5">
+          <ul className="mt-4 space-y-2">
             {NAV_LINKS.map((link) => (
               <li key={link.href}>
                 <a
                   href={link.href}
-                  className="text-sm text-text-2 transition-colors hover:text-text"
+                  className="inline-flex min-h-6 items-center text-sm text-text-2 transition-colors hover:text-text"
                 >
                   {link.label}
                 </a>
@@ -58,7 +62,7 @@ export function LandingFooter() {
       <div className="mx-auto mt-12 max-w-6xl border-t border-border pt-6">
         <a
           href="#top"
-          className="inline-flex items-center gap-1.5 font-mono text-xs uppercase tracking-[0.14em] text-text-3 transition-colors hover:text-accent"
+          className="inline-flex min-h-6 items-center gap-1.5 font-mono text-xs uppercase tracking-[0.14em] text-text-3 transition-colors hover:text-accent"
         >
           <ArrowUp className="h-3 w-3" aria-hidden="true" />
           {FOOTER.backToTop}

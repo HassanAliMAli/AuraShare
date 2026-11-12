@@ -9,12 +9,60 @@ import { expect, type Browser, type BrowserContextOptions, type Page } from '@pl
 
 export const APP_URL = '/app';
 
+/** WCAG 2.2 SC 2.5.8 — Target Size (Minimum). */
+export const MIN_TAP_TARGET_PX = 24;
+
 /**
  * A transmission code is 6 Crockford base32 characters (no I, L, O, U).
  * The class is anchored so it only matches the code element itself, never the
  * surrounding chrome ("TRANSMISSION CODE", "END SESSION", ...).
  */
 const CODE_PATTERN = /^[0-9A-HJKMNP-TV-Z]{6}$/;
+
+/**
+ * Measure every pointer target on the current page and return the ones that
+ * are smaller than `minimum`.
+ *
+ * Two kinds of element are deliberately left out:
+ *
+ *  - the file input, which is `display: none` and is driven by the dropzone
+ *    that the user actually taps;
+ *  - a control that is collapsed *and* clipped away — the skip link's
+ *    `sr-only` box, which is a keyboard affordance that expands on focus and
+ *    is not a pointer target. It is detected structurally (collapsed and
+ *    clipped) rather than by class name, so the pattern still holds if the
+ *    markup changes.
+ */
+export async function findUndersizedTargets(
+  page: Page,
+  minimum: number = MIN_TAP_TARGET_PX,
+): Promise<string[]> {
+  return page.evaluate((min) => {
+    const offenders: string[] = [];
+    const selectors = 'button, a[href], [role="tab"], [role="button"]';
+
+    document.querySelectorAll(selectors).forEach((el) => {
+      const style = window.getComputedStyle(el);
+      if (style.display === 'none' || style.visibility === 'hidden') return;
+      if (el instanceof HTMLInputElement && el.type === 'file') return;
+
+      const rect = el.getBoundingClientRect();
+      if (rect.width === 0 || rect.height === 0) return;
+
+      const clippedAway = style.clipPath.includes('inset(50%');
+      if (clippedAway && rect.width <= 1 && rect.height <= 1) return;
+
+      if (rect.width < min || rect.height < min) {
+        const name =
+          (el.getAttribute('aria-label') || el.textContent || '').trim().slice(0, 24) ||
+          el.tagName.toLowerCase();
+        offenders.push(`"${name}" is ${Math.round(rect.width)}×${Math.round(rect.height)}px`);
+      }
+    });
+
+    return offenders;
+  }, minimum);
+}
 
 /**
  * Open the app on a fresh device (its own browser context).

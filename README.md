@@ -161,3 +161,18 @@ checks: nothing overflows the viewport horizontally, no input is under 16px
 (iOS Safari zooms the page on focus below that), and every control meets the
 24×24px minimum of WCAG 2.2 SC 2.5.8.
 
+#### Accessibility and visual contracts
+
+Two more specs run on **every** project, because what they check is wrong on
+every screen size, not just on a phone:
+
+- `test/e2e/accessibility.spec.ts` — every control on the landing page meets
+  the 24×24px minimum (the footer links were 17px tall and nothing measured
+  them, because the tap-target check only looked at the app screen), and the
+  skip link expands out of its `sr-only` box when it takes keyboard focus and
+  actually moves focus into the main content.
+- `test/e2e/typography-layout.spec.ts` — the three things the redesign is
+  built on and that engines disagree about: Archivo's `font-stretch` width
+  axis, `dvh` units, and the flex shell that fills the viewport and pins the
+  footer to its bottom edge.
+

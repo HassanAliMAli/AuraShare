@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { findUndersizedTargets, MIN_TAP_TARGET_PX } from './helpers';
 
 /**
  * Mobile-specific layout guards.
@@ -27,9 +28,6 @@ import { expect, test } from '@playwright/test';
 
 const APP_URL = '/app';
 const LANDING_URL = '/';
-
-/** WCAG 2.2 SC 2.5.8 — Target Size (Minimum). */
-const MIN_TAP_TARGET_PX = 24;
 
 /** iOS Safari zooms on focus below this. */
 const MIN_INPUT_FONT_PX = 16;
@@ -113,50 +111,12 @@ test.describe('mobile layout', () => {
     await page.goto(APP_URL);
     await expect(page.getByRole('textbox', { name: 'Text to share' })).toBeVisible();
 
-    const tooSmall = await page.evaluate((minimum) => {
-      const offenders: string[] = [];
-      const selectors = 'button, a[href], [role="tab"], [role="button"]';
-
-      document.querySelectorAll(selectors).forEach((el) => {
-        if (isHidden(el)) return;
-        // The file input is display:none and is driven by the dropzone.
-        if (el instanceof HTMLInputElement && el.type === 'file') return;
-
-        const rect = el.getBoundingClientRect();
-        if (rect.width === 0 || rect.height === 0) return;
-
-        // The skip link is `sr-only` until it takes focus: it renders as a
-        // 1×1 clip-path box that expands on keyboard focus. It is a
-        // keyboard affordance, not a pointer target, so it must not be
-        // measured as one. Detected structurally (collapsed *and* clipped)
-        // rather than by class name, so the pattern still holds if the
-        // markup changes.
-        const style = window.getComputedStyle(el);
-        const clippedAway = style.clipPath.includes('inset(50%');
-        if (clippedAway && rect.width <= 1 && rect.height <= 1) return;
-
-        if (rect.width < minimum || rect.height < minimum) {
-          const name =
-            (el.getAttribute('aria-label') || el.textContent || '').trim().slice(0, 24) ||
-            el.tagName.toLowerCase();
-          offenders.push(
-            `"${name}" is ${Math.round(rect.width)}×${Math.round(rect.height)}px`,
-          );
-        }
-      });
-
-      return offenders;
-
-      function isHidden(el: Element) {
-        const style = window.getComputedStyle(el);
-        return style.display === 'none' || style.visibility === 'hidden';
-      }
-    }, MIN_TAP_TARGET_PX);
+    const tooSmall = await findUndersizedTargets(page, MIN_TAP_TARGET_PX);
 
     expect(tooSmall, `targets under ${MIN_TAP_TARGET_PX}px:\n${tooSmall.join('\n')}`).toEqual([]);
   });
 
-  test('the receive form and the code ticket fit a phone', async ({ page }) => {
+  test('the receive form fits a phone', async ({ page }) => {
     await page.goto(APP_URL);
     await page.getByRole('button', { name: 'Receive' }).click();
 
@@ -170,5 +130,27 @@ test.describe('mobile layout', () => {
       () => document.documentElement.clientWidth,
     );
     expect(inputWidth).toBeLessThanOrEqual(viewportWidth);
+  });
+
+  test('the transmission code ticket fits a phone', async ({ page }) => {
+    await page.goto(APP_URL);
+    await expect(page.getByRole('textbox', { name: 'Text to share' })).toBeVisible();
+
+    await page.getByRole('textbox', { name: 'Text to share' }).fill('a ticket that must fit');
+    await page.getByRole('button', { name: 'Send text' }).click();
+    await expect(page.getByText('Transmission Code')).toBeVisible();
+
+    // The ticket is the six-character code in 35px monospace with 0.18em of
+    // letter spacing — the widest thing the sender screen shows. If it
+    // overflows, the digits run off the edge of the phone.
+    const ticket = page.locator('main').getByText(/^[0-9A-HJKMNP-TV-Z]{6}$/).first();
+    const box = await ticket.boundingBox();
+    expect(box).not.toBeNull();
+
+    const viewportWidth = await page.evaluate(
+      () => document.documentElement.clientWidth,
+    );
+    expect(box?.width ?? 0).toBeLessThanOrEqual(viewportWidth);
+    expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(viewportWidth);
   });
 });

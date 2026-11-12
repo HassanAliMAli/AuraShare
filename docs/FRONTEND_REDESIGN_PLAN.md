@@ -442,3 +442,53 @@ navigation, while Chromium is unaffected — so it reads as "WebKit is broken"
 rather than "the environment is leaking". `playwright.config.ts` clears the
 variable for the WebKit projects; it is a no-op outside a snap and irrelevant
 in CI.
+
+## Closing the gaps the matrix opened
+
+Adding WebKit was only half the job. The matrix proved the redesign *works*
+on four engines; it did not prove the redesign keeps *working*. Three things
+the design is built on had no test at all, and one of them turned out to be
+broken.
+
+### A third tap target defect, on the landing page
+
+The tap-target check that found "Receive" only ever looked at the app screen.
+Measuring the landing page the same way found the same defect there: the
+footer's explore links were 17px tall and "Back to top" 16px — below the
+24×24px minimum of WCAG 2.2 SC 2.5.8, and the footer is a phone-first
+surface.
+
+They now carry the same padding-with-a-compensating-negative-margin treatment
+the app navigation got, and the header links get a 24px minimum height. The
+measurement was taken before and after: the brand link's text does not move
+at all (the box grows symmetrically around it), and the footer's link rhythm
+is unchanged.
+
+`test/e2e/accessibility.spec.ts` now measures the landing page on every
+project — not just the mobile ones — so the desktop header links are covered
+too, and it was verified to fail on all four engines when the fix is put back.
+
+### The three contracts WebKit was added for
+
+`font-stretch` on Archivo's width axis, `dvh` units and the flex shell that
+fills the viewport had no test between them. All three hold today on all four
+combinations, but nothing would have said so if a browser stopped honouring
+them. `test/e2e/typography-layout.spec.ts` now asserts the computed
+`font-stretch` of the headline, that the variable font is genuinely loaded
+rather than substituted, that one `dvh` is one percent of the viewport, that
+the app shell is exactly one viewport tall, and that the footer is still
+pinned to its bottom edge.
+
+### A test whose name promised more than it did
+
+"the receive form and the code ticket fit a phone" measured the input and
+nothing else — the code ticket, the widest thing the sender screen shows, was
+never measured. It is measured now, in a test of its own.
+
+The skip link is the other half of the story: it is `sr-only` until it takes
+focus, so it is invisible to a pointer and to the tap-target check alike. The
+only way to prove a keyboard user can reach the content is to press Tab and
+watch. `test/e2e/accessibility.spec.ts` does that on both screens, and checks
+that activating the link moves the sequential focus navigation starting point
+into the main content — `<main>` is not focusable itself, so the next Tab is
+what proves the skip worked.

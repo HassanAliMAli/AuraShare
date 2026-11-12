@@ -16,7 +16,8 @@ export default defineConfig({
     // Every test lives under test/ — mirror the project by block.
     include: ['test/**/*.{test,spec}.{ts,tsx}'],
     // Playwright owns test/e2e — its specs must not be collected by Vitest.
-    exclude: [...configDefaults.exclude, 'test/e2e/**'],
+    // The helper modules beside them are ordinary code and are unit-tested.
+    exclude: [...configDefaults.exclude, 'test/e2e/**/*.spec.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],

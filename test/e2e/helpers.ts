@@ -28,7 +28,7 @@ export async function openApp(browser: Browser): Promise<Page> {
 /** Share a text payload and return the transmission code shown to the sender. */
 export async function shareText(page: Page, text: string): Promise<string> {
   await page.getByRole('textbox', { name: 'Text to share' }).fill(text);
-  await page.getByRole('button', { name: 'Share Aura' }).click();
+  await page.getByRole('button', { name: 'Send text' }).click();
   await expect(page.getByText('Transmission Code')).toBeVisible();
   return readCode(page);
 }
@@ -40,7 +40,7 @@ export async function shareText(page: Page, text: string): Promise<string> {
  * starts the share immediately.
  */
 export async function shareFile(page: Page, filePath: string): Promise<string> {
-  await page.getByRole('button', { name: 'files', exact: true }).click();
+  await page.getByRole('tab', { name: 'files', exact: true }).click();
   await page.locator('input[type="file"]').setInputFiles(filePath);
   await expect(page.getByText('Transmission Code')).toBeVisible();
   return readCode(page);
@@ -60,14 +60,14 @@ export async function readCode(page: Page): Promise<string> {
 /** Switch a peer into receiver mode. */
 export async function openReceiver(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Receive' }).click();
-  await expect(page.getByRole('textbox', { name: /cosmic code/i })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: /six-character code/i })).toBeVisible();
 }
 
 /** Join a room with a transmission code. */
 export async function joinRoom(page: Page, code: string): Promise<void> {
   await openReceiver(page);
-  await page.getByRole('textbox', { name: /cosmic code/i }).fill(code);
-  await page.getByRole('button', { name: 'Establish Link' }).click();
+  await page.getByRole('textbox', { name: /six-character code/i }).fill(code);
+  await page.getByRole('button', { name: 'Establish connection' }).click();
 }
 
 /** Wait until the sender reports that the receiver is connected. */

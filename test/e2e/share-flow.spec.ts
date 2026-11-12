@@ -28,8 +28,8 @@ test.describe('AuraShare peer-to-peer transfer', () => {
     await joinRoom(receiver, code);
 
     await expectPeerConnected(sender);
-    await expect(receiver.getByText('Harmony Achieved')).toBeVisible();
-    await expect(receiver.getByText(`"${payload}"`)).toBeVisible();
+    await expect(receiver.getByText('Transfer complete')).toBeVisible();
+    await expect(receiver.getByText(payload)).toBeVisible();
   });
 
   test('file payload is received and downloaded byte-identical', async ({ browser }) => {
@@ -49,9 +49,16 @@ test.describe('AuraShare peer-to-peer transfer', () => {
     await expect(receiver.getByText('README.md').first()).toBeVisible();
 
     await receiver.getByRole('checkbox', { name: 'Select README.md' }).check();
+
+    // Register the download listener BEFORE the click. The transfer can
+    // complete in a few milliseconds, and `waitForEvent` does not buffer
+    // events — a download that lands between the click resolving and the
+    // listener attaching is lost, and the test then waits out its whole
+    // timeout for an event that already fired.
+    const downloadEvent = receiver.waitForEvent('download');
     await receiver.getByRole('button', { name: /Download \(1\)/ }).click();
 
-    const download = await receiver.waitForEvent('download');
+    const download = await downloadEvent;
     expect(download.suggestedFilename()).toBe('README.md');
 
     const stream = await download.createReadStream();
@@ -68,32 +75,32 @@ test.describe('AuraShare peer-to-peer transfer', () => {
     await joinRoom(receiver, 'ZZZZZZ');
 
     // The app waits out its 30s connect timeout before surfacing the failure.
-    await expect(receiver.getByText('Cosmos Disrupted')).toBeVisible({ timeout: 45_000 });
-    await expect(receiver.getByText('Try Re-Alignment')).toBeVisible();
+    await expect(receiver.getByText('Connection failed')).toBeVisible({ timeout: 45_000 });
+    await expect(receiver.getByText('Try again')).toBeVisible();
 
-    // "Try Re-Alignment" must bring the peer back to a usable idle state.
-    await receiver.getByRole('button', { name: 'Try Re-Alignment' }).click();
+    // "Try again" must bring the peer back to a usable idle state.
+    await receiver.getByRole('button', { name: 'Try again' }).click();
     await expect(receiver.getByRole('textbox', { name: 'Text to share' })).toBeVisible();
 
     // ...and the peer can start a fresh receiver session from there.
     await receiver.getByRole('button', { name: 'Receive' }).click();
-    await expect(receiver.getByRole('textbox', { name: /cosmic code/i })).toBeVisible();
+    await expect(receiver.getByRole('textbox', { name: /six-character code/i })).toBeVisible();
   });
 
   test('a malformed code never opens a link', async ({ browser }) => {
     const receiver = await openApp(browser);
 
     await openReceiver(receiver);
-    await receiver.getByRole('textbox', { name: /cosmic code/i }).fill('AB!12Z');
+    await receiver.getByRole('textbox', { name: /six-character code/i }).fill('AB!12Z');
 
     // The button must stay disabled and the reason must be on screen — a
     // dead button with no explanation is the bug this guards against.
-    await expect(receiver.getByRole('button', { name: 'Establish Link' })).toBeDisabled();
+    await expect(receiver.getByRole('button', { name: 'Establish connection' })).toBeDisabled();
     await expect(receiver.getByRole('alert')).toContainText('no I, L, O or U');
 
     // A well-formed code still opens the link.
-    await receiver.getByRole('textbox', { name: /cosmic code/i }).fill('AB12CD');
-    await expect(receiver.getByRole('button', { name: 'Establish Link' })).toBeEnabled();
+    await receiver.getByRole('textbox', { name: /six-character code/i }).fill('AB12CD');
+    await expect(receiver.getByRole('button', { name: 'Establish connection' })).toBeEnabled();
     await expect(receiver.getByRole('alert')).toHaveCount(0);
   });
 });

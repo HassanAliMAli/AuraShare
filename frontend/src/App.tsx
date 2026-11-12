@@ -1,4 +1,5 @@
 import { lazy, Suspense } from 'react';
+import { MotionConfig } from 'framer-motion';
 import { useRoute } from './hooks';
 import { LandingPage } from './components/landing';
 
@@ -13,8 +14,12 @@ const AuraApp = lazy(() =>
 /** Minimal branded loader for the app chunk (no feature imports here). */
 function PageLoader() {
   return (
-    <div className="min-h-dvh bg-void flex items-center justify-center" role="status" aria-label="Loading">
-      <div className="w-16 h-16 rounded-full border-2 border-signal/40 border-t-transparent animate-spin" />
+    <div
+      className="flex min-h-dvh items-center justify-center bg-canvas"
+      role="status"
+      aria-label="Loading"
+    >
+      <div className="h-8 w-8 animate-spin rounded-full border-2 border-border-strong border-t-accent" />
     </div>
   );
 }
@@ -22,17 +27,22 @@ function PageLoader() {
 /**
  * Root router: `/` serves the marketing landing page, `/app` serves the
  * transfer app. Anything else falls back to the landing page.
+ *
+ * `MotionConfig reducedMotion="user"` is set here so the operating-system
+ * preference is honoured across every view, on every route.
  */
 export function App() {
   const route = useRoute();
 
-  if (route === '/app') {
-    return (
-      <Suspense fallback={<PageLoader />}>
-        <AuraApp />
-      </Suspense>
-    );
-  }
-
-  return <LandingPage />;
+  return (
+    <MotionConfig reducedMotion="user">
+      {route === '/app' ? (
+        <Suspense fallback={<PageLoader />}>
+          <AuraApp />
+        </Suspense>
+      ) : (
+        <LandingPage />
+      )}
+    </MotionConfig>
+  );
 }

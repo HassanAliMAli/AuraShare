@@ -14,9 +14,12 @@ export function ShareInputView() {
       initial="hidden"
       animate="visible"
       exit="exit"
-      className="z-30 w-full flex justify-center"
+      role="tabpanel"
+      id={`share-panel-${state.shareMode}`}
+      aria-labelledby={`share-tab-${state.shareMode}`}
+      className="z-30 flex w-full justify-center"
     >
-      <div className="w-full max-w-[90vw] md:max-w-xl">
+      <div className="w-full max-w-xl">
         {state.shareMode === 'files' ? (
           <AuraDropzone onFileDrop={(f) => actions.startShare(f, undefined)} />
         ) : (

@@ -1,0 +1,72 @@
+/**
+ * Design tokens — the single source of truth for colour, type, radius and motion.
+ *
+ * Direction: "Field Instrument" — precision network equipment. Warm neutral base,
+ * one amber accent, hairline rules instead of elevation, monospace for machine
+ * output. No gradients, no glow, no blur, no glass.
+ */
+
+@theme {
+  /* ─── Surfaces ──────────────────────────────────────────────────────────
+     A warm near-black canvas. Three steps, separated by 1px rules rather than
+     shadows. Every text colour below clears WCAG AA (4.5:1) on all three.
+
+     Named "canvas", not "base": Tailwind v4 resolves an ambiguous `text-<name>`
+     utility against the colour namespace first, so a `--color-base` token would
+     turn `text-base` (font-size 14px) into a colour rule and silently break
+     every 14px label on the page. */
+  --color-canvas: #0e0e0c;
+  --color-surface: #171715;
+  --color-raised: #1f1f1c;
+  --color-border: #2b2b27;
+  --color-border-strong: #3d3d37;
+
+  /* ─── Text ──────────────────────────────────────────────────────────────
+     text 16.64:1 · text-2 7.77:1 · text-3 5.59:1 (on --color-canvas) */
+  --color-text: #f0eee7;
+  --color-text-2: #a8a49a;
+  --color-text-3: #8d8a80;
+
+  /* ─── Accent & state ────────────────────────────────────────────────────
+     Amber is the indicator-lamp colour: one accent, used for the primary
+     action, focus rings and the direct data path. Green and red appear only
+     where they carry state, never as decoration. */
+  --color-accent: #e8a33d;
+  --color-accent-ink: #0e0e0c;
+  --color-success: #6fbf8b;
+  --color-error: #e5645f;
+
+  /* ─── Type ──────────────────────────────────────────────────────────────
+     Archivo carries the display voice (the wdth axis is used wide for
+     headlines), IBM Plex Sans the reading voice, JetBrains Mono the machine
+     voice. */
+  --font-display: 'Archivo Variable', 'Archivo', system-ui, sans-serif;
+  --font-body: 'IBM Plex Sans Variable', 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, monospace;
+
+  /* Type scale — 8 steps, 12px floor. */
+  --text-xs: 0.75rem; /* 12 */
+  --text-sm: 0.8125rem; /* 13 */
+  --text-base: 0.875rem; /* 14 */
+  --text-md: 1rem; /* 16 */
+  --text-lg: 1.25rem; /* 20 */
+  --text-xl: 1.75rem; /* 28 */
+  --text-2xl: 2.5rem; /* 40 */
+  --text-3xl: 3.5rem; /* 56 */
+
+  /* ─── Radius ────────────────────────────────────────────────────────────
+     Small and consistent. Nothing is a pill; nothing is a blob. */
+  --radius-xs: 2px;
+  --radius-sm: 3px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-full: 9999px;
+
+  /* ─── Motion ────────────────────────────────────────────────────────────
+     One easing curve, three durations. No decorative loops. */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration-micro: 120ms;
+  --duration-standard: 200ms;
+  --duration-enter: 320ms;
+}

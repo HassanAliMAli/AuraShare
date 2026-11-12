@@ -1,7 +1,6 @@
 import { motion } from 'framer-motion';
 import { cn } from '../../lib/utils';
 import { useAppStore } from '../../stores/appStore';
-import { usePrefersReducedMotion } from '../../hooks';
 import { tabsVariants } from '../../lib/motion';
 import type { ShareMode } from '../../types';
 
@@ -10,7 +9,6 @@ const MODES: readonly ShareMode[] = ['text', 'files'];
 /** Text/Files mode switcher shown on the idle share screen. */
 export function ShareModeTabs() {
   const { state, actions } = useAppStore();
-  const prefersReduced = usePrefersReducedMotion();
 
   return (
     <motion.div
@@ -18,32 +16,37 @@ export function ShareModeTabs() {
       initial="hidden"
       animate="visible"
       exit="exit"
-      className="pointer-events-auto bg-bright/5 backdrop-blur-xl border border-bright/10 rounded-2xl md:rounded-3xl p-1 flex gap-1 mb-8 md:mb-12 shadow-xl"
+      role="tablist"
+      aria-label="Share mode"
+      className="mb-8 inline-flex items-center gap-1 border-b border-border md:mb-10"
     >
-      {MODES.map((mode) => (
-        <button
-          key={mode}
-          type="button"
-          aria-pressed={state.shareMode === mode}
-          onClick={() => actions.setShareMode(mode)}
-          className={cn(
-            "relative px-6 md:px-10 py-2 md:py-3 rounded-xl md:rounded-2xl text-[10px] md:text-xs font-black uppercase tracking-[0.2em] transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-signal",
-            state.shareMode === mode ? 'text-void' : 'text-text-ghost hover:text-text-secondary'
-          )}
-        >
-          {state.shareMode === mode && (
-            <motion.div
-              layoutId="activeTab"
-              className="absolute inset-0 bg-bright rounded-xl md:rounded-2xl z-0"
-              transition={prefersReduced ? { duration: 0 } : { type: 'spring', bounce: 0.2, duration: 0.6 }}
-            />
-          )}
-          <span className={cn(
-            "relative z-10 transition-colors duration-300",
-            state.shareMode === mode ? 'text-void' : ''
-          )}>{mode}</span>
-        </button>
-      ))}
+      {MODES.map((mode) => {
+        const active = state.shareMode === mode;
+        return (
+          <button
+            key={mode}
+            type="button"
+            role="tab"
+            id={`share-tab-${mode}`}
+            aria-selected={active}
+            aria-controls={`share-panel-${mode}`}
+            onClick={() => actions.setShareMode(mode)}
+            className={cn(
+              'relative px-5 py-2.5 text-sm font-medium capitalize transition-colors duration-[--duration-micro]',
+              active ? 'text-text' : 'text-text-3 hover:text-text-2',
+            )}
+          >
+            {mode}
+            {active && (
+              <motion.span
+                layoutId="activeTab"
+                className="absolute inset-x-0 -bottom-px h-0.5 bg-accent"
+                transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+              />
+            )}
+          </button>
+        );
+      })}
     </motion.div>
   );
 }

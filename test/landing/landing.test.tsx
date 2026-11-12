@@ -2,9 +2,9 @@ import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { LandingPage } from '@/components/landing/LandingPage';
-import { DeviceFlowVisual } from '@/components/landing/DeviceFlowVisual/DeviceFlowVisual';
 import { Hero } from '@/components/landing/Hero/Hero';
 import {
+  COMPARISON,
   FAQS,
   FINAL_CTA,
   FOOTER,
@@ -12,15 +12,14 @@ import {
   HOW_IT_WORKS,
   NAV_LINKS,
   PRIVACY,
-  WHY_AURASHARE,
 } from '@/lib/landingCopy';
-import { getRoute, navigate } from '@/lib/router';
+import { getRoute } from '@/lib/router';
 import { renderWithStore, resetRoute } from '../shared/fixtures';
 
 describe('landing/landing — page composition', () => {
   beforeEach(() => resetRoute('/'));
 
-  it('renders exactly one h1 with the hero positioning statement', () => {
+  it('renders exactly one h1 with the positioning statement', () => {
     renderWithStore(<LandingPage />);
     const headings = screen.getAllByRole('heading', { level: 1 });
     expect(headings).toHaveLength(1);
@@ -31,7 +30,7 @@ describe('landing/landing — page composition', () => {
     renderWithStore(<LandingPage />);
 
     expect(screen.getByRole('heading', { name: HOW_IT_WORKS.title })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: WHY_AURASHARE.title })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: COMPARISON.title })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: PRIVACY.title })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Questions, answered.' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: FINAL_CTA.title })).toBeInTheDocument();
@@ -39,28 +38,43 @@ describe('landing/landing — page composition', () => {
 
   it('renders every nav anchor with the right target', () => {
     renderWithStore(<LandingPage />);
+    // The header and the footer both list the sections, so scope to the banner.
+    const header = within(screen.getByRole('banner'));
     for (const link of NAV_LINKS) {
-      expect(screen.getByRole('link', { name: link.label })).toHaveAttribute(
+      expect(header.getByRole('link', { name: link.label })).toHaveAttribute(
         'href',
         link.href,
       );
     }
   });
 
-  it('renders the three step cards, feature cards, and privacy chips', () => {
+  it('renders every how-it-works step as a numbered row', () => {
     renderWithStore(<LandingPage />);
     for (const step of HOW_IT_WORKS.steps) {
       expect(screen.getByRole('heading', { name: step.title })).toBeInTheDocument();
+      expect(screen.getByText(step.id)).toBeInTheDocument();
     }
-    for (const feature of WHY_AURASHARE.features) {
-      expect(screen.getByRole('heading', { name: feature.title })).toBeInTheDocument();
-    }
-    for (const chip of PRIVACY.chips) {
-      expect(screen.getByText(chip)).toBeInTheDocument();
+    expect(screen.getByText(HOW_IT_WORKS.mechanismTail)).toBeInTheDocument();
+  });
+
+  it('renders the comparison table with a cell for every column', () => {
+    renderWithStore(<LandingPage />);
+    const table = screen.getByRole('table');
+    expect(within(table).getByRole('columnheader', { name: 'AuraShare' })).toBeInTheDocument();
+    for (const row of COMPARISON.rows) {
+      expect(within(table).getByRole('rowheader', { name: row.label })).toBeInTheDocument();
+      expect(within(table).getAllByText(row.values[0]!).length).toBeGreaterThan(0);
     }
   });
 
-  it('renders every FAQ question and the footer trust strip', () => {
+  it('renders every privacy guarantee', () => {
+    renderWithStore(<LandingPage />);
+    for (const point of PRIVACY.points) {
+      expect(screen.getByText(point)).toBeInTheDocument();
+    }
+  });
+
+  it('renders every FAQ question and the footer guarantee strip', () => {
     renderWithStore(<LandingPage />);
     for (const item of FAQS) {
       expect(screen.getByRole('button', { name: item.q })).toBeInTheDocument();
@@ -83,23 +97,22 @@ describe('landing/landing — page composition', () => {
   it('navigates to /app from the final CTA', async () => {
     const user = userEvent.setup();
     renderWithStore(<LandingPage />);
-    const cta = screen
-      .getAllByRole('button', { name: /start sharing/i })
-      .at(-1)!;
+    const cta = screen.getAllByRole('button', { name: /start sharing/i }).at(-1)!;
 
     await user.click(cta);
     expect(getRoute()).toBe('/app');
   });
 });
 
-describe('landing/landing — section content', () => {
+describe('landing/landing — hero content', () => {
   beforeEach(() => resetRoute('/'));
 
-  it('renders the hero subtitle and trust strip', () => {
+  it('renders the subtitle and the three factual specs', () => {
     renderWithStore(<Hero />);
     expect(screen.getByText(HERO.subtitle)).toBeInTheDocument();
-    for (const item of HERO.trust) {
-      expect(screen.getByText(item)).toBeInTheDocument();
+    for (const spec of HERO.specs) {
+      expect(screen.getByText(spec.label)).toBeInTheDocument();
+      expect(screen.getByText(spec.value)).toBeInTheDocument();
     }
   });
 
@@ -109,24 +122,6 @@ describe('landing/landing — section content', () => {
       'href',
       '#how-it-works',
     );
-  });
-
-  it('renders the mechanism tail under the step list', () => {
-    renderWithStore(<LandingPage />);
-    expect(screen.getByText(HOW_IT_WORKS.mechanismTail)).toBeInTheDocument();
-  });
-
-  it('renders every feature description alongside its heading', () => {
-    renderWithStore(<LandingPage />);
-    for (const feature of WHY_AURASHARE.features) {
-      expect(screen.getByText(feature.description)).toBeInTheDocument();
-    }
-  });
-
-  it('labels both the relay and the direct peer-to-peer path', () => {
-    renderWithStore(<LandingPage />);
-    expect(screen.getByText(PRIVACY.relayLabel)).toBeInTheDocument();
-    expect(screen.getByText(PRIVACY.directLabel)).toBeInTheDocument();
   });
 });
 
@@ -168,20 +163,3 @@ describe('landing/landing — FAQ accordion', () => {
     expect(first).toHaveAttribute('aria-expanded', 'false');
   });
 });
-
-describe('landing/landing — DeviceFlowVisual', () => {
-  it('is decorative and exposes no interactive content', () => {
-    const { container } = renderWithStore(<DeviceFlowVisual />);
-    expect(container.querySelector('[aria-hidden="true"]')).not.toBeNull();
-    expect(within(container).queryByRole('button')).not.toBeInTheDocument();
-    expect(within(container).queryByRole('link')).not.toBeInTheDocument();
-  });
-
-  it('shows the file packet and the pairing code', () => {
-    renderWithStore(<DeviceFlowVisual />);
-    expect(screen.getAllByText(/video\.mp4/).length).toBeGreaterThan(0);
-    expect(screen.getByText('A1B2C3')).toBeInTheDocument();
-  });
-});
-
-void navigate;

@@ -1,24 +1,28 @@
 import { motion } from 'framer-motion';
+import { FOOTER } from '../../lib/landingCopy';
 import { fadeUpVariants } from '../../lib/motion';
 
-/** Footer status strip: P2P / E2E / capacity badges. */
+/**
+ * Footer status strip on the app screen. Static text — no pulsing dot, no
+ * badge implying a live state that does not exist.
+ */
 export function SiteFooter() {
   return (
-    <footer className="absolute bottom-[calc(1.5rem+env(safe-area-inset-bottom))] md:bottom-[calc(3rem+env(safe-area-inset-bottom))] left-0 right-0 flex justify-center z-50 pointer-events-none px-4">
+    <footer className="pointer-events-none absolute inset-x-0 bottom-[calc(1.5rem+env(safe-area-inset-bottom))] z-50 px-4 md:bottom-[calc(2rem+env(safe-area-inset-bottom))]">
       <motion.div
         variants={fadeUpVariants}
         initial="hidden"
         animate="visible"
-        className="flex flex-wrap items-center justify-center gap-4 md:gap-8 text-[8px] md:text-[10px] uppercase tracking-[0.2em] md:tracking-[0.4em] text-text-ghost font-black text-center"
+        className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2"
       >
-        <div className="flex items-center gap-2">
-          <div className="w-1 md:w-1.5 h-1 md:h-1.5 rounded-full bg-transfer animate-pulse" />
-          P2P DIRECT
-        </div>
-        <div className="hidden xs:block opacity-50">•</div>
-        <div>E2E ENCRYPTED</div>
-        <div className="hidden xs:block opacity-50">•</div>
-        <div className="whitespace-nowrap">INFINITE CAPACITY</div>
+        {FOOTER.trust.map((item) => (
+          <span
+            key={item}
+            className="font-mono text-xs uppercase tracking-[0.14em] text-text-3"
+          >
+            {item}
+          </span>
+        ))}
       </motion.div>
     </footer>
   );

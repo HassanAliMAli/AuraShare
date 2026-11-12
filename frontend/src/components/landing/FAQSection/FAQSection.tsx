@@ -15,14 +15,18 @@ export function FAQSection() {
 
   return (
     <Section id="faq">
-      <SectionHeader eyebrow="FAQ" title="Questions, answered." subtitle="Everything you need to know before your first transfer." />
+      <SectionHeader
+        eyebrow="FAQ"
+        title="Questions, answered."
+        subtitle="Everything you need to know before your first transfer."
+      />
 
       <motion.div
         variants={staggerContainer}
         initial="hidden"
         whileInView="visible"
-        viewport={{ once: true, margin: '-80px' }}
-        className="mt-12 md:mt-16 max-w-2xl mx-auto bg-bright/5 backdrop-blur-xl border border-bright/10 rounded-2xl md:rounded-3xl px-5 md:px-8"
+        viewport={{ once: true, margin: '-60px' }}
+        className="mt-10 max-w-3xl border-t border-border"
       >
         {FAQS.map((item) => (
           <motion.div key={item.id} variants={staggerItem}>

@@ -37,8 +37,8 @@ describe('features/share-flow — ReceiveCodeForm', () => {
     const join = vi.fn();
     render(<ControlledReceiveForm join={join} />);
 
-    const input = screen.getByLabelText('6-character cosmic code');
-    const submit = screen.getByRole('button', { name: 'Establish Link' });
+    const input = screen.getByLabelText('Six-character code');
+    const submit = screen.getByRole('button', { name: 'Establish connection' });
     expect(submit).toBeDisabled();
 
     await user.type(input, 'abc123');
@@ -54,40 +54,40 @@ describe('features/share-flow — ReceiveCodeForm', () => {
     const join = vi.fn();
     render(<ControlledReceiveForm join={join} initial={{ joinCode: 'ZXCV12' }} />);
 
-    await user.type(screen.getByLabelText('6-character cosmic code'), '{enter}');
+    await user.type(screen.getByLabelText('Six-character code'), '{enter}');
     expect(join).toHaveBeenCalledWith('ZXCV12');
   });
 
   it('keeps submission disabled for five characters', () => {
     render(<ControlledReceiveForm initial={{ joinCode: 'ABCDE' }} />);
-    expect(screen.getByRole('button', { name: 'Establish Link' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Establish connection' })).toBeDisabled();
   });
 
   it('keeps the link disabled for a code the Worker could never mint', () => {
     render(<ControlledReceiveForm initial={{ joinCode: 'AB!12Z' }} />);
 
-    expect(screen.getByRole('button', { name: 'Establish Link' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Establish connection' })).toBeDisabled();
     expect(screen.getByRole('alert')).toHaveTextContent(ROOM_CODE_HINT);
   });
 
   it('rejects a well-formed code that contains an ambiguous character', () => {
     render(<ControlledReceiveForm initial={{ joinCode: 'IL0OU1' }} />);
 
-    expect(screen.getByRole('button', { name: 'Establish Link' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Establish connection' })).toBeDisabled();
     expect(screen.getByRole('alert')).toHaveTextContent(ROOM_CODE_HINT);
   });
 
   it('says nothing while the code is still being typed', () => {
     render(<ControlledReceiveForm initial={{ joinCode: 'AB' }} />);
 
-    expect(screen.getByRole('button', { name: 'Establish Link' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Establish connection' })).toBeDisabled();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('stays quiet for a valid code', () => {
     render(<ControlledReceiveForm initial={{ joinCode: 'AB12CD' }} />);
 
-    expect(screen.getByRole('button', { name: 'Establish Link' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Establish connection' })).toBeEnabled();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
@@ -103,14 +103,14 @@ describe('features/share-flow — ReceiveCodeForm', () => {
 
   it('marks the field invalid only once something was typed', () => {
     const { unmount } = render(<ControlledReceiveForm initial={{ joinCode: '' }} />);
-    expect(screen.getByLabelText('6-character cosmic code')).toHaveAttribute(
+    expect(screen.getByLabelText('Six-character code')).toHaveAttribute(
       'aria-invalid',
       'false',
     );
     unmount();
 
     render(<ControlledReceiveForm initial={{ joinCode: 'AB!12Z' }} />);
-    expect(screen.getByLabelText('6-character cosmic code')).toHaveAttribute(
+    expect(screen.getByLabelText('Six-character code')).toHaveAttribute(
       'aria-invalid',
       'true',
     );
@@ -121,7 +121,7 @@ describe('features/share-flow — ReceiveCodeForm', () => {
     const reset = vi.fn();
     render(<ControlledReceiveForm initial={{ joinCode: 'ABC123' }} reset={reset} />);
 
-    await user.click(screen.getByRole('button', { name: 'Cancel Connection' }));
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(reset).toHaveBeenCalledTimes(1);
   });
 });
@@ -133,7 +133,7 @@ describe('features/share-flow — SharingView', () => {
     });
 
     expect(screen.getByText('ABC123')).toBeInTheDocument();
-    expect(screen.getByText(/waiting for cosmic alignment/i)).toBeInTheDocument();
+    expect(screen.getByText(/Waiting for the other device/i)).toBeInTheDocument();
     expect(screen.queryByText(/receiver connected/i)).not.toBeInTheDocument();
   });
 
@@ -154,10 +154,10 @@ describe('features/share-flow — SharingView', () => {
     expect(screen.getByText('done.txt')).toBeInTheDocument();
     expect(screen.getByText('pending.txt')).toBeInTheDocument();
 
-    const rows = container.querySelectorAll('.space-y-2 > div');
+    const rows = container.querySelectorAll('li');
     expect(rows).toHaveLength(2);
-    expect(rows[0]?.querySelector('.text-transfer')).not.toBeNull();
-    expect(rows[1]?.querySelector('.text-transfer')).toBeNull();
+    expect(rows[0]?.querySelector('.text-success')).not.toBeNull();
+    expect(rows[1]?.querySelector('.text-success')).toBeNull();
   });
 
   it('ends the session on request', async () => {
@@ -168,18 +168,18 @@ describe('features/share-flow — SharingView', () => {
       actions: { reset },
     });
 
-    await user.click(screen.getByRole('button', { name: 'End Session' }));
+    await user.click(screen.getByRole('button', { name: 'End session' }));
     expect(reset).toHaveBeenCalledTimes(1);
   });
 });
 
 describe('features/share-flow — LoaderView', () => {
   it('announces the label and optional hint politely', () => {
-    renderWithStore(<LoaderView label="Establishing Link" hint="Reaching across the cosmos" />);
+    renderWithStore(<LoaderView label="Establishing a direct connection" hint="Waiting for the peer" />);
 
-    expect(screen.getByText('Establishing Link')).toBeInTheDocument();
-    expect(screen.getByText('Reaching across the cosmos')).toBeInTheDocument();
-    expect(screen.getByText('Establishing Link').closest('[aria-live="polite"]')).not.toBeNull();
+    expect(screen.getByText('Establishing a direct connection')).toBeInTheDocument();
+    expect(screen.getByText('Waiting for the peer')).toBeInTheDocument();
+    expect(screen.getByText('Establishing a direct connection').closest('[aria-live="polite"]')).not.toBeNull();
   });
 
   it('renders without a hint', () => {

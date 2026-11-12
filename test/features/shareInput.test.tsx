@@ -85,7 +85,7 @@ describe('features/share-input — AuraTextarea', () => {
     const onTextShare = vi.fn();
     renderWithStore(<AuraTextarea onTextShare={onTextShare} />);
     const textarea = screen.getByLabelText('Text to share');
-    const button = screen.getByRole('button', { name: 'Share Aura' });
+    const button = screen.getByRole('button', { name: 'Send text' });
 
     expect(button).toBeDisabled();
     await user.type(textarea, '   ');
@@ -101,7 +101,7 @@ describe('features/share-input — AuraTextarea', () => {
     await user.type(screen.getByLabelText('Text to share'), 'hello');
     expect(screen.getByText('5 characters')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Share Aura' }));
+    await user.click(screen.getByRole('button', { name: 'Send text' }));
     expect(onTextShare).toHaveBeenCalledWith('hello');
   });
 });
@@ -124,8 +124,8 @@ describe('features/share-input — mode surfaces', () => {
     const setShareMode = vi.fn();
     renderWithStore(<ShareModeTabs />, { actions: { setShareMode } });
 
-    await user.click(screen.getByRole('button', { name: 'files' }));
-    await user.click(screen.getByRole('button', { name: 'text' }));
+    await user.click(screen.getByRole('tab', { name: 'files' }));
+    await user.click(screen.getByRole('tab', { name: 'text' }));
 
     expect(setShareMode).toHaveBeenNthCalledWith(1, 'files');
     expect(setShareMode).toHaveBeenNthCalledWith(2, 'text');
@@ -134,12 +134,12 @@ describe('features/share-input — mode surfaces', () => {
   it('exposes the active mode to assistive technology', () => {
     renderWithStore(<ShareModeTabs />, { state: { shareMode: 'files' } });
 
-    expect(screen.getByRole('button', { name: 'files' })).toHaveAttribute(
-      'aria-pressed',
+    expect(screen.getByRole('tab', { name: 'files' })).toHaveAttribute(
+      'aria-selected',
       'true',
     );
-    expect(screen.getByRole('button', { name: 'text' })).toHaveAttribute(
-      'aria-pressed',
+    expect(screen.getByRole('tab', { name: 'text' })).toHaveAttribute(
+      'aria-selected',
       'false',
     );
   });

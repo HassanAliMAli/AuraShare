@@ -492,3 +492,40 @@ watch. `test/e2e/accessibility.spec.ts` does that on both screens, and checks
 that activating the link moves the sequential focus navigation starting point
 into the main content — `<main>` is not focusable itself, so the next Tab is
 what proves the skip worked.
+
+## What the matrix could not reach
+
+The browser matrix found the two defects above. It then turned out to be
+hitting a third one — not in the application, but in the suite's ability to
+run at all.
+
+The peer-to-peer tests drive two browsers against each other **on the same
+machine**, so their ICE candidates have to reach each other. They could not:
+
+- WebKit obfuscates every host candidate with an mDNS name (`<uuid>.local`),
+  and a release build has no way to turn that off — the
+  `WebRTCMDNSICECandidatesEnabled` preference was removed in 2023, and
+  `window.internals` is not exposed outside WebKit's own test builds.
+- The only other candidate WebKit gathers is a server-reflexive one pointing
+  at the machine's *public* address. Reaching that address from the same
+  machine means the NAT has to hairpin, and a cloud NAT does not.
+
+On a GitHub runner that leaves the peer connection with no usable candidate
+pair at all, and the peer-to-peer tests fail with `ICE negotiation failed` —
+intermittently, depending on whether mDNS happened to resolve that day. It
+was not caused by any of the changes in this plan; it was the matrix making
+a long-standing gap visible.
+
+The fix is a STUN server on the same host (`test/e2e/stun-server.ts`). The
+binding request leaves from the host's own private address, so the reflexive
+candidate it returns *is* that address, and the two peers reach each other
+directly — no mDNS, no hairpinning, and no dependency on the public internet
+either, which the suite had been quietly relying on.
+
+Writing it turned up a subtlety worth recording: **the family field of
+`XOR-MAPPED-ADDRESS` is 16 bits, not one byte followed by a reserved byte.**
+Written as one byte it reads back as `0x0100`, which is not a family at all,
+and the browser throws the whole response away — silently, with no
+candidate and no error. `test/e2e/ice.spec.ts` now guards it: the browser
+has to turn the response into a reflexive candidate, and the test was
+verified to fail when the encoding is put back.

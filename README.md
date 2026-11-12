@@ -134,6 +134,30 @@ phones:
 Run one with `--project=mobile-webkit`, or all of them with the default
 `npm run test:e2e`.
 
+#### The suite's own STUN server
+
+The peer-to-peer tests drive two browsers against each other **on the same
+machine**, so their ICE candidates have to be able to reach each other. They
+cannot, out of the box:
+
+- WebKit obfuscates every host candidate with an mDNS name (`<uuid>.local`)
+  and a release build has no switch to turn that off;
+- the only other candidate it gathers points at the machine's *public*
+  address, and getting there from the same machine means the NAT has to
+  hairpin — a cloud NAT does not.
+
+On a GitHub runner that leaves the peer connection with no usable candidate
+pair, and the test fails with `ICE negotiation failed` — intermittently,
+depending on whether mDNS happened to resolve.
+
+So the suite runs its own STUN server (`test/e2e/stun-server.ts`) on the same
+host. The binding request comes from the host's own private address, so the
+reflexive candidate it returns *is* that address, and the two peers reach
+each other directly — no mDNS, no hairpinning, and no dependency on the
+public internet either. `test/e2e/helpers.ts` points the app at it instead of
+the public STUN servers; the endpoint's own behaviour is covered by
+`test/worker/worker.test.ts`.
+
 The Chromium projects use the system Chrome (`channel: 'chrome'`), which is
 already installed. **WebKit is Playwright's own build and has to be downloaded
 once:**

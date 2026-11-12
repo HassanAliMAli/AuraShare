@@ -117,5 +117,19 @@ export default defineConfig({
       stdout: 'ignore',
       stderr: 'pipe',
     },
+    {
+      // A STUN server on the same host, so the two peers of a session can
+      // reach each other over the machine's own private address. Without it
+      // WebKit has no usable ICE candidate on a runner: it obfuscates every
+      // host candidate with mDNS, and the reflexive candidate points at the
+      // public address, which a cloud NAT will not hairpin. See
+      // `test/e2e/stun-server.ts`.
+      command: 'node --experimental-strip-types test/e2e/stun-server.ts',
+      port: 13478,
+      reuseExistingServer: !process.env.CI,
+      timeout: 30_000,
+      stdout: 'ignore',
+      stderr: 'pipe',
+    },
   ],
 });

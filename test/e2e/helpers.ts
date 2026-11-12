@@ -1,4 +1,5 @@
 import { expect, type Browser, type BrowserContextOptions, type Page } from '@playwright/test';
+import { localIceServers } from './stun-server';
 
 /**
  * Shared helpers for the end-to-end suite.
@@ -8,6 +9,30 @@ import { expect, type Browser, type BrowserContextOptions, type Page } from '@pl
  */
 
 export const APP_URL = '/app';
+
+/**
+ * Point the app at the suite's own STUN server.
+ *
+ * The Worker hands out the public STUN servers, which is right for real
+ * devices but wrong for a test: two peers on one machine cannot reach each
+ * other through a public address unless the NAT hairpins, and WebKit
+ * obfuscates its host candidates with mDNS, which a container does not
+ * resolve reliably. The local server answers with the machine's own private
+ * address, so the two peers connect directly and the suite stops depending
+ * on the runner's network.
+ *
+ * The endpoint's own behaviour is covered by `test/worker/worker.test.ts`;
+ * what the suite is testing here is the peer-to-peer flow, not the ICE list.
+ */
+async function serveLocalIceServers(page: Page): Promise<void> {
+  await page.route('**/api/ice-servers', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(localIceServers()),
+    });
+  });
+}
 
 /** WCAG 2.2 SC 2.5.8 — Target Size (Minimum). */
 export const MIN_TAP_TARGET_PX = 24;
@@ -78,6 +103,7 @@ export async function openApp(
 ): Promise<Page> {
   const context = await browser.newContext(contextOptions);
   const page = await context.newPage();
+  await serveLocalIceServers(page);
   await page.goto(APP_URL);
   await expect(page.getByRole('textbox', { name: 'Text to share' })).toBeVisible();
   return page;

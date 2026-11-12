@@ -18,9 +18,9 @@ import {
  */
 
 test.describe('AuraShare peer-to-peer transfer', () => {
-  test('text payload reaches the receiver intact', async ({ browser }) => {
-    const sender = await openApp(browser);
-    const receiver = await openApp(browser);
+  test('text payload reaches the receiver intact', async ({ browser, contextOptions }) => {
+    const sender = await openApp(browser, contextOptions);
+    const receiver = await openApp(browser, contextOptions);
 
     const payload = 'live e2e hello — 宇宙 ✨';
     const code = await shareText(sender, payload);
@@ -32,9 +32,9 @@ test.describe('AuraShare peer-to-peer transfer', () => {
     await expect(receiver.getByText(payload)).toBeVisible();
   });
 
-  test('file payload is received and downloaded byte-identical', async ({ browser }) => {
-    const sender = await openApp(browser);
-    const receiver = await openApp(browser);
+  test('file payload is received and downloaded byte-identical', async ({ browser, contextOptions }) => {
+    const sender = await openApp(browser, contextOptions);
+    const receiver = await openApp(browser, contextOptions);
 
     // Resolve against the repo root so the spec does not depend on the cwd.
     const source = path.resolve(import.meta.dirname, '../../README.md');
@@ -69,8 +69,8 @@ test.describe('AuraShare peer-to-peer transfer', () => {
     expect(received.equals(expected)).toBe(true);
   });
 
-  test('an unknown code ends in a recoverable error', async ({ browser }) => {
-    const receiver = await openApp(browser);
+  test('an unknown code ends in a recoverable error', async ({ browser, contextOptions }) => {
+    const receiver = await openApp(browser, contextOptions);
 
     await joinRoom(receiver, 'ZZZZZZ');
 
@@ -87,8 +87,8 @@ test.describe('AuraShare peer-to-peer transfer', () => {
     await expect(receiver.getByRole('textbox', { name: /six-character code/i })).toBeVisible();
   });
 
-  test('a malformed code never opens a link', async ({ browser }) => {
-    const receiver = await openApp(browser);
+  test('a malformed code never opens a link', async ({ browser, contextOptions }) => {
+    const receiver = await openApp(browser, contextOptions);
 
     await openReceiver(receiver);
     await receiver.getByRole('textbox', { name: /six-character code/i }).fill('AB!12Z');

@@ -1,4 +1,4 @@
-import { expect, type Browser, type Page } from '@playwright/test';
+import { expect, type Browser, type BrowserContextOptions, type Page } from '@playwright/test';
 
 /**
  * Shared helpers for the end-to-end suite.
@@ -16,9 +16,19 @@ export const APP_URL = '/app';
  */
 const CODE_PATTERN = /^[0-9A-HJKMNP-TV-Z]{6}$/;
 
-/** Open the app on a fresh device (its own browser context). */
-export async function openApp(browser: Browser): Promise<Page> {
-  const context = await browser.newContext();
+/**
+ * Open the app on a fresh device (its own browser context).
+ *
+ * `contextOptions` must be the project's resolved context options — they carry
+ * the viewport, touch support and user agent. `browser.newContext()` does not
+ * inherit them on its own, so without this the "mobile" projects would quietly
+ * run at desktop size and the mobile assertions would prove nothing.
+ */
+export async function openApp(
+  browser: Browser,
+  contextOptions: BrowserContextOptions,
+): Promise<Page> {
+  const context = await browser.newContext(contextOptions);
   const page = await context.newPage();
   await page.goto(APP_URL);
   await expect(page.getByRole('textbox', { name: 'Text to share' })).toBeVisible();

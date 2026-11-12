@@ -279,6 +279,14 @@ describe('worker/worker — documented API contract', () => {
     expect(response.headers.get('cache-control')).toBe('no-store');
   });
 
+  it('puts the documented security headers on error responses too', async () => {
+    const response = await worker.fetch(new Request('http://local/missing'), env());
+
+    expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(response.headers.get('x-frame-options')).toBe('DENY');
+    expect(response.headers.get('cache-control')).toBe('no-store');
+  });
+
   it('answers a preflight with an empty 200 and no body', async () => {
     const response = await worker.fetch(
       new Request('http://local/api/room', { method: 'OPTIONS' }),
@@ -289,22 +297,28 @@ describe('worker/worker — documented API contract', () => {
   });
 
   it.each([
-    ['GET', '/api/room', 'Not found'],
-    ['POST', '/api/ice-servers', 'Not found'],
-    ['GET', '/missing', 'Not found'],
-  ])('answers %s %s with the documented 404 body', async (method, path, body) => {
-    const response = await worker.fetch(
-      new Request(`http://local${path}`, { method }),
-      env(),
-    );
-    expect(response.status).toBe(404);
-    expect(await response.text()).toBe(body);
-  });
+    ['GET', '/api/room', 'not_found', 'Not found', 404],
+    ['POST', '/api/ice-servers', 'not_found', 'Not found', 404],
+    ['GET', '/missing', 'not_found', 'Not found', 404],
+  ])(
+    'answers %s %s with the documented error shape',
+    async (method, path, code, message, status) => {
+      const response = await worker.fetch(
+        new Request(`http://local${path}`, { method }),
+        env(),
+      );
+      expect(response.status).toBe(status);
+      expect(response.headers.get('content-type')).toBe('application/json');
+      expect(await response.json()).toEqual({ error: { code, message } });
+    },
+  );
 
   it('answers the websocket route with the documented 426 body', async () => {
     const response = await worker.fetch(new Request('http://local/api/room/ABC123/ws'), env());
     expect(response.status).toBe(426);
-    expect(await response.text()).toBe('Expected Upgrade: websocket');
+    expect(await response.json()).toEqual({
+      error: { code: 'upgrade_required', message: 'Expected Upgrade: websocket' },
+    });
   });
 
   it('mints a code the documented alphabet allows', async () => {
@@ -349,6 +363,9 @@ describe('worker/worker — RoomDO relay', () => {
     );
 
     expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: { code: 'room_full', message: 'Room full' },
+    });
     expect(state.acceptWebSocket).not.toHaveBeenCalled();
   });
 

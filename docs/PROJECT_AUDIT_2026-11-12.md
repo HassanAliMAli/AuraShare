@@ -187,8 +187,11 @@
   > endpoint returns six TURN URLs with ephemeral credentials, and the
   > credentials are still minted per isolate with a 24-hour TTL.
   >
-  > **Still open:** there is no rate limiting on `POST /api/room` or on the
-  > WebSocket route. See `docs/DEPLOYMENT.md`.
+  > **Resolved 2026-11-13.** The room routes are rate limited per client IP
+  > (120 requests a minute), and a code only opens a room that was actually
+  > minted, so a stranger guessing codes cannot make the Worker allocate a
+  > Durable Object per attempt. See `docs/DEPLOYMENT.md` for the numbers and
+  > for what the free plan does and does not allow.
 - **Prior docs:** `test/TEST_REPORT.md` is a report inside `test/`; move it to `docs/`. The two old audit documents in `docs/` should be archived or replaced by this one.
 
 ---

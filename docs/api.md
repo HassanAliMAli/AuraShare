@@ -36,9 +36,13 @@ proxies `/api` to the Wrangler worker on `:8787`.
   must never be cached.
 - There is **no authentication**. A transmission code is the only secret, and
   it is a 6-character code from a 32-character alphabet — about 30 bits — so
-  a code is guessable in theory. It is protected by rate limiting at the
-  edge and by the fact that guessing it only lets an attacker join a session
-  they already have a code for.
+  a code is guessable in theory. Guessing one is worth nothing, though: a
+  code only opens a room that the Worker actually minted, and a room that
+  was never minted does not exist. See
+  [Durable Object lifecycle](#durable-object-lifecycle).
+- The room routes are **rate limited** per client IP — 120 requests a
+  minute. The limit is checked before the room is touched, so a request
+  that is turned away costs nothing but itself.
 - There is **no CORS negotiation**: the Worker answers `OPTIONS` with an
   empty `200` and serves the same origin the app is served from.
 - The method must match the route exactly. `GET /api/ice-servers` is the only
@@ -112,6 +116,26 @@ both sides must agree: a code the user typed perfectly well would otherwise
 resolve to a room that does not exist and the session would hang until it
 times out.
 
+### Behaviour
+
+The mint **reserves** the room: the Durable Object behind the code records
+that it was minted, and that record is what makes the code work. A peer that
+joins a code nobody minted is refused — see
+[`GET /api/room/{code}/ws`](#get-apiroomcodews).
+
+The reservation is what stops a stranger from making the Worker allocate a
+Durable Object per guess. It goes through the Durable Object rather than a
+key-value store because the Durable Object is strongly consistent: the
+instance that answers the join is the very instance that was reserved, so
+the two can never disagree. A key-value read is eventually consistent, and a
+freshly minted code could still look missing.
+
+If the room cannot be reserved, the answer is `503 room_unavailable` and no
+code is handed out.
+
+The code is valid for **10 minutes from the mint** — see
+[Durable Object lifecycle](#durable-object-lifecycle).
+
 ## `GET /api/room/{code}/ws`
 
 Opens the signalling WebSocket for a room. This is the only endpoint that
@@ -137,6 +161,10 @@ code.
 
 The room accepts **at most two** peers.
 
+- A code that was **never minted** has no room behind it, and the join is
+  refused with `404 room_not_found`. The check happens before the socket is
+  accepted, so the client never sees an open connection that dies a moment
+  later — and no Durable Object is left behind for the attempt.
 - The first peer to connect is accepted silently.
 - When the second connects, the Worker sends `{"type":"peer-present"}` to the
   peer that was already there.
@@ -160,6 +188,7 @@ shapes below is dropped before it reaches the WebRTC layer.
 | `hello` | `{ type: "hello", role: "sender" \| "receiver" }` | client → peer | Sent by the client as soon as the socket opens, to announce its role. |
 | `peer-present` | `{ type: "peer-present" }` | Worker → peer | The second peer joined the room. |
 | `peer-left` | `{ type: "peer-left" }` | Worker → peer | The other peer closed its socket. |
+| `room-expired` | `{ type: "room-expired" }` | Worker → peer | The room's lease ran out. The socket is closed right after. |
 | `offer` | `{ type: "offer", sdp: RTCSessionDescriptionInit }` | either | SDP offer. |
 | `answer` | `{ type: "answer", sdp: RTCSessionDescriptionInit }` | either | SDP answer. |
 | `ice` | `{ type: "ice", candidate: RTCIceCandidateInit }` | either | Trickle ICE candidate. |
@@ -172,11 +201,31 @@ is ignored by the receiving client.
 One `RoomDO` instance exists per transmission code, addressed by
 `env.ROOMS.idFromName(code)`.
 
-- **No state is persisted.** The relay holds only the live sockets.
+The room has a **lease**, and the lease is the alarm the Durable Object
+schedules for itself. The room moves through three states:
+
+| State | What it is | Lease |
+|---|---|---|
+| **Minted** | The code was handed out; nobody has joined yet. | 10 minutes from the mint. |
+| **Paired** | Two peers are connected. | 30 minutes, refreshed while the peers are talking. |
+| **Over** | The last peer left, or the lease ran out. | None — the room is gone. |
+
+- **One row is persisted**: the time the room was minted. Its presence is
+  what tells a reserved room from a guessed one.
+- The lease **never extends the code window**. The 10 minutes are measured
+  from the mint, so a code cannot be kept alive by talking to the room.
+- The lease is **not** re-armed on every relayed message. `setAlarm` is a
+  storage write, and the free plan allows 100,000 rows written a day — a
+  busy session must not spend that budget on its own. The alarm only moves
+  when the current one is close to firing.
+- When the room ends — the last peer left, or the lease ran out — the
+  storage is deleted (`deleteAll`). An empty SQLite database still costs
+  about 12 KB, so a room that keeps its storage keeps costing.
 - The DO **hibernates** between messages, so an idle room costs nothing.
-- An alarm is set on every connect and on every relayed message. When it
-  fires after 30 minutes of inactivity, every socket in the room is closed
-  with code `1000` and the reason `room expired`, and the DO evicts itself.
+- When the lease runs out, every socket in the room is sent
+  `{"type":"room-expired"}` and then closed with code `1000` and the reason
+  `room expired`. The peer that is still waiting learns that nobody joined
+  instead of seeing a socket die for no reason.
 
 ## Errors
 
@@ -194,19 +243,30 @@ and for logs. Error responses carry the same security headers and the same
 | Status | `code` | When |
 |---|---|---|
 | `404` | `not_found` | The path does not match a route, the method is wrong for the path, or the room code is not one the Worker could have minted. |
+| `404` | `room_not_found` | The code is a valid one, but no room was ever minted for it — or the room it pointed at has already ended. |
 | `409` | `room_full` | A third peer tried to join a room that already has two. |
 | `426` | `upgrade_required` | The WebSocket route was called without an `Upgrade: websocket` header. |
+| `429` | `rate_limited` | The client IP went over the rate limit for the room routes. The answer carries `Retry-After: 60`. |
+| `503` | `room_unavailable` | The room could not be reserved, so no code was handed out. |
 
 The client only checks the status code (`res.ok`) and never parses an error
 body, so the shape is free to change — but it is documented and tested so
 that it does not change by accident.
+
+A **failed WebSocket handshake** is the one case the client cannot read:
+the browser gives a refused upgrade no body and no status, so a wrong code
+and an expired code look the same to it. The client shows one message for
+both — *"Could not join the room — check the code, it may be wrong or
+expired"*.
 
 ## Limits
 
 | Limit | Value | Where |
 |---|---|---|
 | Peers per room | 2 | A third peer is refused with `409`. |
-| Room idle TTL | 30 minutes | An idle room evicts itself and closes its sockets. |
+| Transmission code validity | 10 minutes | Measured from the mint. After that the room is gone and the code opens nothing. |
+| Room idle TTL | 30 minutes | A room with two peers survives this long without any activity. |
+| Room route rate limit | 120 requests / minute / IP | Over the limit the answer is `429 rate_limited`. |
 | Transmission code length | 6 characters | 32-character alphabet, ~30 bits. |
 | TURN credential TTL | 24 hours | Cloudflare Calls API. |
 | TURN cache refresh margin | 1 hour | The credential is re-minted when less than this remains. |

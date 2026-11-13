@@ -215,7 +215,11 @@ describe('app/app — end-to-end text sharing flow', () => {
     await user.type(screen.getByLabelText('Six-character code'), 'ABC123');
     await user.click(screen.getByRole('button', { name: 'Establish connection' }));
 
-    expect(await screen.findByText('The peer disconnected')).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        'Could not join the room — check the code, it may be wrong or expired',
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByText('Connection failed')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Try again' }));

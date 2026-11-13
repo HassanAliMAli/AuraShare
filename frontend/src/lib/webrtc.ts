@@ -15,6 +15,12 @@ export type P2PEvents = {
   onConnected: () => void;
   onDisconnected: () => void;
   onReceiverConnected?: () => void;
+  /**
+   * The room ended on its own: the code expired before anyone joined, or
+   * the session sat idle for too long. `no-peer` means nobody ever turned
+   * up; `ended` means the session is over.
+   */
+  onRoomEnded?: (reason: 'no-peer' | 'ended') => void;
   onError: (err: string) => void;
 } & TransferEvents;
 
@@ -31,6 +37,10 @@ export class P2PManager {
   private offerSent = false;
   /** Set when the session is closed on purpose, so a close is not a disconnect. */
   private closed = false;
+  /** Set when the room ended on its own, so its close is not a disconnect. */
+  private ended = false;
+  /** Whether a peer has ever been seen in this room. */
+  private peerPresent = false;
   /**
    * ICE candidates that arrived before the remote description was applied.
    *
@@ -48,7 +58,9 @@ export class P2PManager {
     this.signaling = new SignalingChannel({
       onMessage: (msg) => this.onSignal(msg),
       onError: () => this.events.onError('Signaling tunnel failed'),
-      onClose: () => this.events.onDisconnected(),
+      // Through `notifyDisconnected`, so a socket that closes because the
+      // session was ended on purpose is not reported as a lost peer.
+      onClose: () => this.notifyDisconnected(),
     });
   }
 
@@ -81,10 +93,18 @@ export class P2PManager {
         if (this.role === 'sender' && msg.role === 'receiver') this.maybeSendOffer();
         break;
       case 'peer-present':
+        this.peerPresent = true;
         if (this.role === 'sender') this.maybeSendOffer();
         break;
       case 'peer-left':
         this.notifyDisconnected();
+        break;
+      case 'room-expired':
+        // The room ran out of time. The socket is about to close, and that
+        // close is not a disconnect — the room ended, and the app has to say
+        // why rather than blame the other device.
+        this.ended = true;
+        this.events.onRoomEnded?.(this.peerPresent ? 'ended' : 'no-peer');
         break;
       case 'offer':
         if (this.role === 'receiver') void this.handleOffer(msg.sdp);
@@ -142,10 +162,11 @@ export class P2PManager {
    * called when the user ends the session or the app resets, and the
    * data channel and the WebSocket both report back when they close. Without
    * this guard the app would report a failure for a session the user
-   * finished.
+   * finished. A room that ran out of time is not a disconnect either — it
+   * has already reported why.
    */
   private notifyDisconnected(): void {
-    if (this.closed) return;
+    if (this.closed || this.ended) return;
     this.events.onDisconnected();
   }
 
@@ -165,6 +186,8 @@ export class P2PManager {
   private async handleOffer(sdp: RTCSessionDescriptionInit): Promise<void> {
     if (!this.pc) return;
     try {
+      // The offer is proof that the other device is there.
+      this.peerPresent = true;
       await this.pc.setRemoteDescription(sdp);
       await this.flushPendingCandidates();
       const answer = await this.pc.createAnswer();

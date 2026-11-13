@@ -66,6 +66,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         },
         onDisconnected: () =>
           dispatch({ type: 'SET_ERROR', message: 'The other device disconnected' }),
+        onRoomEnded: (reason) =>
+          dispatch({
+            type: 'SET_ERROR',
+            message:
+              reason === 'no-peer'
+                ? 'No one joined — the session ended'
+                : 'The session ended',
+          }),
         onFileAcknowledged: (index) => dispatch({ type: 'FILE_ACKNOWLEDGED', index }),
         onTransferComplete: () => {},
         onError: (err) => {
@@ -110,6 +118,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         },
         onDisconnected: () =>
           dispatch({ type: 'SET_ERROR', message: 'The other device disconnected' }),
+        onRoomEnded: (reason) =>
+          dispatch({
+            type: 'SET_ERROR',
+            message:
+              reason === 'no-peer'
+                ? 'The sending device never joined — the session ended'
+                : 'The session ended',
+          }),
         onFileDescriptorsReceived: (files) => dispatch({ type: 'RECEIVE_DESCRIPTORS', files }),
         onFileComplete: (index, file) => {
           dispatch({ type: 'FILE_COMPLETE', index });
@@ -127,7 +143,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }, CONNECT_TIMEOUT_MS);
 
       mgr.join(normalized).catch(() => {
-        dispatch({ type: 'SET_ERROR', message: 'The peer disconnected' });
+        // The socket never opened. The usual reason is a code that was
+        // never minted, or one that has expired — the Worker refuses both
+        // the same way, and a browser cannot read the body of a failed
+        // WebSocket handshake, so the message covers both.
+        dispatch({
+          type: 'SET_ERROR',
+          message: 'Could not join the room — check the code, it may be wrong or expired',
+        });
       });
     },
 

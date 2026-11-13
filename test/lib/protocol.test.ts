@@ -113,6 +113,7 @@ describe('lib/protocol — signaling guards', () => {
     });
     expect(parseWireSignal({ type: 'peer-present' })).toEqual({ type: 'peer-present' });
     expect(parseWireSignal({ type: 'peer-left' })).toEqual({ type: 'peer-left' });
+    expect(parseWireSignal({ type: 'room-expired' })).toEqual({ type: 'room-expired' });
     expect(parseWireSignal({ type: 'offer', sdp: { type: 'offer', sdp: 'x' } })).toEqual({
       type: 'offer',
       sdp: { type: 'offer', sdp: 'x' },

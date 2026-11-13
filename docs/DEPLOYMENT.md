@@ -266,6 +266,27 @@ What the free plan also takes away, for whoever upgrades:
 The Workers binding has none of those limits, which is why it is what this
 project uses.
 
+## The signalling socket, and Chrome's HTTP/2
+
+Roughly half of the WebSocket handshakes from a desktop Chrome fail against
+the deployed Worker. The connection is reset **before the request is sent**,
+so the Worker never sees it and the Worker logs show nothing.
+
+The cause is on the edge, not in the Worker:
+
+- Chrome reuses its HTTP/2 connection for the WebSocket — RFC 8441, the
+  "extended CONNECT" — and Cloudflare's edge resets those.
+- With `--disable-http2` Chrome opens an HTTP/1.1 connection instead, and
+  every handshake succeeds (measured: 7 of 7 against 4 of 8).
+- The same failure happens on the deployment from **before** the room work,
+  so it is not something that work introduced.
+- Plain HTTPS from the same browser is unaffected (25 of 25).
+
+The app opens the signalling socket with three attempts, which gets past it
+almost every time. The permanent fix is on Cloudflare's side; the one on
+ours is turning HTTP/2 off for the zone, which is a trade-off for every app
+that shares it.
+
 ## What a flood costs, and what protects the app
 
 The account is on the **Cloudflare Free Plan**, and the free plan's limits are

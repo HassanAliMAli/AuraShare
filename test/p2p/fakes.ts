@@ -98,6 +98,12 @@ export class FakeWebSocket extends EventTarget {
     this.onerror?.(new Event('error'));
     this.dispatchEvent(new Event('error'));
   }
+
+  triggerClose(): void {
+    this.readyState = FakeWebSocket.CLOSED;
+    this.onclose?.(new CloseEvent('close'));
+    this.dispatchEvent(new CloseEvent('close'));
+  }
 }
 
 /** Minimal RTCPeerConnection double. */

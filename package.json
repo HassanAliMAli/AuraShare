@@ -16,6 +16,7 @@
     "test:e2e": "playwright test",
     "test:e2e:fresh": "node --experimental-strip-types test/e2e/e2e-preflight.ts --kill && playwright test",
     "test:e2e:report": "playwright show-report",
+    "test:live": "vitest run test/live",
     "preview": "vite preview --config frontend/vite.config.ts"
   },
   "dependencies": {

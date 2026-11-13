@@ -12,8 +12,9 @@ does two unrelated jobs:
 a WebRTC data channel. The Worker only carries the signalling messages that
 let the two browsers find each other and negotiate that channel.
 
-Base URL: the same origin as the app. In development the Vite server on
-`:5173` proxies `/api` to the Wrangler worker on `:8787`.
+Base URL: the same origin as the app — in production
+`https://aurashare.hassanali.site`. In development the Vite server on `:5173`
+proxies `/api` to the Wrangler worker on `:8787`.
 
 ## Contents
 
@@ -209,3 +210,17 @@ that it does not change by accident.
 | Transmission code length | 6 characters | 32-character alphabet, ~30 bits. |
 | TURN credential TTL | 24 hours | Cloudflare Calls API. |
 | TURN cache refresh margin | 1 hour | The credential is re-minted when less than this remains. |
+
+> **TURN is not configured on the live Worker.** `GET /api/ice-servers`
+> returns the three STUN servers and no TURN entry. That is enough for most
+> peers, but a peer behind a symmetric NAT cannot connect without it. See
+> [docs/DEPLOYMENT.md](DEPLOYMENT.md#turn-credentials).
+
+## Checking a deployment
+
+The contract above is enforced against the running Worker by
+`test/live/deployment.test.ts`, which is skipped unless `LIVE_URL` is set:
+
+```bash
+LIVE_URL=https://aurashare.hassanali.site npm run test:live
+```

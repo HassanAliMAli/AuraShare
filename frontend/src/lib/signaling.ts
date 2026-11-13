@@ -45,16 +45,66 @@ export type SignalingCallbacks = {
   onClose: () => void;
 };
 
+/**
+ * How many times the signalling socket is opened before the failure is
+ * reported.
+ *
+ * A handshake can fail for reasons that have nothing to do with the room:
+ * the browser reuses its HTTP/2 connection for the socket, and Cloudflare's
+ * edge resets those — measured at roughly half of the handshakes from a
+ * desktop Chrome, on the deployed Worker as well as on the old one. Trying
+ * again costs one request and gets past it.
+ */
+const OPEN_ATTEMPTS = 3;
+
+/** The pause between attempts. */
+const OPEN_RETRY_DELAY_MS = 250;
+
 /** Thin wrapper over the signaling WebSocket. */
 export class SignalingChannel {
   private ws: WebSocket | null = null;
   private cb: SignalingCallbacks;
+  /** True while the socket is being opened — a failure is then a retry. */
+  private opening = false;
 
   constructor(cb: SignalingCallbacks) {
     this.cb = cb;
   }
 
   open(code: string, role: 'sender' | 'receiver'): Promise<void> {
+    this.opening = true;
+    return this.openWithRetry(code, role, OPEN_ATTEMPTS).finally(() => {
+      this.opening = false;
+    });
+  }
+
+  /**
+   * Open the socket, trying again when the handshake fails.
+   *
+   * Only the last failure is reported: the attempts in between are not
+   * something the user needs to hear about, and the app shows the error
+   * once, with the reason.
+   */
+  private async openWithRetry(
+    code: string,
+    role: 'sender' | 'receiver',
+    attempts: number,
+  ): Promise<void> {
+    try {
+      await this.openOnce(code, role);
+    } catch (err) {
+      if (attempts <= 1) {
+        // The socket gave up. This is the failure worth reporting.
+        this.ws = null;
+        this.cb.onError();
+        throw err;
+      }
+      await new Promise((resolve) => setTimeout(resolve, OPEN_RETRY_DELAY_MS));
+      return this.openWithRetry(code, role, attempts - 1);
+    }
+  }
+
+  private openOnce(code: string, role: 'sender' | 'receiver'): Promise<void> {
     const proto = globalThis.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${proto}//${globalThis.location.host}/api/room/${code}/ws`;
     const ws = new WebSocket(wsUrl);
@@ -84,10 +134,17 @@ export class SignalingChannel {
         this.cb.onMessage(msg);
       };
       ws.onerror = () => {
-        this.cb.onError();
+        // While the socket is being opened, a failure is one attempt of a
+        // retry — the promise carries it, and the last attempt reports it.
+        if (!this.opening) this.cb.onError();
         reject(new Error('signaling websocket error'));
       };
-      ws.onclose = () => this.cb.onClose();
+      ws.onclose = () => {
+        // A socket that a retry has replaced is not the room's socket, and a
+        // close during the opening belongs to the attempt that failed.
+        if (this.opening || this.ws !== ws) return;
+        this.cb.onClose();
+      };
     });
   }
 

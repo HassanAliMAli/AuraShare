@@ -141,16 +141,65 @@ describe('p2p/signaling — SignalingChannel', () => {
     expect(socket.sent).toHaveLength(1);
   });
 
-  it('rejects and reports a websocket error', async () => {
+  it('retries a handshake that fails, and does not report the attempt', async () => {
+    vi.useFakeTimers();
     const callbacks = makeCallbacks();
     const channel = new SignalingChannel(callbacks);
     const promise = channel.open('ABC123', 'receiver');
-    const socket = FakeWebSocket.instances.at(-1)!;
+    const first = FakeWebSocket.instances.at(-1)!;
 
-    socket.triggerError();
+    first.triggerError();
+    await vi.advanceTimersByTimeAsync(300);
 
-    await expect(promise).rejects.toThrow('signaling websocket error');
+    // A second socket was opened for the same room.
+    const second = FakeWebSocket.instances.at(-1)!;
+    expect(second).not.toBe(first);
+    second.triggerOpen();
+
+    await expect(promise).resolves.toBeUndefined();
+    // The attempt that failed is not something the user needs to hear
+    // about — the socket opened on the next try.
+    expect(callbacks.onError).not.toHaveBeenCalled();
+  });
+
+  it('reports the failure once when every attempt fails', async () => {
+    vi.useFakeTimers();
+    const callbacks = makeCallbacks();
+    const channel = new SignalingChannel(callbacks);
+    const promise = channel.open('ABC123', 'receiver');
+    const settled = promise.catch((err: unknown) => err);
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      FakeWebSocket.instances.at(-1)!.triggerError();
+      await vi.advanceTimersByTimeAsync(300);
+    }
+
+    const result = await settled;
+    expect(result).toBeInstanceOf(Error);
+    expect((result as Error).message).toBe('signaling websocket error');
     expect(callbacks.onError).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
+  it('does not report the close of a socket that a retry replaced', async () => {
+    vi.useFakeTimers();
+    const callbacks = makeCallbacks();
+    const channel = new SignalingChannel(callbacks);
+    const promise = channel.open('ABC123', 'receiver');
+    const first = FakeWebSocket.instances.at(-1)!;
+
+    first.triggerError();
+    await vi.advanceTimersByTimeAsync(300);
+    const second = FakeWebSocket.instances.at(-1)!;
+    second.triggerOpen();
+    await promise;
+
+    // The socket that failed closes afterwards. It is not the room's
+    // socket, and the room is not gone.
+    first.triggerClose();
+
+    expect(callbacks.onClose).not.toHaveBeenCalled();
+    vi.useRealTimers();
   });
 
   it('reports closure and closes the socket', async () => {

@@ -60,8 +60,33 @@
 2. **Session lifecycle bugs.**  
    `AppProvider.reset` (`src/stores/AppProvider.tsx:141-146`) does not clear `connectTimeoutRef`, so a canceled join fires the 30s timeout and shows an error after reset. `RoomDO.webSocketClose` (`worker/index.ts:205`) calls `ws.close()` on a socket the runtime already closed, producing an uncaught exception. `onDisconnected` is a no-op in both sender and receiver paths, so a dropped peer leaves the UI stuck. `copyText` only logs clipboard failures. **Fix:** clear the timeout on reset/startShare, guard `ws.close`, surface disconnect/transfer failure states, and show a user-visible copy error.
 
+   > **Resolved 2026-11-13.** The timeout is cleared on reset and on startShare,
+   > and the Durable Object guards the second `close()`. The two findings that
+   > were still open are now closed: a peer that disconnects ends the session
+   > with "The other device disconnected" instead of leaving the app waiting
+   > for a transfer that was never going to arrive, and a clipboard failure is
+   > reported next to the copy button instead of only reaching the console.
+   >
+   > A deliberate close is not a disconnect: ending a session closes the data
+   > channel and the WebSocket, and both report back when they close. Without
+   > that distinction the new error would have fired every time a user pressed
+   > "End session".
+
 3. **WebRTC signaling race and unhandled failures.**  
    `src/lib/webrtc.ts:82-85` adds ICE candidates immediately; candidates that arrive before `setRemoteDescription` resolves are dropped. `handleOffer`/`handleAnswer` (`103-114`) have no try/catch and are invoked with `void`, so malformed SDP becomes an unhandled rejection. **Fix:** buffer ICE candidates until the remote description is set, and catch/report SDP errors through `onError`.
+
+   > **Resolved 2026-11-13.** The SDP handlers do have a try/catch now, and report
+   > through `onError`. The candidate race was real and is fixed: a candidate that
+   > arrives before the remote description is applied is held and applied with
+   > it, instead of being dropped by `addIceCandidate` throwing `InvalidStateError`
+   > — which it did silently, with only a `console.warn`. The relay does not order
+   > the frames, so a candidate beating the SDP across the wire is normal, not
+   > exceptional. Guarded by a test that was verified to fail when the buffering
+   > is removed.
+   >
+   > The other half of the finding was wrong: `onDisconnected` fired on a
+   > *transient* ICE `disconnected` state, which would have ended a session that
+   > was still fine. `failed` is the state that means the connection is gone.
 
 4. **The 2 GiB limit is not realistic with the current transfer design.**  
    `src/lib/transfer.ts:74` builds the whole received file in memory, and `receiveBuffer` (`109-118`) keeps every chunk. A 2 GiB file can OOM the receiver before download. There is no cancellation, resume, or streaming-to-disk path. **Fix:** stream to OPFS or chunks-to-disk, enforce a practical receiver cap, and add transfer cancellation/failure messages.
@@ -107,6 +132,22 @@
 - **Dead code / dead weight:** `public/404.html` is never served with SPA fallback; `src/stores/index.ts` is unused; `src/components/landing/index.ts` exports 9 unused symbols; `SuccessView`'s check-badge branch is unreachable for file transfers; `FileIcon`'s `?? File` fallback is exhaustive/dead; `--font-mono` and custom duration/ease tokens are unused; `@keyframes spin` duplicates Tailwind's built-in.
 - **Tool state in Git:** `.claude/settings.local.json` and `.serena/` are tracked; the former contains a personal allowlist with stale `peerjs.com`, fly.io, Supabase, Vercel, and Netlify domains. `.wrangler/` and `.playwright-mcp/` are not ignored. Remove from the index, add to `.gitignore`, and keep local copies.
 - **PWA/SEO:** `public/manifest.webmanifest` ships only an SVG icon with `any maskable`, and `start_url: "/"` opens the landing page rather than `/app`; `public/robots.txt` points to a nonexistent `sitemap.xml`; `index.html` uses `/logo.svg` as the OG image, which most scrapers ignore.
+
+  > **Resolved 2026-11-13.** The manifest starts the installed app at `/app` and
+  > claims no maskable icon it does not have — the only icon is an SVG, which is
+  > not drawn with a maskable safe zone, so the launcher crops it. The sitemap
+  > exists now, `robots.txt` names it, and the social card uses absolute URLs.
+  >
+  > The domain in all three was wrong in a way worth recording: `robots.txt` and
+  > `og:url` pointed at `aurashare.app`, a hostname the project never had —
+  > the live site is `aurashare.hassanali.site`. `test/app/pwa.test.ts` now
+  > asserts that every absolute URL the app ships points at one origin, that
+  > the sitemap names routes the app really has, and that the sitemap file
+  > exists. The check is consistency rather than a hard-coded domain, so it
+  > catches the next "someone changed one file and not the others".
+  >
+  > `public/404.html` is deleted: with the SPA fallback in place it was never
+  > served — a missing asset returns the Worker's JSON error.
 - **Motion details:** `src/lib/motion.ts:130` animates `top` (layout property) instead of `y`; a few inline `animate={{...}}` objects bypass the variant pool (`AuraDropzone.tsx:144`, `ReceiverFileList.tsx:59,77`); persistent blobs have no `will-change: transform`; reduced motion is handled per-component but not globally for Framer.
 - **Component hygiene:** `SharingView.tsx` hosts `ReceiveCodeForm` + `SharingView`; `SuccessView.tsx` hosts `SuccessView` + `ErrorView`; `Section.tsx` hosts `SectionHeader` + `Section`. `WhyAuraShare` hardcodes its subtitle in JSX and uses template-string classes instead of `cn()`; `AuraTextarea` uses template-string classes. `AuraDropzone` never clears stale validation errors and silently ignores dropped folders. `AuraTextarea` silently truncates text over 1 MiB. The test report notes a dev-only `<circle r="undefined">` warning at `AuraTextarea.tsx:35`; not reproduced in the production preview.
 - **AI-slop tells:** the page uses a centered hero with two CTAs, three equal icon cards (twice), indigo/teal gradients, heavy glassmorphism/backdrop blur, and a pulsing dot with no state. These are intentional in the "Liquid Cloud" contract, but they are exactly the generic patterns the frontend standard asks to avoid. Keep only if they are a deliberate brand decision.
@@ -139,9 +180,15 @@
   > `docs/api.md`, and `test/live/deployment.test.ts` checks the deployed
   > Worker on demand.
   >
-  > **One real gap remains:** TURN is not configured, so `/api/ice-servers`
-  > returns STUN servers only and a peer behind a symmetric NAT cannot
-  > connect. See `docs/DEPLOYMENT.md`.
+  > **One real gap remained and is now closed:** TURN was not configured, so
+  > `/api/ice-servers` returned STUN servers only and a peer behind a
+  > symmetric NAT could not connect. A TURN key was created and
+  > `TURN_KEY_ID` / `TURN_KEY_API_TOKEN` are now set on the Worker; the
+  > endpoint returns six TURN URLs with ephemeral credentials, and the
+  > credentials are still minted per isolate with a 24-hour TTL.
+  >
+  > **Still open:** there is no rate limiting on `POST /api/room` or on the
+  > WebSocket route. See `docs/DEPLOYMENT.md`.
 - **Prior docs:** `test/TEST_REPORT.md` is a report inside `test/`; move it to `docs/`. The two old audit documents in `docs/` should be archived or replaced by this one.
 
 ---

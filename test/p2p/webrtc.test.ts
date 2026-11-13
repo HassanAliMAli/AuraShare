@@ -191,6 +191,10 @@ describe('p2p/webrtc — P2PManager setup', () => {
     await initializeSender(events);
     const pc = lastPeerConnection();
 
+    // A candidate can only be applied once the remote description is in
+    // place — see the test below for what happens before that.
+    await pc.setRemoteDescription({ type: 'answer', sdp: 'answer-sdp' });
+
     signal({ type: 'ice', candidate: { candidate: 'one' } });
     expect(pc.addIceCandidate).toHaveBeenCalledWith({ candidate: 'one' });
 
@@ -198,6 +202,24 @@ describe('p2p/webrtc — P2PManager setup', () => {
     signal({ type: 'ice', candidate: { candidate: 'two' } });
 
     await vi.waitFor(() => expect(warn).toHaveBeenCalled());
+  });
+
+  it('holds a candidate that arrives before the remote description', async () => {
+    const events = makeEvents();
+    await initializeSender(events);
+    const pc = lastPeerConnection();
+
+    // The relay does not order the frames: a candidate can beat the SDP.
+    // Applying it now would throw and the candidate would be lost.
+    signal({ type: 'ice', candidate: { candidate: 'early' } });
+    expect(pc.addIceCandidate).not.toHaveBeenCalled();
+
+    // The description lands, and the held candidate goes with it.
+    signal({ type: 'answer', sdp: { type: 'answer', sdp: 'answer-sdp' } });
+
+    await vi.waitFor(() =>
+      expect(pc.addIceCandidate).toHaveBeenCalledWith({ candidate: 'early' }),
+    );
   });
 
   it('reports peer departure as a disconnect', async () => {
@@ -224,7 +246,7 @@ describe('p2p/webrtc — P2PManager setup', () => {
     });
   });
 
-  it('reports failed and disconnected ICE states', async () => {
+  it('reports a failed ICE state as an error, and a closed one as a disconnect', async () => {
     const events = makeEvents();
     await initializeSender(events);
     const pc = lastPeerConnection();
@@ -232,14 +254,30 @@ describe('p2p/webrtc — P2PManager setup', () => {
     pc.iceConnectionState = 'failed';
     pc.oniceconnectionstatechange?.();
     expect(events.onError).toHaveBeenCalledWith('ICE negotiation failed');
+    expect(events.onDisconnected).not.toHaveBeenCalled();
 
+    // `disconnected` is transient — ICE can recover from it, and ending the
+    // session on a blip would throw away a transfer that is still fine.
+    // `failed` is the state that means the connection is gone for good.
     pc.iceConnectionState = 'disconnected';
     pc.oniceconnectionstatechange?.();
-    expect(events.onDisconnected).toHaveBeenCalledTimes(1);
+    expect(events.onDisconnected).not.toHaveBeenCalled();
 
     pc.iceConnectionState = 'closed';
     pc.oniceconnectionstatechange?.();
-    expect(events.onDisconnected).toHaveBeenCalledTimes(2);
+    expect(events.onDisconnected).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not report a disconnect for a session closed on purpose', async () => {
+    const events = makeEvents();
+    const { manager } = await initializeSender(events);
+
+    // Ending a session closes the data channel and the WebSocket, and both
+    // report back when they close. That is not a failure.
+    manager.close();
+    lastPeerConnection().oniceconnectionstatechange?.();
+
+    expect(events.onDisconnected).not.toHaveBeenCalled();
   });
 
   it('attaches the receiver data channel and reports connection open', async () => {

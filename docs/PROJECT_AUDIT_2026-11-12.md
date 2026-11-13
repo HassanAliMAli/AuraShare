@@ -72,6 +72,18 @@
 6. **API contract and abuse controls are missing.**  
    There is no `docs/api.md`, although the Worker exposes `POST /api/room`, `GET /api/ice-servers`, and the WebSocket `/api/room/:code/ws`. Error shapes are inconsistent (`{ roomId }`, `{ iceServers }`, plain-text `Room full`/`Not found`). `/api/room` and `/api/ice-servers` have no rate limit, origin check, or bot protection; TURN credentials are minted with a 24h TTL. The 219-line `worker/index.ts` mixes routes, TURN service, and Durable Object logic. **Fix:** write the API contract, standardize `{ error: { code, message } }`, add Cloudflare rate limiting/Turnstile/origin checks, shorten TURN TTL, and split the Worker into route/service/DO modules.
 
+   > **Resolved 2026-11-13 (PRs #8 and #9).** `docs/api.md` now exists and is the
+   > contract; every claim in it was checked against a running Worker (22 of 22),
+   > and those checks are a permanent test block, so the document cannot drift
+   > away from the code without a test failing. The error responses were unified
+   > to `{ error: { code, message } }`, with the same security headers on every
+   > response, and `backend/index.ts` was split into
+   > `backend/modules/{routes,room-do,room-code,turn,errors}.ts` — 231 lines
+   > became 31.
+   >
+   > **Not done:** the rate limiting, origin check and bot protection this finding
+   > asks for, and the TURN TTL is still 24 hours.
+
 7. **Layout and test organization conflict with the supplied standards.**  
    The repository uses `src/` + `worker/` at the root; the audit standards require `frontend/` + `backend/` + `test/` + `docs/`. It also keeps 13 co-located tests in `src/` and 20 block tests in `test/`, duplicating coverage. **Fix:** choose one layout. If the audit standard is authoritative, move `src/`→`frontend/`, `worker/`→`backend/`, and all tests to `test/<block>/`. If AGENTS is authoritative, amend the standard to document the exception and remove the duplicate tests.
 
@@ -112,6 +124,24 @@
   > contrast-validated against WCAG AA on every surface, enforced by
   > `test/lib/tokens.test.ts`. See `docs/FRONTEND_REDESIGN_PLAN.md`.
 - **Copy mismatch:** `SharingView` says "6-digit" twice, but room codes are alphanumeric (Crockford). `landingCopy.ts` correctly says "6-character".
+- **The deployment looked unreachable.** `aurashare.app` did not resolve, and Wrangler's OAuth token had expired, so the live Worker could not be queried, deployed to, or checked. **Fix:** authenticate, then find out what is actually deployed and whether it works.
+
+  > **Resolved 2026-11-13.** The premise was wrong on both counts, and that is
+  > worth recording. `aurashare.app` was never a hostname of this project: the
+  > Worker is attached to the `hassanali.site` zone as
+  > `aurashare.hassanali.site`, and it has been deployed and live the whole
+  > time — only the expired token made it *look* unreachable, and the wrong
+  > hostname made it look like a DNS problem. With the Cloudflare CLI
+  > authenticated, the deployment was checked against the running Worker: the
+  > landing page, the app screen, a real peer-to-peer transfer between two
+  > browsers over the production Durable Object relay, and the whole API
+  > contract. The live URL is now in `README.md`, `docs/DEPLOYMENT.md` and
+  > `docs/api.md`, and `test/live/deployment.test.ts` checks the deployed
+  > Worker on demand.
+  >
+  > **One real gap remains:** TURN is not configured, so `/api/ice-servers`
+  > returns STUN servers only and a peer behind a symmetric NAT cannot
+  > connect. See `docs/DEPLOYMENT.md`.
 - **Prior docs:** `test/TEST_REPORT.md` is a report inside `test/`; move it to `docs/`. The two old audit documents in `docs/` should be archived or replaced by this one.
 
 ---

@@ -102,9 +102,16 @@ describeLive('live deployment', () => {
     expect(ice.headers.get('x-frame-options')).toBe('DENY');
     expect(ice.headers.get('cache-control')).toBe('no-store');
 
-    const body = (await ice.json()) as { iceServers: { urls: string }[] };
+    const body = (await ice.json()) as { iceServers: { urls: string | string[] }[] };
     expect(body.iceServers.length).toBeGreaterThan(0);
-    expect(body.iceServers.every((server) => typeof server.urls === 'string')).toBe(true);
+
+    // `RTCIceServer.urls` is a string *or* an array of strings — a STUN entry
+    // has one server, a TURN entry has six transports.
+    for (const server of body.iceServers) {
+      const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
+      expect(urls.length).toBeGreaterThan(0);
+      expect(urls.every((url) => typeof url === 'string')).toBe(true);
+    }
   });
 
   it('mints a transmission code', async () => {

@@ -172,9 +172,15 @@ cf realtime turn keys delete --key-id <id>
 The signalling relay is a Durable Object, one instance per transmission code,
 addressed by `env.ROOMS.idFromName(code)`.
 
-- It holds no persisted state — only the live sockets.
+- It holds **one** persisted row: the time its code was minted. That row is
+  what makes a room real — a code nobody minted opens nothing.
 - It hibernates between messages, so an idle room costs nothing.
-- An alarm evicts the room after 30 minutes of inactivity.
+- Its **lease** is an alarm the object schedules for itself: 10 minutes from
+  the mint while the room waits for a second peer, 30 minutes once the two
+  peers are talking.
+- When the room ends — the last peer left, or the lease ran out — the
+  storage is deleted. An empty SQLite database still costs about 12 KB, so
+  a room that keeps its storage keeps costing.
 
 Migrations are declared in `wrangler.toml` and applied by the deploy:
 
@@ -191,6 +197,123 @@ new_sqlite_classes = ["RoomDO"]
 `class_name` must match the exported class name, and the class must be
 re-exported from the entry point — `backend/index.ts` does both, even though
 the class itself lives in `backend/modules/room-do.ts`.
+
+## Rate limiting, and what the free plan allows
+
+The room routes — `POST /api/room` and the WebSocket route — are the ones
+that can spend the Durable Object budget, so they are rate limited per client
+IP. The limit is a **Workers rate limiting binding**, declared in
+`wrangler.toml`:
+
+```toml
+[[ratelimits]]
+name = "ROOM_RATE_LIMITER"
+namespace_id = "7321"
+
+  [ratelimits.simple]
+  limit = 120
+  period = 60
+```
+
+120 requests a minute per IP is far above what one person needs — a session
+costs three requests: one mint and two sockets — and far below what a flood
+needs. The check happens in the Worker, before the room is touched, so a
+request that is turned away costs nothing but itself.
+
+The count is **per Cloudflare location**, so the limit is approximate
+worldwide, and it is approximate within a location too. That is fine for the
+job: the point is to stop a flood, not to meter a customer.
+
+### Changing or removing it
+
+The limit is a number in `wrangler.toml`. Change it and push:
+
+```toml
+  [ratelimits.simple]
+  limit = 300   # was 120
+  period = 60
+```
+
+To remove the limit entirely, delete the `[[ratelimits]]` block. The Worker
+treats the binding as optional, and a Worker without it does not limit
+anything.
+
+### Why there is no WAF rule for it
+
+The obvious place for this is a zone rate limiting rule, so the request never
+reaches the Worker at all. **The free plan does not allow one.** A zone gets
+exactly **one** rate limiting rule, and Cloudflare has already spent it:
+
+```
+$ cf rulesets rules create --zone hassanali.site <ruleset-id> --body '<rule>'
+┌ APIError
+│ [50001] exceeded the maximum number of rules in the phase http_ratelimit: 2 out of 1
+```
+
+The rule that is there is Cloudflare's own *Leaked credential check*, which
+blocks requests carrying a password that has appeared in a breach. It
+protects the other apps on this zone, so it is not ours to delete.
+
+What the free plan also takes away, for whoever upgrades:
+
+| | Free | Pro |
+|---|---|---|
+| Rate limiting rules per zone | 1 | 2 |
+| Fields in a rule expression | Path, Verified Bot | + Host, Query, Method, Source IP |
+| Counting period | 10 s | up to 1 min |
+| Mitigation timeout | 10 s | up to 1 h |
+
+The Workers binding has none of those limits, which is why it is what this
+project uses.
+
+## What a flood costs, and what protects the app
+
+The account is on the **Cloudflare Free Plan**, and the free plan's limits are
+hard walls rather than bills:
+
+> *"If you exceed any one of the free tier limits, further operations of
+> that type will fail with an error."* — Cloudflare, Durable Objects pricing
+
+| | Free plan |
+|---|---|
+| Worker requests | 100,000 a day |
+| Durable Object requests | 100,000 a day |
+| Rows written (storage) | 100,000 a day |
+| SQL stored data | 5 GB |
+
+So crossing a limit does not cost money — it makes the Worker fail with
+errors until the budget resets at 00:00 UTC. Three things stand between the
+app and that:
+
+1. **A room only exists if it was minted.** A stranger who guesses a code
+   finds no room, no Durable Object is allocated for the attempt, and
+   nothing is stored.
+2. **A room gives its storage back.** The 12 KB an empty SQLite database
+   costs is released the moment the room ends, instead of sitting there
+   until the alarm fires.
+3. **The room routes are rate limited.** One IP cannot spend the whole
+   budget in a couple of minutes.
+
+What none of that fixes: a flood spread over many IPs, or a slow patient
+attack that never trips a per-IP limit. Those need the **Workers Paid plan**
+($5 a month), which turns "the app is dead until 00:00 UTC" into "the
+overage cost about 30 cents":
+
+| | Free | Paid ($5/mo) |
+|---|---|---|
+| Worker requests | 100,000 a day — cross it and the app fails | 10M a month, then $0.30/M |
+| Durable Object requests | 100,000 a day — cross it and the app fails | 1M a month, then $0.15/M |
+
+The plan is bought in the Cloudflare dashboard, not from here.
+
+### If the app starts failing
+
+| Symptom | What it means |
+|---|---|
+| `POST /api/room` answers `503 room_unavailable` | The Durable Object namespace could not be reached, or the free plan's daily request budget is spent. The budget resets at 00:00 UTC. |
+| `GET /api/room/{code}/ws` answers `404 room_not_found` | Normal for a code that was never minted or has expired. If a *minted* code is refused, the room ended early — check the Worker logs. |
+| Answers `429 rate_limited` | A client went over 120 room requests a minute. Normal for a script; not normal for a person. |
+| Every request fails, even `/api/ice-servers` | The Worker itself is not deploying or is erroring — check the `Workers Builds: aurashare` check and the Worker logs. |
 
 ## The signing relay is a dumb pipe
 
@@ -212,3 +335,5 @@ there, and adding validation would change the contract in
 | The landing page loads but `/app` 404s | The assets are not being served — check that `dist/` was built and that `[assets]` in `wrangler.toml` still points at it |
 | The app connects and then drops | Usually ICE, not the Worker — check `/api/ice-servers` and whether TURN is configured |
 | The Worker is up but old | The deploy did not run — check the `Workers Builds: aurashare` check on the commit |
+| A code that was just minted is refused | The room ended early — the code is only valid for 10 minutes from the mint, and the room is released as soon as the last peer leaves |
+| Room requests answer `429` | A client went over the rate limit — see [Rate limiting](#rate-limiting-and-what-the-free-plan-allows) |

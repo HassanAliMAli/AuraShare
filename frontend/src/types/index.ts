@@ -34,6 +34,7 @@ export type WireSignal =
   | { type: 'hello'; role: 'sender' | 'receiver' }
   | { type: 'peer-present' }
   | { type: 'peer-left' }
+  | { type: 'room-expired' }
   | { type: 'offer'; sdp: RTCSessionDescriptionInit }
   | { type: 'answer'; sdp: RTCSessionDescriptionInit }
   | { type: 'ice'; candidate: RTCIceCandidateInit };

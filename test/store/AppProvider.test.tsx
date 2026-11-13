@@ -9,6 +9,7 @@ type FakeManager = {
     onConnected: () => void;
     onDisconnected: () => void;
     onReceiverConnected?: () => void;
+    onRoomEnded?: (reason: 'no-peer' | 'ended') => void;
     onError: (message: string) => void;
     onProgress: (progress: number) => void;
     onTransferComplete: () => void;
@@ -28,6 +29,7 @@ type FakeManager = {
 const hoisted = vi.hoisted(() => ({
   managers: [] as FakeManager[],
   initializeRejects: false,
+  joinRejects: false,
 }));
 
 vi.mock('@/lib/webrtc', () => {
@@ -37,7 +39,9 @@ vi.mock('@/lib/webrtc', () => {
       if (hoisted.initializeRejects) throw new Error('offline');
       return 'ABC123';
     });
-    join = vi.fn(async () => undefined);
+    join = vi.fn(async () => {
+      if (hoisted.joinRejects) throw new Error('signaling websocket error');
+    });
     close = vi.fn();
     sendMeta = vi.fn();
     sendText = vi.fn();
@@ -130,6 +134,7 @@ describe('stores/AppProvider — lifecycle and actions', () => {
   beforeEach(() => {
     hoisted.managers.length = 0;
     hoisted.initializeRejects = false;
+    hoisted.joinRejects = false;
     vi.stubGlobal(
       'URL',
       Object.assign(URL, {
@@ -344,6 +349,45 @@ describe('stores/AppProvider — lifecycle and actions', () => {
     expect(screen.getByTestId('status')).toHaveTextContent('error');
     expect(screen.getByTestId('error')).toHaveTextContent(
       'The other device disconnected',
+    );
+  });
+
+  it('says nobody joined when the room expires before a peer arrives', async () => {
+    renderProvider();
+    fireEvent.click(screen.getByRole('button', { name: 'share' }));
+
+    act(() => lastManager().events.onRoomEnded?.('no-peer'));
+
+    // The sender is waiting for a code to be used. The code ran out, and
+    // that is not the other device's fault.
+    expect(screen.getByTestId('error')).toHaveTextContent(
+      'No one joined — the session ended',
+    );
+  });
+
+  it('says the sending device never joined when a join times out', async () => {
+    renderProvider();
+    fireEvent.click(screen.getByRole('button', { name: 'join' }));
+
+    act(() => lastManager().events.onRoomEnded?.('no-peer'));
+
+    expect(screen.getByTestId('error')).toHaveTextContent(
+      'The sending device never joined — the session ended',
+    );
+  });
+
+  it('explains a failed join instead of blaming the other device', async () => {
+    hoisted.joinRejects = true;
+    renderProvider();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'join' }));
+    });
+
+    // The socket never opened — most often because the code was never
+    // minted, or has expired.
+    expect(screen.getByTestId('error')).toHaveTextContent(
+      'Could not join the room — check the code, it may be wrong or expired',
     );
   });
 

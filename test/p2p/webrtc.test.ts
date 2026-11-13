@@ -280,6 +280,53 @@ describe('p2p/webrtc — P2PManager setup', () => {
     expect(events.onDisconnected).not.toHaveBeenCalled();
   });
 
+  it('reports that nobody joined when the room expires first', async () => {
+    const events = makeEvents();
+    await initializeSender(events);
+
+    signal({ type: 'room-expired' });
+
+    // The code ran out before the other device turned up. Blaming the
+    // other device for that would be wrong.
+    expect(events.onRoomEnded).toHaveBeenCalledWith('no-peer');
+    expect(events.onDisconnected).not.toHaveBeenCalled();
+  });
+
+  it('reports that the session ended when a peer had been there', async () => {
+    const events = makeEvents();
+    await initializeSender(events);
+
+    signal({ type: 'peer-present' });
+    signal({ type: 'room-expired' });
+
+    expect(events.onRoomEnded).toHaveBeenCalledWith('ended');
+  });
+
+  it('does not report a disconnect when the room expires', async () => {
+    const events = makeEvents();
+    await initializeSender(events);
+
+    signal({ type: 'room-expired' });
+    // The socket closes right after the notice — that close is the room
+    // ending, not the other device walking away.
+    lastChannel().callbacks.onClose();
+
+    expect(events.onDisconnected).not.toHaveBeenCalled();
+    expect(events.onRoomEnded).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not report a disconnect when the socket closes after a deliberate close', async () => {
+    const events = makeEvents();
+    const { manager } = await initializeSender(events);
+
+    // "End session" closes the socket, and the browser reports that back
+    // a moment later. That is the user finishing, not the peer leaving.
+    manager.close();
+    lastChannel().callbacks.onClose();
+
+    expect(events.onDisconnected).not.toHaveBeenCalled();
+  });
+
   it('attaches the receiver data channel and reports connection open', async () => {
     const events = makeEvents();
     await joinReceiver(events);

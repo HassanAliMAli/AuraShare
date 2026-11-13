@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import worker, { RoomDO, generateRoomCode } from '../../backend/index';
+import {
+  CODE_VALIDITY_MS,
+  MINT_PATH,
+  ROOM_IDLE_TTL_MS,
+} from '../../backend/modules/room-protocol';
 import { isRoomCode, ROOM_CODE_ALPHABET } from '@/lib/roomCode';
 
 type WorkerEnv = Parameters<typeof worker.fetch>[1];
@@ -21,14 +26,92 @@ function makeSocket() {
   };
 }
 
-function makeState(sockets: ReturnType<typeof makeSocket>[] = []) {
-  return {
+type FakeSocket = ReturnType<typeof makeSocket>;
+
+/**
+ * A Durable Object state that behaves like the real one where it matters:
+ * the storage is a map, the alarm is a single timestamp, and accepting a
+ * socket puts it in the room.
+ */
+function makeState(sockets: FakeSocket[] = []) {
+  const data = new Map<string, unknown>();
+  let alarm: number | null = null;
+  const writes = { alarm: 0, deleteAll: 0 };
+
+  const state = {
     getWebSockets: vi.fn(() => sockets),
-    acceptWebSocket: vi.fn(),
+    acceptWebSocket: vi.fn((socket: unknown) => {
+      sockets.push(socket as FakeSocket);
+    }),
     storage: {
-      setAlarm: vi.fn(async () => undefined),
+      get: vi.fn(async (key: string) => data.get(key)),
+      put: vi.fn(async (key: string, value: unknown) => {
+        data.set(key, value);
+      }),
+      deleteAll: vi.fn(async () => {
+        data.clear();
+        alarm = null;
+        writes.deleteAll += 1;
+      }),
+      getAlarm: vi.fn(async () => alarm),
+      setAlarm: vi.fn(async (time: number) => {
+        alarm = time;
+        writes.alarm += 1;
+      }),
     },
-  } as unknown as DurableObjectState;
+    /** The time the alarm is currently set to, for the assertions. */
+    alarmTime: () => alarm,
+    /** How many times the alarm has been written. */
+    alarmWrites: () => writes.alarm,
+    /** How many times the storage has been released. */
+    deleteAllCalls: () => writes.deleteAll,
+    /** Whether the room still holds the record of its mint. */
+    stored: (key: string) => data.get(key),
+  };
+
+  return state as unknown as DurableObjectState & {
+    alarmTime: () => number | null;
+    alarmWrites: () => number;
+    deleteAllCalls: () => number;
+    stored: (key: string) => unknown;
+  };
+}
+
+/**
+ * The Workers runtime hands the socket to the client with a `101` response.
+ * Node's `Response` refuses that status, and `WebSocketPair` only exists
+ * in workerd, so the accept path is exercised with both stubbed.
+ */
+function stubSwitchingProtocols(): void {
+  vi.stubGlobal(
+    'WebSocketPair',
+    class {
+      0 = makeSocket() as unknown as WebSocket;
+      1 = makeSocket() as unknown as WebSocket;
+    },
+  );
+
+  const RealResponse = globalThis.Response;
+  class SwitchingProtocolsResponse extends RealResponse {
+    constructor(body?: BodyInit | null, init?: ResponseInit) {
+      const status = init?.status ?? 200;
+      super(body, status === 101 ? { ...init, status: 200 } : init);
+      if (status === 101) {
+        Object.defineProperty(this, 'status', { value: 101 });
+      }
+    }
+  }
+  vi.stubGlobal('Response', SwitchingProtocolsResponse);
+}
+
+/** A request that asks for the signalling socket of a room. */
+function socketRequest(path = '/api/room/ABC123/ws'): Request {
+  return new Request(`http://local${path}`, { headers: { Upgrade: 'websocket' } });
+}
+
+/** The internal request the Worker sends to reserve a room. */
+function mintRequest(): Request {
+  return new Request(`http://local${MINT_PATH}`, { method: 'POST' });
 }
 
 describe('worker/worker — HTTP routes', () => {
@@ -357,10 +440,9 @@ describe('worker/worker — RoomDO relay', () => {
     const sockets = [makeSocket(), makeSocket()];
     const state = makeState(sockets);
     const room = new RoomDO(state);
+    await room.fetch(mintRequest());
 
-    const response = await room.fetch(
-      new Request('http://local/room', { headers: { Upgrade: 'websocket' } }),
-    );
+    const response = await room.fetch(socketRequest());
 
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({
@@ -369,7 +451,7 @@ describe('worker/worker — RoomDO relay', () => {
     expect(state.acceptWebSocket).not.toHaveBeenCalled();
   });
 
-  it('relays messages to every other socket and refreshes the alarm', async () => {
+  it('relays messages to every other socket', async () => {
     const first = makeSocket();
     const second = makeSocket();
     const state = makeState([first, second]);
@@ -382,7 +464,6 @@ describe('worker/worker — RoomDO relay', () => {
 
     expect(second.send).toHaveBeenCalledWith(JSON.stringify({ type: 'offer' }));
     expect(first.send).not.toHaveBeenCalled();
-    expect(state.storage.setAlarm).toHaveBeenCalled();
   });
 
   it('announces peer-left and closes the departing socket', async () => {
@@ -423,14 +504,299 @@ describe('worker/worker — RoomDO relay', () => {
     expect(error).toHaveBeenCalled();
   });
 
-  it('closes every socket when the room TTL alarm fires', async () => {
+  it('tells the peers and closes every socket when the room TTL alarm fires', async () => {
     const sockets = [makeSocket(), makeSocket()];
     const room = new RoomDO(makeState(sockets));
 
     await room.alarm();
 
     for (const socket of sockets) {
+      // The peer is told why the room went away, not just that it did.
+      expect(socket.send).toHaveBeenCalledWith(JSON.stringify({ type: 'room-expired' }));
       expect(socket.close).toHaveBeenCalledWith(1000, 'room expired');
     }
+  });
+});
+
+describe('worker/worker — RoomDO lifecycle', () => {
+  beforeEach(() => {
+    stubSwitchingProtocols();
+  });
+
+  it('refuses a join for a code nobody minted', async () => {
+    const state = makeState();
+    const room = new RoomDO(state);
+
+    const response = await room.fetch(socketRequest());
+
+    // Without this check every six characters a stranger could guess would
+    // allocate a Durable Object.
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({
+      error: { code: 'room_not_found', message: 'No such room' },
+    });
+    expect(state.acceptWebSocket).not.toHaveBeenCalled();
+  });
+
+  it('accepts a join for a code that was minted', async () => {
+    const state = makeState();
+    const room = new RoomDO(state);
+    await room.fetch(mintRequest());
+
+    const response = await room.fetch(socketRequest());
+
+    expect(response.status).toBe(101);
+    expect(state.acceptWebSocket).toHaveBeenCalledTimes(1);
+  });
+
+  it('gives a minted code a fixed validity window', async () => {
+    const state = makeState();
+    const room = new RoomDO(state);
+
+    const before = Date.now();
+    await room.fetch(mintRequest());
+
+    // The window runs from the mint, so a code cannot be kept alive by
+    // talking to the room.
+    expect(state.alarmTime()).toBeGreaterThanOrEqual(before + CODE_VALIDITY_MS);
+    expect(state.alarmTime()).toBeLessThanOrEqual(Date.now() + CODE_VALIDITY_MS);
+  });
+
+  it('gives a paired room the longer lease', async () => {
+    const state = makeState();
+    const room = new RoomDO(state);
+    await room.fetch(mintRequest());
+
+    await room.fetch(socketRequest());
+    await room.fetch(socketRequest());
+
+    // Two peers make it a session, and a session is worth keeping alive.
+    expect(state.alarmTime()).toBeGreaterThan(Date.now() + CODE_VALIDITY_MS);
+    expect(state.alarmTime()).toBeLessThanOrEqual(Date.now() + ROOM_IDLE_TTL_MS);
+  });
+
+  it('does not shorten the code window when the first peer joins', async () => {
+    const state = makeState();
+    const room = new RoomDO(state);
+    await room.fetch(mintRequest());
+    const armed = state.alarmTime();
+
+    await room.fetch(socketRequest());
+
+    expect(state.alarmTime()).toBe(armed);
+  });
+
+  it('releases the storage when the last peer leaves', async () => {
+    const leaver = makeSocket();
+    const state = makeState([leaver]);
+    const room = new RoomDO(state);
+    await room.fetch(mintRequest());
+
+    await room.webSocketClose(leaver as unknown as WebSocket, 1000, 'bye');
+
+    // The room is over, so it must not keep its storage: an empty SQLite
+    // database still costs about 12 KB.
+    expect(state.storage.deleteAll).toHaveBeenCalled();
+    expect(state.alarmTime()).toBeNull();
+  });
+
+  it('keeps the storage while a peer is still in the room', async () => {
+    const leaver = makeSocket();
+    const peer = makeSocket();
+    const state = makeState([leaver, peer]);
+    const room = new RoomDO(state);
+    await room.fetch(mintRequest());
+
+    await room.webSocketClose(leaver as unknown as WebSocket, 1000, 'bye');
+
+    expect(state.storage.deleteAll).not.toHaveBeenCalled();
+  });
+
+  it('releases the storage when the lease runs out', async () => {
+    const state = makeState();
+    const room = new RoomDO(state);
+    await room.fetch(mintRequest());
+
+    await room.alarm();
+
+    expect(state.storage.deleteAll).toHaveBeenCalled();
+    expect(state.alarmTime()).toBeNull();
+  });
+
+  it('does not re-arm the alarm on every relayed message', async () => {
+    const first = makeSocket();
+    const second = makeSocket();
+    const state = makeState([first, second]);
+    const room = new RoomDO(state);
+    // The room already has a lease that is nowhere near firing.
+    await state.storage.setAlarm(Date.now() + ROOM_IDLE_TTL_MS);
+    const armed = state.alarmWrites();
+
+    for (let i = 0; i < 10; i += 1) {
+      await room.webSocketMessage(first as unknown as WebSocket, JSON.stringify({ type: 'ice' }));
+    }
+
+    // `setAlarm` is a storage write, and the free plan allows 100,000 rows
+    // written a day: a busy session must not spend that budget on its own.
+    expect(state.alarmWrites()).toBe(armed);
+  });
+
+  it('moves the alarm on when it is close to firing', async () => {
+    const first = makeSocket();
+    const second = makeSocket();
+    const state = makeState([first, second]);
+    const room = new RoomDO(state);
+    await state.storage.setAlarm(Date.now() + 1000);
+
+    await room.webSocketMessage(first as unknown as WebSocket, JSON.stringify({ type: 'ice' }));
+
+    expect(state.alarmTime()).toBeGreaterThan(Date.now() + ROOM_IDLE_TTL_MS - 1000);
+  });
+});
+
+describe('worker/worker — reserving a room', () => {
+  it('reserves the room behind a minted code', async () => {
+    const stubFetch = vi.fn(async () => new Response('ok', { status: 200 }));
+    const roomEnv = env({
+      ROOMS: {
+        idFromName: vi.fn(() => 'durable-id'),
+        get: vi.fn(() => ({ fetch: stubFetch })),
+      } as unknown as WorkerEnv['ROOMS'],
+    });
+
+    const response = await worker.fetch(
+      new Request('http://local/api/room', { method: 'POST' }),
+      roomEnv,
+    );
+    const body = (await response.json()) as { roomId: string };
+
+    expect(response.status).toBe(200);
+    expect(body.roomId).toMatch(/^[0-9A-HJKMNP-TV-Z]{6}$/);
+    // The reservation is what makes the code work.
+    expect(stubFetch).toHaveBeenCalledTimes(1);
+    const [reserved] = stubFetch.mock.calls[0] as unknown as [Request];
+    expect(new URL(reserved.url).pathname).toBe(MINT_PATH);
+  });
+
+  it('answers 503 when the room cannot be reserved', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const roomEnv = env({
+      ROOMS: {
+        idFromName: vi.fn(() => 'durable-id'),
+        get: vi.fn(() => ({
+          fetch: vi.fn(async () => {
+            throw new Error('no such namespace');
+          }),
+        })),
+      } as unknown as WorkerEnv['ROOMS'],
+    });
+
+    const response = await worker.fetch(
+      new Request('http://local/api/room', { method: 'POST' }),
+      roomEnv,
+    );
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({
+      error: { code: 'room_unavailable', message: 'Could not open a room' },
+    });
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
+  });
+});
+
+describe('worker/worker — rate limiting the room routes', () => {
+  function limiter(success = true) {
+    return { limit: vi.fn(async () => ({ success })) };
+  }
+
+  it('turns away a request the limiter refuses', async () => {
+    const response = await worker.fetch(
+      new Request('http://local/api/room', {
+        method: 'POST',
+        headers: { 'cf-connecting-ip': '203.0.113.7' },
+      }),
+      env({
+        ROOM_RATE_LIMITER: limiter(false),
+      }),
+    );
+
+    expect(response.status).toBe(429);
+    expect(await response.json()).toEqual({
+      error: { code: 'rate_limited', message: 'Too many requests' },
+    });
+    expect(response.headers.get('retry-after')).toBe('60');
+    // The security headers are still on the error.
+    expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+  });
+
+  it('counts the room routes against the limit, keyed on the client IP', async () => {
+    const roomLimiter = limiter();
+    await worker.fetch(
+      new Request('http://local/api/room', {
+        method: 'POST',
+        headers: { 'cf-connecting-ip': '203.0.113.7' },
+      }),
+      env({ ROOM_RATE_LIMITER: roomLimiter }),
+    );
+
+    expect(roomLimiter.limit).toHaveBeenCalledWith({ key: '203.0.113.7' });
+  });
+
+  it('counts the websocket route against the limit', async () => {
+    const roomLimiter = limiter();
+    await worker.fetch(
+      new Request('http://local/api/room/ABC123/ws', {
+        headers: { Upgrade: 'websocket', 'cf-connecting-ip': '203.0.113.7' },
+      }),
+      env({ ROOM_RATE_LIMITER: roomLimiter }),
+    );
+
+    expect(roomLimiter.limit).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not count the ice-servers route', async () => {
+    const roomLimiter = limiter();
+    await worker.fetch(
+      new Request('http://local/api/ice-servers'),
+      env({ ROOM_RATE_LIMITER: roomLimiter }),
+    );
+
+    // The ICE list is cheap and every session needs it.
+    expect(roomLimiter.limit).not.toHaveBeenCalled();
+  });
+
+  it('does not count a request that has no client IP', async () => {
+    const roomLimiter = limiter();
+    await worker.fetch(
+      new Request('http://local/api/room', { method: 'POST' }),
+      env({ ROOM_RATE_LIMITER: roomLimiter }),
+    );
+
+    // A local dev server or a test has no IP. Counting them all against one
+    // bucket would count every caller together.
+    expect(roomLimiter.limit).not.toHaveBeenCalled();
+  });
+
+  it('lets the request through when the limiter itself fails', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const broken = {
+      limit: vi.fn(async () => {
+        throw new Error('limiter unavailable');
+      }),
+    };
+
+    const response = await worker.fetch(
+      new Request('http://local/api/room', {
+        method: 'POST',
+        headers: { 'cf-connecting-ip': '203.0.113.7' },
+      }),
+      env({ ROOM_RATE_LIMITER: broken }),
+    );
+
+    // A broken limiter must not make the app unusable.
+    expect(response.status).toBe(200);
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
   });
 });

@@ -26,6 +26,25 @@ class_name = "RoomDO"
 tag = "v1"
 new_sqlite_classes = ["RoomDO"]
 
+# Rate limiting for the room API, keyed on the client IP.
+#
+# The room routes are the expensive ones: every one of them can allocate a
+# Durable Object, and the free plan's daily request budget is finite — cross
+# it and the Worker starts failing with errors until the budget resets.
+#
+# 120 requests a minute per IP is far above what one person needs (a session
+# costs three: one mint and two sockets) and far below what a flood needs.
+#
+# The namespace id must be unique in the account. The limit is per Cloudflare
+# location, so it is approximate worldwide.
+[[ratelimits]]
+name = "ROOM_RATE_LIMITER"
+namespace_id = "7321"
+
+  [ratelimits.simple]
+  limit = 120
+  period = 60
+
 # Cloudflare Calls TURN — ephemeral credential generation.
 # Create a TURN key in the dashboard (Cloudflare → Calls → Turn Applications),
 # then set these two secrets. The Worker mints short-lived (24h) credentials

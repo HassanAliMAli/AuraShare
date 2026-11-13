@@ -18,13 +18,24 @@ const SECURITY_HEADERS: Record<string, string> = {
 };
 
 /** The machine-readable codes a client can branch on. */
-export type ApiErrorCode = 'not_found' | 'upgrade_required' | 'room_full';
+export type ApiErrorCode =
+  | 'not_found'
+  | 'upgrade_required'
+  | 'room_full'
+  | 'room_not_found'
+  | 'room_unavailable'
+  | 'rate_limited';
 
 /** A JSON response. */
-export function json(data: unknown, status = 200): Response {
+export function json(
+  data: unknown,
+  status = 200,
+  headers: Record<string, string> = {},
+): Response {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
+      ...headers,
       'Content-Type': 'application/json',
       ...SECURITY_HEADERS,
     },
@@ -37,8 +48,13 @@ export function json(data: unknown, status = 200): Response {
  * The body is always the same shape — `{ error: { code, message } }` — so a
  * client can read it without checking which route it came from.
  */
-export function apiError(code: ApiErrorCode, message: string, status: number): Response {
-  return json({ error: { code, message } }, status);
+export function apiError(
+  code: ApiErrorCode,
+  message: string,
+  status: number,
+  headers?: Record<string, string>,
+): Response {
+  return json({ error: { code, message } }, status, headers);
 }
 
 /** The preflight answer: an empty 200 with the standard headers. */

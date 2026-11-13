@@ -165,6 +165,8 @@ export function parseWireSignal(raw: unknown): WireSignal | null {
       return { type: 'peer-present' };
     case 'peer-left':
       return { type: 'peer-left' };
+    case 'room-expired':
+      return { type: 'room-expired' };
     case 'offer': {
       if (!isSessionDescription(raw.sdp)) return null;
       return { type: 'offer', sdp: raw.sdp };

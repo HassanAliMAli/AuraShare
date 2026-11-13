@@ -64,6 +64,9 @@ delete webkitEnv.GIO_MODULE_DIR;
 export default defineConfig({
   testDir: './test/e2e',
   testMatch: '**/*.spec.ts',
+  // Refuse to run against a server that is not serving this working tree.
+  // See `test/e2e/e2e-preflight.ts`.
+  globalSetup: './test/e2e/e2e-preflight.global.ts',
   // P2P handshakes are timing sensitive; keep one worker so two peers never
   // compete for the same signaling room.
   workers: 1,

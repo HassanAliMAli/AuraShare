@@ -14,6 +14,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
+    "test:e2e:fresh": "node --experimental-strip-types test/e2e/e2e-preflight.ts --kill && playwright test",
     "test:e2e:report": "playwright show-report",
     "preview": "vite preview --config frontend/vite.config.ts"
   },

@@ -103,10 +103,12 @@ npx wrangler login     # once; the token expires and has to be renewed
 npm run deploy         # build + wrangler deploy
 ```
 
-TURN credentials are optional and configured with `wrangler secret` — see the
-comments in `wrangler.toml` and the [deployment runbook](docs/DEPLOYMENT.md),
-which also covers how to check a deployment, what the SPA deep link does to a
-`curl`, and why TURN matters behind a symmetric NAT.
+TURN credentials are set on the Worker (`TURN_KEY_ID` and
+`TURN_KEY_API_TOKEN`), so a peer behind a symmetric NAT can connect too —
+see the comments in `wrangler.toml` and the
+[deployment runbook](docs/DEPLOYMENT.md), which also covers how to check a
+deployment, what the SPA deep link does to a `curl`, and how to rotate the
+TURN key.
 
 ## Quality
 

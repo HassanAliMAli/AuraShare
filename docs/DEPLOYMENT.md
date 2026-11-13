@@ -103,39 +103,69 @@ HTTP instead.
 
 ## TURN credentials
 
-**TURN is not configured.** `/api/ice-servers` returns the three STUN servers
-and no TURN entry.
+**TURN is configured.** The Worker holds a Cloudflare Calls TURN key, and
+`GET /api/ice-servers` returns the STUN servers plus six TURN URLs with
+ephemeral credentials:
 
-STUN is enough for most peers: it discovers the public address of a NAT, and
-if the NAT is a normal cone or port-preserving mapping, the two peers can
-reach each other. It is **not** enough behind a symmetric NAT, where the
-mapping differs per destination — the most common case on a corporate or
-mobile network. Those peers simply cannot connect, and the failure looks like
-a timeout rather than an error.
+```json
+{
+  "iceServers": [
+    { "urls": "stun:stun.cloudflare.com:3478" },
+    { "urls": "stun:stun.cloudflare.com:443" },
+    {
+      "urls": [
+        "turn:turn.cloudflare.com:3478?transport=udp",
+        "turn:turn.cloudflare.com:3478?transport=tcp",
+        "turns:turn.cloudflare.com:5349?transport=tcp",
+        "turn:turn.cloudflare.com:443?transport=udp",
+        "turn:turn.cloudflare.com:80?transport=tcp",
+        "turns:turn.cloudflare.com:443?transport=tcp"
+      ],
+      "username": "…",
+      "credential": "…"
+    }
+  ]
+}
+```
 
-To turn TURN on:
-
-1. Create a TURN key in the dashboard: **Cloudflare → Calls → Turn
-   Applications → Add**. It gives you a key ID and an API token.
-2. Set them on the Worker:
-
-   ```bash
-   npx wrangler secret put TURN_KEY_ID
-   npx wrangler secret put TURN_KEY_API_TOKEN
-   ```
-
-3. Deploy, and check that the endpoint now returns a TURN entry:
-
-   ```bash
-   curl https://aurashare.hassanali.site/api/ice-servers
-   # {"iceServers":[...,{"urls":"turn:...","username":"...","credential":"..."}]}
-   ```
+STUN alone is enough for most peers: it discovers the public address of a
+NAT, and if the NAT is a normal cone or port-preserving mapping, the two
+peers can reach each other. It is **not** enough behind a symmetric NAT,
+where the mapping differs per destination — the most common case on a
+corporate or mobile network. Those peers simply cannot connect, and the
+failure looks like a timeout rather than an error. TURN is what makes them
+work.
 
 The credentials are **ephemeral**: the Worker mints them per isolate with a
 24-hour TTL and re-mints them an hour before they expire, so nothing
 long-lived is ever handed to a browser. The endpoint falls back to STUN-only
 if the Cloudflare API is unreachable — it never returns an error, because a
 connection timeout is a better failure than a broken app.
+
+### Rotating the key
+
+The Worker reads two secrets, `TURN_KEY_ID` and `TURN_KEY_API_TOKEN`. They
+hold the TURN key's ID and its API token. To rotate:
+
+```bash
+# 1. create a new key
+cf realtime turn keys create --name "aurashare"
+
+# 2. put its id and secret on the Worker
+npx wrangler secret put TURN_KEY_ID
+npx wrangler secret put TURN_KEY_API_TOKEN
+
+# 3. confirm the endpoint serves TURN again
+curl https://aurashare.hassanali.site/api/ice-servers
+```
+
+The old key can then be deleted:
+
+```bash
+cf realtime turn keys list
+cf realtime turn keys delete --key-id <id>
+```
+
 
 ## Durable Objects
 

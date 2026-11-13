@@ -78,8 +78,13 @@ npm run typecheck        # tsc --build (no emit)
 npm run test             # Vitest unit tests
 npm run test:coverage    # Vitest with coverage report
 npm run test:e2e         # Playwright end-to-end tests (test/e2e)
+npm run test:e2e:fresh   # Stop this checkout's servers, then run the E2E suite
 npm run preview          # Preview production build locally
 ```
+
+`docs/PROCESS_NOTES.md` records the things that cost time on this project —
+among them why a guard has to be *watched failing* before it is called a
+guard, and how to clean up after a cancelled background run.
 
 ## Deploy
 
@@ -170,12 +175,62 @@ CI does this automatically. On Linux it also needs the shared libraries
 WebKit links against (`libevent`, `libavif`, `libmanette`, `libyuv`, `libgav1`);
 `--with-deps` installs them.
 
+> **"Host system is missing dependencies" on your own machine?** Playwright
+> checks the libraries its browser builds need before it starts them, and
+> refuses to launch when one is absent. `npx playwright install --with-deps
+> webkit` installs them — but it needs `sudo`, and it needs to reach the
+> package mirror. On a machine you cannot install to, set
+> `PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true` to skip the check and
+> launch anyway:
+>
+> ```bash
+> PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true npx playwright test
+> ```
+>
+> It is an escape hatch, not a fix: if a library really is missing, the
+> browser process dies at launch instead of at the check.
+
 > **Running inside a snap-confined editor?** VS Code installed as a snap
 > exports `GIO_MODULE_DIR`, and the snap's GIO proxy modules carry an RPATH into
 > core20 — which breaks WebKit's network process with
 > `page.goto: WebKit encountered an internal error` on every navigation.
 > `playwright.config.ts` clears the variable for the WebKit projects, so the
 > suite works either way.
+
+#### The stale-server guard
+The suite reuses a server that is already listening on `:5173` or `:8787`,
+which is what makes `npm run test:e2e` a one-liner. It is also how the suite
+can end up testing something other than the code in your working tree:
+
+- a server left over from **another checkout** — another branch, another
+  worktree — keeps serving *that* tree's code;
+- **`vite preview`** serves the built `dist/` folder, not the source;
+- any unrelated process squatting on the port is reused just the same.
+
+None of them announce themselves. The suite simply runs, and the result is
+about a codebase that is not the one on disk.
+
+So before any test runs, `test/e2e/e2e-preflight.ts` looks at each port and
+reads two things about whatever holds it: the **command line** (is it the
+server the suite expects?) and the **working directory** (is it serving this
+checkout?). A server that passes both is safe to reuse — Vite and Wrangler
+both watch the filesystem, so they pick up a change as soon as it is saved.
+Anything else stops the run with the PID and the command to stop it:
+
+```
+✗ :5173 is held by PID 207539 — "node .../vite preview --config
+  frontend/vite.config.ts --port 5173", working directory
+  /home/you/Desktop/coding/AuraShare, which is not the Vite dev server.
+  The suite would talk to the wrong server.
+```
+
+The check runs as Playwright's `globalSetup`, so `npx playwright test` is
+covered too. To stop the servers this checkout started and run the suite
+against fresh ones:
+
+```bash
+npm run test:e2e:fresh
+```
 
 #### Mobile layout checks
 

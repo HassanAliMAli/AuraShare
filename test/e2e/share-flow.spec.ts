@@ -74,7 +74,8 @@ test.describe('AuraShare peer-to-peer transfer', () => {
 
     await joinRoom(receiver, 'ZZZZZZ');
 
-    // The app waits out its 30s connect timeout before surfacing the failure.
+    // The Worker refuses a code it never minted, and the socket fails to
+    // open straight away — so the failure shows up at once.
     await expect(receiver.getByText('Connection failed')).toBeVisible({ timeout: 45_000 });
     await expect(receiver.getByText('Try again')).toBeVisible();
 

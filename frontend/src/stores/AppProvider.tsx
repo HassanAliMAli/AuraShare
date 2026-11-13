@@ -143,10 +143,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }, CONNECT_TIMEOUT_MS);
 
       mgr.join(normalized).catch(() => {
-        // The socket never opened. The usual reason is a code that was
-        // never minted, or one that has expired — the Worker refuses both
-        // the same way, and a browser cannot read the body of a failed
-        // WebSocket handshake, so the message covers both.
+        // The socket never opened — most often because the code was never
+        // minted, or has expired. The Worker refuses both the same way, and
+        // a browser cannot read the body of a failed WebSocket handshake,
+        // so the message covers both.
+        if (connectTimeoutRef.current) {
+          clearTimeout(connectTimeoutRef.current);
+          connectTimeoutRef.current = null;
+        }
         dispatch({
           type: 'SET_ERROR',
           message: 'Could not join the room — check the code, it may be wrong or expired',

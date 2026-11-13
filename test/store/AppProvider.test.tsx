@@ -391,6 +391,26 @@ describe('stores/AppProvider — lifecycle and actions', () => {
     );
   });
 
+  it('keeps the join failure message when the connect timeout would have fired', async () => {
+    vi.useFakeTimers();
+    hoisted.joinRejects = true;
+    renderProvider();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'join' }));
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(30_000);
+    });
+
+    // The timeout must not overwrite the message that says what went wrong
+    // with a second, vaguer one.
+    expect(screen.getByTestId('error')).toHaveTextContent(
+      'Could not join the room — check the code, it may be wrong or expired',
+    );
+  });
+
   it('times out a join after 30 seconds', () => {
     vi.useFakeTimers();
     renderProvider();

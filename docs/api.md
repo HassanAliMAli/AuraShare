@@ -211,9 +211,9 @@ that it does not change by accident.
 | TURN credential TTL | 24 hours | Cloudflare Calls API. |
 | TURN cache refresh margin | 1 hour | The credential is re-minted when less than this remains. |
 
-> **TURN is not configured on the live Worker.** `GET /api/ice-servers`
-> returns the three STUN servers and no TURN entry. That is enough for most
-> peers, but a peer behind a symmetric NAT cannot connect without it. See
+> **TURN is configured on the live Worker.** `GET /api/ice-servers` returns
+> the STUN servers and a TURN entry with six URLs and ephemeral credentials.
+> A peer behind a symmetric NAT needs that entry to connect at all. See
 > [docs/DEPLOYMENT.md](DEPLOYMENT.md#turn-credentials).
 
 ## Checking a deployment

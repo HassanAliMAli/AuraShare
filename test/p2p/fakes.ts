@@ -123,7 +123,17 @@ export class FakePeerConnection {
   createOffer = vi.fn(async () => ({ type: 'offer' as const, sdp: 'offer-sdp' }));
   createAnswer = vi.fn(async () => ({ type: 'answer' as const, sdp: 'answer-sdp' }));
   setLocalDescription = vi.fn(async () => undefined);
-  setRemoteDescription = vi.fn(async () => undefined);
+  /**
+   * The remote description, once it has been applied.
+   *
+   * The real `RTCPeerConnection` exposes it, and `addIceCandidate` refuses to
+   * work until it is set — so the fake has to behave the same way, or a test
+   * cannot tell the difference between "applied" and "buffered".
+   */
+  remoteDescription: RTCSessionDescriptionInit | null = null;
+  setRemoteDescription = vi.fn(async (description: RTCSessionDescriptionInit) => {
+    this.remoteDescription = description;
+  });
   addIceCandidate = vi.fn(async () => undefined);
   close = vi.fn(() => {
     this.iceConnectionState = 'closed';

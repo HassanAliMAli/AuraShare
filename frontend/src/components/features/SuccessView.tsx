@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
 import { Copy, Check } from 'lucide-react';
+import { useState } from 'react';
 import { useAppStore } from '../../stores/appStore';
 import { viewVariants } from '../../lib/motion';
 import { Button } from '../ui/Button';
@@ -8,6 +9,12 @@ import { Panel } from '../ui/Panel';
 /** Success screen: shows received text (with copy) or a completion notice. */
 export function SuccessView() {
   const { state, actions } = useAppStore();
+  const [copyFailed, setCopyFailed] = useState(false);
+
+  const copyReceivedText = async () => {
+    const copied = await actions.copyText(state.receivedText ?? '');
+    setCopyFailed(!copied);
+  };
 
   return (
     <motion.div
@@ -31,12 +38,18 @@ export function SuccessView() {
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={() => actions.copyText(state.receivedText ?? '')}
+                onClick={copyReceivedText}
                 aria-label="Copy received text to clipboard"
               >
                 <Copy className="h-3.5 w-3.5" aria-hidden="true" />
                 Copy text
               </Button>
+              {copyFailed && (
+                <p className="mt-3 text-xs text-error" role="status">
+                  Could not reach the clipboard. Select the text above and copy it
+                  manually.
+                </p>
+              )}
             </div>
           </Panel>
         ) : (

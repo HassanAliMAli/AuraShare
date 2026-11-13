@@ -35,7 +35,7 @@ export function makeActions(overrides: Partial<AppActions> = {}): AppActions {
     join: vi.fn(noop),
     downloadSelected: vi.fn(noop),
     toggleFileSelected: vi.fn(noop),
-    copyText: vi.fn(noop),
+    copyText: vi.fn(async () => true),
     reset: vi.fn(noop),
     ...overrides,
   };

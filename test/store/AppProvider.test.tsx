@@ -311,6 +311,42 @@ describe('stores/AppProvider — lifecycle and actions', () => {
     expect(writeText).toHaveBeenCalledWith('copied text');
   });
 
+  it('reports a clipboard failure instead of failing silently', async () => {
+    const writeText = vi.fn(async () => {
+      throw new Error('denied');
+    });
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    renderProvider();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'copy' }));
+    });
+
+    // The copy did not happen, and the app has to say so — a silent failure
+    // leaves the user believing they have the text on their clipboard.
+    expect(writeText).toHaveBeenCalledWith('copied text');
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
+  });
+
+  it('shows an error when the peer disconnects', async () => {
+    renderProvider();
+    fireEvent.click(screen.getByRole('button', { name: 'share' }));
+
+    act(() => lastManager().events.onDisconnected());
+
+    // Without this the app sat on a screen that waited for a transfer that
+    // was never going to arrive, with no indication of anything.
+    expect(screen.getByTestId('status')).toHaveTextContent('error');
+    expect(screen.getByTestId('error')).toHaveTextContent(
+      'The other device disconnected',
+    );
+  });
+
   it('times out a join after 30 seconds', () => {
     vi.useFakeTimers();
     renderProvider();

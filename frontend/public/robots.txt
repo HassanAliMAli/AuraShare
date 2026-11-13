@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://aurashare.app/sitemap.xml
+Sitemap: https://aurashare.hassanali.site/sitemap.xml

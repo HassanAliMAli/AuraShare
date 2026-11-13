@@ -29,6 +29,19 @@ export class P2PManager {
   private role: 'sender' | 'receiver' | null = null;
   private iceServers: RTCIceServer[] = [];
   private offerSent = false;
+  /** Set when the session is closed on purpose, so a close is not a disconnect. */
+  private closed = false;
+  /**
+   * ICE candidates that arrived before the remote description was applied.
+   *
+   * `addIceCandidate` throws `InvalidStateError` until the remote
+   * description is set, and the relay does not order the frames: a candidate
+   * can easily beat the SDP across the wire. Dropping it — which is what
+   * `addIceCandidate` does when it throws — loses a candidate silently, and
+   * the connection then fails to establish on a slow network. They are held
+   * here until the description lands and applied in order.
+   */
+  private pendingCandidates: RTCIceCandidateInit[] = [];
 
   constructor(events: P2PEvents) {
     this.events = events;
@@ -71,7 +84,7 @@ export class P2PManager {
         if (this.role === 'sender') this.maybeSendOffer();
         break;
       case 'peer-left':
-        this.events.onDisconnected();
+        this.notifyDisconnected();
         break;
       case 'offer':
         if (this.role === 'receiver') void this.handleOffer(msg.sdp);
@@ -80,11 +93,60 @@ export class P2PManager {
         if (this.role === 'sender') void this.handleAnswer(msg.sdp);
         break;
       case 'ice':
-        void this.pc?.addIceCandidate(msg.candidate).catch((err) => {
-          console.warn('[RTC] addIceCandidate failed:', err);
-        });
+        void this.addRemoteCandidate(msg.candidate);
         break;
     }
+  }
+
+  /**
+   * Apply a candidate from the peer, or hold it until the remote
+   * description is in place.
+   */
+  private async addRemoteCandidate(candidate: RTCIceCandidateInit): Promise<void> {
+    const pc = this.pc;
+    if (!pc) return;
+
+    if (!pc.remoteDescription) {
+      this.pendingCandidates.push(candidate);
+      return;
+    }
+
+    try {
+      await pc.addIceCandidate(candidate);
+    } catch (err) {
+      console.warn('[RTC] addIceCandidate failed:', err);
+    }
+  }
+
+  /** Apply the candidates that arrived before the remote description. */
+  private async flushPendingCandidates(): Promise<void> {
+    const pc = this.pc;
+    if (!pc) return;
+
+    const pending = this.pendingCandidates;
+    this.pendingCandidates = [];
+
+    for (const candidate of pending) {
+      try {
+        await pc.addIceCandidate(candidate);
+      } catch (err) {
+        console.warn('[RTC] addIceCandidate failed:', err);
+      }
+    }
+  }
+
+  /**
+   * Tell the app the peer is gone.
+   *
+   * A session that is closed on purpose is not a disconnect: `close()` is
+   * called when the user ends the session or the app resets, and the
+   * data channel and the WebSocket both report back when they close. Without
+   * this guard the app would report a failure for a session the user
+   * finished.
+   */
+  private notifyDisconnected(): void {
+    if (this.closed) return;
+    this.events.onDisconnected();
   }
 
   private maybeSendOffer(): void {
@@ -104,6 +166,7 @@ export class P2PManager {
     if (!this.pc) return;
     try {
       await this.pc.setRemoteDescription(sdp);
+      await this.flushPendingCandidates();
       const answer = await this.pc.createAnswer();
       await this.pc.setLocalDescription(answer);
       this.signaling.send({ type: 'answer', sdp: answer });
@@ -117,6 +180,7 @@ export class P2PManager {
     if (!this.pc) return;
     try {
       await this.pc.setRemoteDescription(sdp);
+      await this.flushPendingCandidates();
     } catch (err) {
       console.error('[RTC] could not apply the answer:', err);
       this.events.onError('Could not establish the connection');
@@ -133,7 +197,10 @@ export class P2PManager {
     pc.oniceconnectionstatechange = () => {
       const state = pc.iceConnectionState;
       if (state === 'failed') this.events.onError('ICE negotiation failed');
-      if (state === 'disconnected' || state === 'closed') this.events.onDisconnected();
+      // `disconnected` is transient — ICE can recover from it, and the data
+      // channel reports the real end of a session. `failed` is the state
+      // that means the connection is gone for good, and it is handled above.
+      if (state === 'closed') this.notifyDisconnected();
     };
     pc.ondatachannel = (e) => {
       // Receiver side: the sender created the channel.
@@ -153,7 +220,7 @@ export class P2PManager {
       if (this.role === 'sender') this.events.onReceiverConnected?.();
       else this.events.onConnected();
     };
-    dc.onclose = () => this.events.onDisconnected();
+    dc.onclose = () => this.notifyDisconnected();
     dc.onerror = (e) => {
       console.error('[RTC] data channel error:', e);
       this.events.onError('Data channel error');
@@ -177,6 +244,9 @@ export class P2PManager {
   // ─── Lifecycle ──────────────────────────────────────────────────────────
 
   close(): void {
+    // A deliberate close is not a disconnect — see `notifyDisconnected`.
+    this.closed = true;
+    this.pendingCandidates = [];
     this.transfer = null;
     this.dc?.close();
     this.pc?.close();

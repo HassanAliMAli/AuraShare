@@ -64,7 +64,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
             mgr.sendText(pendingTextRef.current);
           }
         },
-        onDisconnected: () => { /* wait for user to end session */ },
+        onDisconnected: () =>
+          dispatch({ type: 'SET_ERROR', message: 'The other device disconnected' }),
         onFileAcknowledged: (index) => dispatch({ type: 'FILE_ACKNOWLEDGED', index }),
         onTransferComplete: () => {},
         onError: (err) => {
@@ -107,7 +108,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
             connectTimeoutRef.current = null;
           }
         },
-        onDisconnected: () => { /* wait for user */ },
+        onDisconnected: () =>
+          dispatch({ type: 'SET_ERROR', message: 'The other device disconnected' }),
         onFileDescriptorsReceived: (files) => dispatch({ type: 'RECEIVE_DESCRIPTORS', files }),
         onFileComplete: (index, file) => {
           dispatch({ type: 'FILE_COMPLETE', index });
@@ -138,10 +140,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     toggleFileSelected: (index, selected) =>
       dispatch({ type: 'TOGGLE_SELECT', index, selected }),
 
-    copyText: (text) => {
-      navigator.clipboard.writeText(text).catch((err) => {
+    copyText: async (text) => {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch (err) {
+        // A silent failure is worse than none: the user would walk away
+        // believing they have the text on their clipboard.
         console.error('Failed to copy to clipboard:', err);
-      });
+        return false;
+      }
     },
 
     reset: () => {

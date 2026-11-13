@@ -1,8 +1,8 @@
 {
   "name": "AuraShare",
   "short_name": "AuraShare",
-  "description": "Peer-to-peer file sharing with ambient, organic UI. No servers, no limits, end-to-end encrypted.",
-  "start_url": "/",
+  "description": "Peer-to-peer file sharing. No account, no ads, no subscription — open AuraShare on two devices and share files directly.",
+  "start_url": "/app",
   "display": "standalone",
   "background_color": "#0c0c0e",
   "theme_color": "#0c0c0e",
@@ -11,7 +11,7 @@
       "src": "/logo.svg",
       "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
   ]
 }

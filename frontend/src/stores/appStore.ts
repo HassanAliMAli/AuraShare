@@ -150,7 +150,7 @@ export type AppActions = {
   join: (code: string) => void;
   downloadSelected: () => void;
   toggleFileSelected: (index: number, selected: boolean) => void;
-  copyText: (text: string) => void;
+  copyText: (text: string) => Promise<boolean>;
   reset: () => void;
 };
 

@@ -166,6 +166,7 @@ export function makeEvents() {
   return {
     onProgress: vi.fn(),
     onTransferComplete: vi.fn(),
+    onReady: vi.fn(),
     onFileComplete: vi.fn(),
     onFileAcknowledged: vi.fn(),
     onFileDescriptorsReceived: vi.fn(),

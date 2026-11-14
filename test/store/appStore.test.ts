@@ -183,4 +183,140 @@ describe('stores/appStore — reducer', () => {
     const state = makeState();
     expect(appReducer(state, { type: 'UNKNOWN' } as unknown as AppAction)).toBe(state);
   });
+
+  it('stores and clears the relay warning', () => {
+    const warned = appReducer(makeState(), { type: 'CONNECTION_WARNING', message: 'Relay unavailable' });
+    expect(warned.connectionWarning).toBe('Relay unavailable');
+
+    const cleared = appReducer(warned, { type: 'CONNECTION_WARNING', message: null });
+    expect(cleared.connectionWarning).toBeNull();
+  });
+
+  it('tracks text acknowledgement and retries', () => {
+    const failed = makeState({ transferError: 'boom' });
+    const acknowledged = appReducer(failed, { type: 'TEXT_ACKNOWLEDGED' });
+
+    expect(acknowledged.textAcknowledged).toBe(true);
+    expect(acknowledged.transferError).toBeNull();
+
+    const retried = appReducer(acknowledged, { type: 'TEXT_RETRY' });
+    expect(retried.textAcknowledged).toBe(false);
+    expect(retried.transferError).toBeNull();
+  });
+
+  it('records a failed file without leaving the transfer busy', () => {
+    const state = appReducer(
+      makeState({ downloadingFileIndex: 2, transferProgress: 40, downloadQueue: [2, 3] }),
+      { type: 'TRANSFER_FAILED', index: 2, message: 'timed out' },
+    );
+
+    expect(state.failedFileIndex).toBe(2);
+    expect(state.transferError).toBe('timed out');
+    expect(state.downloadingFileIndex).toBeNull();
+    expect(state.transferProgress).toBe(0);
+    expect(state.status).toBe('idle');
+  });
+
+  it('moves a failed text transfer on the receiver to the error screen', () => {
+    const state = appReducer(
+      makeState({ isReceiving: true, status: 'connected' }),
+      { type: 'TRANSFER_FAILED', index: -1, message: 'cancelled' },
+    );
+
+    expect(state.failedFileIndex).toBeNull();
+    expect(state.status).toBe('error');
+    expect(state.errorMessage).toBe('cancelled');
+  });
+
+  it('keeps a failed outgoing text on the share screen', () => {
+    const state = appReducer(makeState({ status: 'sharing' }), {
+      type: 'TRANSFER_FAILED', index: -1, message: 'cancelled',
+    });
+
+    expect(state.status).toBe('sharing');
+    expect(state.transferError).toBe('cancelled');
+  });
+
+  it('retries a failed file only when the transfer is idle', () => {
+    const idle = makeState({ downloadingFileIndex: 1 });
+    expect(appReducer(idle, { type: 'RETRY_TRANSFER' })).toBe(idle);
+
+    const failed = makeState({ failedFileIndex: 4, transferError: 'boom' });
+    const retried = appReducer(failed, { type: 'RETRY_TRANSFER' });
+    expect(retried.downloadingFileIndex).toBe(4);
+    expect(retried.failedFileIndex).toBeNull();
+    expect(retried.transferError).toBeNull();
+    expect(retried.transferProgress).toBe(0);
+  });
+
+  it('skips a failed file and continues with the rest of the queue', () => {
+    const untouched = makeState();
+    expect(appReducer(untouched, { type: 'SKIP_TRANSFER' })).toBe(untouched);
+
+    const state = appReducer(
+      makeState({
+        failedFileIndex: 1,
+        transferError: 'boom',
+        downloadQueue: [1, 2],
+        selectedFiles: new Set([1, 2]),
+      }),
+      { type: 'SKIP_TRANSFER' },
+    );
+
+    expect(state.downloadQueue).toEqual([2]);
+    expect(state.downloadingFileIndex).toBe(2);
+    expect([...state.selectedFiles]).toEqual([2]);
+    expect(state.failedFileIndex).toBeNull();
+    expect(state.transferError).toBeNull();
+  });
+
+  it('does not change selection while a download is running or after it completed', () => {
+    const downloading = makeState({ downloadingFileIndex: 0 });
+    expect(appReducer(downloading, { type: 'TOGGLE_SELECT', index: 1, selected: true })).toBe(downloading);
+
+    const downloaded = makeState({ downloadedFiles: new Set([1]) });
+    expect(appReducer(downloaded, { type: 'TOGGLE_SELECT', index: 1, selected: true })).toBe(downloaded);
+  });
+
+  it('refuses a second batch while one is active or awaiting a retry', () => {
+    const downloading = makeState({ downloadingFileIndex: 0 });
+    expect(appReducer(downloading, { type: 'DOWNLOAD_START', indices: [1] })).toBe(downloading);
+
+    const failed = makeState({ failedFileIndex: 1 });
+    expect(appReducer(failed, { type: 'DOWNLOAD_START', indices: [2] })).toBe(failed);
+  });
+
+  it('deduplicates a batch and skips files already downloaded', () => {
+    const state = appReducer(
+      makeState({ downloadedFiles: new Set([1]) }),
+      { type: 'DOWNLOAD_START', indices: [1, 2, 2, 3] },
+    );
+
+    expect(state.downloadQueue).toEqual([2, 3]);
+    expect(state.downloadingFileIndex).toBe(2);
+  });
+
+  it('ignores completion for a file that is not downloading', () => {
+    const state = makeState({ downloadingFileIndex: 1 });
+    expect(appReducer(state, { type: 'FILE_COMPLETE', index: 2 })).toBe(state);
+  });
+
+  it('removes a completed file from the selection', () => {
+    const state = appReducer(
+      makeState({ downloadingFileIndex: 0, downloadQueue: [0], selectedFiles: new Set([0]) }),
+      { type: 'FILE_COMPLETE', index: 0 },
+    );
+
+    expect([...state.selectedFiles]).toEqual([]);
+  });
+
+  it('clears a matching failure once the peer acknowledges the file', () => {
+    const state = appReducer(
+      makeState({ failedFileIndex: 2, transferError: 'boom' }),
+      { type: 'FILE_ACKNOWLEDGED', index: 2 },
+    );
+
+    expect(state.failedFileIndex).toBeNull();
+    expect(state.transferError).toBeNull();
+  });
 });

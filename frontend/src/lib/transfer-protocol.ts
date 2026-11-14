@@ -32,8 +32,8 @@ export function parseControl(value: unknown): Control | null {
     case 'start': {
       if (raw.media !== 'file' && raw.media !== 'text') return null;
       const max = raw.media === 'text' ? MAX_TEXT_BYTES : MAX_TRANSFER_BYTES;
-      return Number.isSafeInteger(raw.size) && Number(raw.size) >= 0 && Number(raw.size) <= max &&
-        ((raw.media === 'text' && raw.index === -1) || validIndex)
+      const target = raw.media === 'text' ? raw.index === -1 : validIndex;
+      return Number.isSafeInteger(raw.size) && Number(raw.size) >= 0 && Number(raw.size) <= max && target
         ? { v: 2, kind: 'start', id, index: Number(raw.index), media: raw.media, size: Number(raw.size) } : null;
     }
     case 'complete': return Number.isInteger(raw.crc) && Number(raw.crc) >= 0 && Number(raw.crc) <= 0xffffffff &&

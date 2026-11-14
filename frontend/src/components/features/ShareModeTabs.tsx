@@ -32,7 +32,7 @@ export function ShareModeTabs() {
             aria-controls={`share-panel-${mode}`}
             onClick={() => actions.setShareMode(mode)}
             className={cn(
-              'relative px-5 py-2.5 text-sm font-medium capitalize transition-colors duration-[--duration-micro]',
+              'relative px-5 py-2.5 text-sm font-medium capitalize transition-colors duration-(--duration-micro)',
               active ? 'text-text' : 'text-text-3 hover:text-text-2',
             )}
           >

@@ -26,7 +26,7 @@ export function FAQItem({ item, open, onToggle }: FAQItemProps) {
           <span className="text-md font-medium text-text">{item.q}</span>
           <ChevronDown
             className={cn(
-              'h-4 w-4 shrink-0 text-text-3 transition-transform duration-[--duration-standard]',
+              'h-4 w-4 shrink-0 text-text-3 transition-transform duration-(--duration-standard)',
               open && 'rotate-180 text-accent',
             )}
             aria-hidden="true"
@@ -39,7 +39,7 @@ export function FAQItem({ item, open, onToggle }: FAQItemProps) {
         role="region"
         aria-labelledby={`faq-button-${item.id}`}
         className={cn(
-          'grid transition-[grid-template-rows] duration-[--duration-standard] ease-[--ease-standard]',
+          'grid transition-[grid-template-rows] duration-(--duration-standard) ease-(--ease-standard)',
           open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
         )}
       >

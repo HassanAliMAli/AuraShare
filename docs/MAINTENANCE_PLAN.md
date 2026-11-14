@@ -155,10 +155,12 @@ snaps instead of fading, and the FAQ accordion opens without animating.
 **Fix:** the v4 syntax, in all seven places. The tokens then do what
 `tokens.css` says they do.
 
-**The guard:** the Playwright matrix, plus a look at the FAQ accordion and a
-hover on a button. The measurement that found this — the computed
-`transition-duration` of a button, `0s` where `0.12s` was designed — is the
-same measurement that has to change.
+**The guard:** a new Playwright suite, `test/e2e/motion-tokens.spec.ts`, that
+reads the computed `transition-duration` and `transition-timing-function` of
+a button, the FAQ panel and the FAQ chevron, plus the computed
+`accent-color` of the receiver's checkbox. The measurement that found this —
+the computed `transition-duration` of a button, `0s` where `0.12s` was
+designed — is the same measurement that has to change.
 
 **Note for PR 1:** the two text buttons PR 1 migrates were plain text links
 with Tailwind's default 150ms fade, so the shared `muted` variant carries

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import worker, { RoomDO, generateRoomCode } from '../../backend/index';
 import {
   CODE_VALIDITY_MS,
+  MINTED_KEY,
   MINT_PATH,
   ROOM_IDLE_TTL_MS,
 } from '../../backend/modules/room-protocol';
@@ -538,6 +539,22 @@ describe('worker/worker — RoomDO lifecycle', () => {
     expect(state.acceptWebSocket).not.toHaveBeenCalled();
   });
 
+  it('does not pay for storage a guess never had', async () => {
+    const state = makeState();
+    const room = new RoomDO(state);
+
+    const response = await room.fetch(socketRequest());
+
+    expect(response.status).toBe(404);
+    // The mint time is the only thing this room ever stores, so a room that
+    // never had one never held a row. There is nothing to release — and a
+    // guess must not make the Durable Object create a database just to
+    // delete it again.
+    expect(state.storage.deleteAll).not.toHaveBeenCalled();
+    expect(state.storage.put).not.toHaveBeenCalled();
+    expect(state.alarmTime()).toBeNull();
+  });
+
   it('accepts a join for a code that was minted', async () => {
     const state = makeState();
     const room = new RoomDO(state);
@@ -584,6 +601,30 @@ describe('worker/worker — RoomDO lifecycle', () => {
     await room.fetch(socketRequest());
 
     expect(state.alarmTime()).toBe(armed);
+  });
+
+  it('does not let a second mint of the same code shorten a live session', async () => {
+    const state = makeState();
+    const room = new RoomDO(state);
+    await room.fetch(mintRequest());
+    const mintedAt = state.stored(MINTED_KEY);
+
+    // Two peers turn the room into a session, and a session gets the longer
+    // lease.
+    await room.fetch(socketRequest());
+    await room.fetch(socketRequest());
+    const lease = state.alarmTime();
+    expect(lease).toBeGreaterThan(Date.now() + CODE_VALIDITY_MS);
+
+    // The same code is minted again. The code space is 32⁶ ≈ 1.07 billion,
+    // so it is rare — but it happens, and it must not cost the live session
+    // its lease.
+    await room.fetch(mintRequest());
+
+    expect(state.alarmTime()).toBe(lease);
+    // The room keeps the mint time it had: a second mint does not restart
+    // the code window either.
+    expect(state.stored(MINTED_KEY)).toBe(mintedAt);
   });
 
   it('releases the storage when the last peer leaves', async () => {

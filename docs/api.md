@@ -138,6 +138,10 @@ freshly minted code could still look missing.
 If the room cannot be reserved, the answer is `503 room_unavailable` and no
 code is handed out.
 
+A code that is already reserved keeps the deadline it had — the mint does
+not restart a room's clock, because the room it lands on may be a live
+session. See [Durable Object lifecycle](#durable-object-lifecycle).
+
 The code is valid for **10 minutes from the mint** — see
 [Durable Object lifecycle](#durable-object-lifecycle).
 
@@ -223,9 +227,17 @@ schedules for itself. The room moves through three states:
   storage write, and the free plan allows 100,000 rows written a day — a
   busy session must not spend that budget on its own. The alarm only moves
   when the current one is close to firing.
+- A room that is **already reserved keeps its own deadline**. The code
+  space is 32⁶ ≈ 1.07 billion, so a second mint of the same code is rare —
+  but when it lands on a room that is already a live session, re-arming the
+  alarm would cut that session's lease short. The second mint is accepted
+  and changes nothing.
 - When the room ends — the last peer left, or the lease ran out — the
   storage is deleted (`deleteAll`). An empty SQLite database still costs
   about 12 KB, so a room that keeps its storage keeps costing.
+- A join for a code **nobody minted** costs one Durable Object request and
+  nothing else: the mint time is the only thing a room ever stores, so a
+  room without one never held a row, and there is nothing to release.
 - The DO **hibernates** between messages, so an idle room costs nothing.
 - When the lease runs out, every socket in the room is sent
   `{"type":"room-expired"}` and then closed with code `1000` and the reason

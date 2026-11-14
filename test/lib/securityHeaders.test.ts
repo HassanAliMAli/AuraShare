@@ -54,11 +54,12 @@ describe('public/_headers — the content security policy', () => {
   });
 
   it('allows the analytics beacon the edge injects', () => {
-    // Cloudflare injects this script into every HTML response. Cloudflare's
-    // own guidance for the automatic setup is this exact source.
-    expect(directive('script-src')).toContain(
-      'https://static.cloudflareinsights.com/beacon.min.js',
-    );
+    // Cloudflare injects this script into every HTML response. The source
+    // is the whole host, not the script's path: the edge injects the
+    // beacon with a version segment (`/beacon.min.js/vce70...`), and a
+    // path source does not match it — measured in Chrome, the path form
+    // Cloudflare's own FAQ suggests is refused.
+    expect(directive('script-src')).toContain('https://static.cloudflareinsights.com');
   });
 
   it('never allows inline scripts', () => {

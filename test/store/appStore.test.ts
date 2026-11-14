@@ -36,12 +36,12 @@ describe('stores/appStore — reducer', () => {
     expect(state.shareMode).toBe('files');
   });
 
-  it('enters and cancels receive mode without losing status', () => {
+  it('enters receive mode and returns to idle', () => {
     const receiving = reduce(makeState({ status: 'error' }), { type: 'START_RECEIVE' });
     expect(receiving.isReceiving).toBe(true);
     expect(receiving.status).toBe('idle');
 
-    const cancelled = appReducer(receiving, { type: 'CANCEL_RECEIVE' });
+    const cancelled = appReducer(receiving, { type: 'RESET' });
     expect(cancelled.isReceiving).toBe(false);
   });
 
@@ -81,7 +81,7 @@ describe('stores/appStore — reducer', () => {
 
     expect(state.downloadQueue).toEqual([2, 4, 6]);
     expect(state.downloadingFileIndex).toBe(2);
-    expect([...state.downloadedFiles]).toEqual([]);
+    expect([...state.downloadedFiles]).toEqual([9]);
     expect(state.transferProgress).toBe(0);
   });
 

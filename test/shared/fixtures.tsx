@@ -29,11 +29,11 @@ export function makeActions(overrides: Partial<AppActions> = {}): AppActions {
   return {
     startShare: vi.fn(noop),
     startReceive: vi.fn(noop),
-    cancelReceive: vi.fn(noop),
     setShareMode: vi.fn(noop),
     setJoinCode: vi.fn(noop),
     join: vi.fn(noop),
     downloadSelected: vi.fn(noop),
+    retryTransfer: vi.fn(noop), skipTransfer: vi.fn(noop), cancelTransfer: vi.fn(noop), retryText: vi.fn(noop),
     toggleFileSelected: vi.fn(noop),
     copyText: vi.fn(async () => true),
     reset: vi.fn(noop),

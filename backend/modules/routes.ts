@@ -1,27 +1,16 @@
-/**
- * The HTTP surface of the Worker.
- *
- * Three routes and nothing else:
- *
- *   GET  /api/ice-servers        the ICE server list for the browser
- *   POST /api/room                mint a transmission code
- *   GET  /api/room/{code}/ws      the signalling WebSocket for a room
- *
- * Everything that is not one of those is a 404. The method has to match
- * exactly — the other method on a path is a 404 too.
- */
+/** HTTP routing, room reservations, and rate-limited peer credential issuance. */
 
 import { apiError, json, preflight } from './errors';
 import { generateRoomCode, parseRoomCode } from './room-code';
 import { MINT_PATH } from './room-protocol';
-import { allowRequest, type RateLimiter } from './rate-limit';
-import { getIceServers } from './turn';
+import { allowRequest } from './rate-limit';
+import { STUN_SERVERS } from '../../shared/ice';
+import { ROOM_CODE_SOURCE } from '../../shared/room-code';
 
 /** The bindings and secrets the Worker reads. */
-export interface Env {
-  ROOMS: DurableObjectNamespace;
-  /** The rate limiter for the room routes — see `modules/rate-limit.ts`. */
-  ROOM_RATE_LIMITER?: RateLimiter;
+export interface Env extends Pick<WorkerBindings, 'ROOMS'>, Partial<Pick<WorkerBindings, 'ROOM_RATE_LIMITER' | 'ICE_RATE_LIMITER'>> {
+  /** Optional external origin override for reverse-proxy deployments. */
+  APP_ORIGIN?: string;
   /** Cloudflare Calls TURN key ID + API token (set via `wrangler secret put`). */
   TURN_KEY_ID?: string;
   TURN_KEY_API_TOKEN?: string;
@@ -45,24 +34,44 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
   if (request.method === 'OPTIONS') return preflight();
 
   if (path === '/api/ice-servers' && request.method === 'GET') {
-    const iceServers = await getIceServers(env.TURN_KEY_ID, env.TURN_KEY_API_TOKEN);
-    return json({ iceServers });
+    return json({ iceServers: STUN_SERVERS, expiresAt: null, degraded: true });
+  }
+
+  const iceCode = path.match(new RegExp(`^/api/room/(${ROOM_CODE_SOURCE})/ice-servers$`))?.[1];
+  if (iceCode && request.method === 'POST') {
+    if (!/^Bearer [a-f0-9]{64}$/.test(request.headers.get('Authorization') ?? '')) {
+      return apiError('unauthorized', 'A room session token is required', 401);
+    }
+    // Credential issuance fails closed if its limiter cannot answer.
+    const ip = request.headers.get('cf-connecting-ip') ?? 'local';
+    if (!env.ICE_RATE_LIMITER) return apiError('turn_unavailable', 'Credential limiter unavailable', 503);
+    try {
+      if (!(await env.ICE_RATE_LIMITER.limit({ key: ip })).success) {
+        return apiError('rate_limited', 'Too many credential requests', 429, { 'Retry-After': '60' });
+      }
+    } catch { return apiError('turn_unavailable', 'Credential limiter unavailable', 503); }
+    return env.ROOMS.get(env.ROOMS.idFromName(iceCode)).fetch(request);
   }
 
   if (path === '/api/room' && request.method === 'POST') {
     const limited = await rateLimited(request, env);
     if (limited) return limited;
-    const code = generateRoomCode();
-    if (!(await reserveRoom(request, env, code))) {
-      return apiError('room_unavailable', 'Could not open a room', 503);
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const code = generateRoomCode();
+      const result = await reserveRoom(request, env, code);
+      if (result === 'reserved') return json({ roomId: code });
+      if (result === 'unavailable') break;
     }
-    return json({ roomId: code });
+    return apiError('room_unavailable', 'Could not open a room', 503);
   }
 
   const code = parseRoomCode(path);
   if (code) {
     if (request.headers.get('Upgrade') !== 'websocket') {
       return apiError('upgrade_required', 'Expected Upgrade: websocket', 426);
+    }
+    if (request.headers.get('Origin') !== (env.APP_ORIGIN ?? url.origin)) {
+      return apiError('forbidden', 'Origin is not allowed', 403);
     }
     const limited = await rateLimited(request, env);
     if (limited) return limited;
@@ -101,15 +110,18 @@ async function rateLimited(request: Request, env: Env): Promise<Response | null>
  * disagree. A key-value store would not do: its reads are eventually
  * consistent, and a freshly minted code could still look missing.
  */
-async function reserveRoom(request: Request, env: Env, code: string): Promise<boolean> {
+async function reserveRoom(
+  request: Request, env: Env, code: string,
+): Promise<'reserved' | 'conflict' | 'unavailable'> {
   try {
     const stub = env.ROOMS.get(env.ROOMS.idFromName(code));
     const response = await stub.fetch(
       new Request(new URL(MINT_PATH, request.url), { method: 'POST' }),
     );
-    return response.ok;
+    if (response.status === 409) return 'conflict';
+    return response.ok ? 'reserved' : 'unavailable';
   } catch (err) {
     console.error('[Worker] could not reserve a room:', err);
-    return false;
+    return 'unavailable';
   }
 }

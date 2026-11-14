@@ -90,16 +90,16 @@ describe('features/share-input — AuraTextarea', () => {
     expect(button).toBeDisabled();
     await user.type(textarea, '   ');
     expect(button).toBeDisabled();
-    expect(screen.getByText('3 characters')).toBeInTheDocument();
+    expect(screen.getByText('3 B / 1 MiB')).toBeInTheDocument();
   });
 
-  it('shares the entered text and updates the character counter', async () => {
+  it('shares the entered text and updates the byte counter', async () => {
     const user = userEvent.setup();
     const onTextShare = vi.fn();
     renderWithStore(<AuraTextarea onTextShare={onTextShare} />);
 
     await user.type(screen.getByLabelText('Text to share'), 'hello');
-    expect(screen.getByText('5 characters')).toBeInTheDocument();
+    expect(screen.getByText('5 B / 1 MiB')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Send text' }));
     expect(onTextShare).toHaveBeenCalledWith('hello');

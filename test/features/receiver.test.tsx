@@ -119,13 +119,13 @@ describe('features/receiver — SuccessView', () => {
     expect(copyText).toHaveBeenCalledWith('hello from the other side');
   });
 
-  it('shows the generic success badge when no text was received', () => {
-    renderWithStore(<SuccessView />, { state: { receivedText: null, status: 'success' } });
+  it('keeps the copy action available for empty received text', () => {
+    renderWithStore(<SuccessView />, { state: { receivedText: '', status: 'success' } });
 
     expect(screen.getByText('Transfer complete')).toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Copy received text to clipboard' }),
-    ).not.toBeInTheDocument();
+    ).toBeInTheDocument();
   });
 
   it('starts a new cycle', async () => {

@@ -25,11 +25,11 @@ export const APP_URL = '/app';
  * what the suite is testing here is the peer-to-peer flow, not the ICE list.
  */
 async function serveLocalIceServers(page: Page): Promise<void> {
-  await page.route('**/api/ice-servers', async (route) => {
+  await page.route('**/api/room/*/ice-servers', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify(localIceServers()),
+      body: JSON.stringify({ ...localIceServers(), expiresAt: null, degraded: true }),
     });
   });
 }

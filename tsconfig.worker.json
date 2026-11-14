@@ -6,7 +6,6 @@
     "module": "esnext",
     "types": ["@cloudflare/workers-types"],
     "skipLibCheck": true,
-    "ignoreDeprecations": "6.0",
 
     /* Bundler mode */
     "moduleResolution": "bundler",

@@ -9,6 +9,7 @@
  * conservative — a 256 MiB file peaks at roughly twice that in RAM.
  */
 export const MAX_FILE_SIZE = 256 * 1024 * 1024; // 256 MiB
+export const MAX_FILE_SIZE_LABEL = `${MAX_FILE_SIZE / (1024 * 1024)} MiB`;
 
 const ALLOWED_MIME_PREFIXES = [
   'image/',

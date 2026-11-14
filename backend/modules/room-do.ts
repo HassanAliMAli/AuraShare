@@ -1,24 +1,8 @@
-/**
- * The room Durable Object — one instance per transmission code.
- *
- * It is a dumb relay between the two peers of a session: it exchanges SDP
- * offer/answer and trickle ICE candidates, and nothing else. It never
- * inspects a frame; validation is the client's job.
- *
- * A room exists because the Worker minted its code. `POST /api/room`
- * reserves the room — that is what makes the code usable — and a peer that
- * joins a code nobody minted is refused. Without that check every
- * six-character string a stranger could guess would allocate a Durable
- * Object, and the free plan's daily request budget would be spent on
- * rubbish.
- *
- * Storage holds exactly one thing: the time the room was minted. It tells
- * a reserved room from a guessed one, and it is deleted the moment the
- * room is over, so a room never keeps its storage — an empty SQLite
- * database still costs about 12 KB — once it is done with.
- */
+/** One room per code: hibernating signaling sockets and per-peer authorization. */
 
 import { apiError, json } from './errors';
+import { PeerAuth, type TurnEnv } from './peer-auth';
+import { HEARTBEAT_FRAME } from '../../shared/heartbeat';
 import {
   CODE_VALIDITY_MS,
   MINTED_KEY,
@@ -40,9 +24,11 @@ export class RoomDO {
    * is why it is only ever a cache and never the source.
    */
   private deadline: number | null = null;
+  private readonly auth: PeerAuth;
 
-  constructor(state: DurableObjectState) {
+  constructor(state: DurableObjectState, env: TurnEnv = {}) {
     this.state = state;
+    this.auth = new PeerAuth(state, env);
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -53,6 +39,8 @@ export class RoomDO {
     if (url.pathname === MINT_PATH) {
       return this.reserve();
     }
+
+    if (url.pathname.endsWith('/ice-servers') && request.method === 'POST') return this.auth.issue(request);
 
     if (request.headers.get('Upgrade') !== 'websocket') {
       return apiError('upgrade_required', 'Expected Upgrade: websocket', 426);
@@ -71,6 +59,9 @@ export class RoomDO {
     // handshake. Closing a server socket synchronously here would leave the
     // client with a dead-but-open connection (no close frame delivered).
     const existing = this.state.getWebSockets();
+    if (existing.length < 2 && Date.now() >= mintedAt + CODE_VALIDITY_MS) {
+      return apiError('room_not_found', 'Code expired', 404);
+    }
     if (existing.length >= 2) {
       return apiError('room_full', 'Room full', 409);
     }
@@ -83,6 +74,7 @@ export class RoomDO {
     const server = pair[1];
 
     this.state.acceptWebSocket(server);
+    if (url.searchParams.get('v') === '2') this.auth.admit(server);
 
     if (peersBefore === 1) {
       // Second peer joined — notify the first that a peer is present, and
@@ -106,13 +98,21 @@ export class RoomDO {
     if (this.state.getWebSockets().length >= 2) {
       await this.keepAlive(ROOM_IDLE_TTL_MS);
     }
-    // Dumb relay: forward to every other socket in the room.
+    if (message === HEARTBEAT_FRAME) return;
+    // Only clients' signaling types may be relayed. Admission tokens and
+    // room lifecycle frames are server-owned and never accepted from a peer.
+    if (typeof message !== 'string' || message.length > 262144) return;
+    let frame: unknown;
+    try { frame = JSON.parse(message); } catch { return; }
+    if (!frame || typeof frame !== 'object' || !('type' in frame) ||
+      !['hello', 'ready', 'offer', 'answer', 'ice', 'refresh-request', 'refresh-prepare', 'refresh-ready'].includes(String(frame.type))) return;
     for (const socket of this.state.getWebSockets()) {
       if (socket !== ws) socket.send(message);
     }
   }
 
   async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
+    this.auth.revoke(ws);
     for (const socket of this.state.getWebSockets()) {
       if (socket !== ws) socket.send(JSON.stringify({ type: 'peer-left' }));
     }
@@ -128,6 +128,7 @@ export class RoomDO {
   }
 
   async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
+    this.auth.revoke(ws);
     console.error('[RoomDO] websocket error:', error);
     ws.close(1011, 'WebSocket error');
   }
@@ -137,6 +138,7 @@ export class RoomDO {
     // still waiting learns that nobody joined instead of seeing a socket
     // die for no reason.
     for (const socket of this.state.getWebSockets()) {
+      this.auth.revoke(socket);
       socket.send(JSON.stringify({ type: 'room-expired' }));
       socket.close(1000, 'room expired');
     }
@@ -155,12 +157,12 @@ export class RoomDO {
    * is not ours to move: the code space is 32⁶ ≈ 1.07 billion, so a second
    * mint of the same code is rare — but when it lands on a room that is
    * already a live session, re-arming the alarm would cut that session's
-   * lease short.
+   * lease short. Return a conflict so the Worker retries with another code.
    */
   private async reserve(): Promise<Response> {
     const existing = await this.state.storage.get<number>(MINTED_KEY);
     if (existing !== undefined) {
-      return json({ reserved: true });
+      return apiError('room_conflict', 'Room code is already reserved', 409);
     }
     const now = Date.now();
     await this.state.storage.put(MINTED_KEY, now);

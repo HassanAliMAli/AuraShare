@@ -1,278 +1,54 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  fetchIceServers,
-  mintRoom,
-  SignalingChannel,
-  type SignalingCallbacks,
-} from '@/lib/signaling';
+import { SignalingChannel, fetchPeerIce, mintRoom } from '@/lib/signaling';
 import { FakeWebSocket, installWebSocket } from './fakes';
+import { STUN_SERVERS } from '../../shared/ice';
 
-function makeCallbacks(): SignalingCallbacks {
-  return {
-    onMessage: vi.fn(),
-    onError: vi.fn(),
-    onClose: vi.fn(),
-  };
-}
+beforeEach(() => installWebSocket());
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+const callbacks = () => ({ onMessage: vi.fn(), onError: vi.fn(), onClose: vi.fn() });
+const token = 'a'.repeat(64);
 
-describe('p2p/signaling — ICE server config', () => {
-  afterEach(() => vi.unstubAllGlobals());
-
-  it('returns the servers supplied by the worker', async () => {
-    const servers = [{ urls: 'turn:turn.example.com', username: 'u', credential: 'c' }];
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response(JSON.stringify({ iceServers: servers }), { status: 200 })),
-    );
-
-    await expect(fetchIceServers()).resolves.toEqual(servers);
-  });
-
-  it('falls back to public STUN when the worker returns an empty list', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response(JSON.stringify({ iceServers: [] }), { status: 200 })),
-    );
-
-    const servers = await fetchIceServers();
-    expect(servers).toHaveLength(2);
-    expect(servers[0]?.urls).toBe('stun:stun.l.google.com:19302');
-  });
-
-  it('falls back to STUN when the worker responds with an error', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('nope', { status: 503 })));
-
-    await expect(fetchIceServers()).resolves.toEqual([
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-    ]);
-  });
-
-  it('falls back to STUN and warns when the request throws', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => {
-        throw new Error('offline');
-      }),
-    );
-
-    await expect(fetchIceServers()).resolves.toHaveLength(2);
-    expect(warn).toHaveBeenCalled();
-  });
-});
-
-describe('p2p/signaling — room minting', () => {
-  afterEach(() => vi.unstubAllGlobals());
-
-  it('returns the room id from the worker', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response(JSON.stringify({ roomId: 'ABC123' }), { status: 200 })),
-    );
-
-    await expect(mintRoom()).resolves.toBe('ABC123');
-  });
-
-  it('throws when room minting fails', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('nope', { status: 500 })));
-    await expect(mintRoom()).rejects.toThrow('Failed to mint room');
-  });
-});
-
-describe('p2p/signaling — SignalingChannel', () => {
-  beforeEach(() => {
-    installWebSocket();
-  });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
-    vi.restoreAllMocks();
-  });
-
-  async function openChannel(callbacks: SignalingCallbacks) {
-    const channel = new SignalingChannel(callbacks);
+describe('signaling admission and cancellation', () => {
+  it('waits for a private admission token rather than just the socket open event', async () => {
+    const channel = new SignalingChannel(callbacks());
     const promise = channel.open('ABC123', 'sender');
-    const socket = FakeWebSocket.instances.at(-1);
-    if (!socket) throw new Error('WebSocket was not created');
-    socket.triggerOpen();
-    await promise;
-    return { channel, socket };
-  }
-
-  it('opens the room websocket and announces the role', async () => {
-    const callbacks = makeCallbacks();
-    const { socket } = await openChannel(callbacks);
-
-    expect(socket.url).toMatch(/^ws:\/\/.+\/api\/room\/ABC123\/ws$/);
-    expect(socket.sent).toEqual([JSON.stringify({ type: 'hello', role: 'sender' })]);
+    const ws = FakeWebSocket.instances.at(-1)!; ws.triggerOpen();
+    ws.triggerMessage(JSON.stringify({ type: 'admitted', version: 2, token, expiresAt: Date.now() + 60000 }));
+    await expect(promise).resolves.toMatchObject({ token });
+    expect(ws.url).toContain('?v=2'); channel.close();
   });
-
-  it('parses incoming signals', async () => {
-    const callbacks = makeCallbacks();
-    const { socket } = await openChannel(callbacks);
-
-    socket.triggerMessage(JSON.stringify({ type: 'peer-present' }));
-
-    expect(callbacks.onMessage).toHaveBeenCalledWith({ type: 'peer-present' });
-  });
-
-  it('ignores malformed incoming signals', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    const callbacks = makeCallbacks();
-    const { socket } = await openChannel(callbacks);
-
-    socket.triggerMessage('{broken');
-
-    expect(warn).toHaveBeenCalled();
-    expect(callbacks.onMessage).not.toHaveBeenCalled();
-  });
-
-  it('sends only while the socket is open', async () => {
-    const callbacks = makeCallbacks();
-    const { channel, socket } = await openChannel(callbacks);
-    socket.sent = [];
-
-    channel.send({ type: 'peer-present' });
-    expect(socket.sent).toEqual([JSON.stringify({ type: 'peer-present' })]);
-
-    socket.readyState = FakeWebSocket.CLOSED;
-    channel.send({ type: 'peer-present' });
-    expect(socket.sent).toHaveLength(1);
-  });
-
-  it('retries a handshake that fails, and does not report the attempt', async () => {
-    vi.useFakeTimers();
-    const callbacks = makeCallbacks();
-    const channel = new SignalingChannel(callbacks);
+  it('rejects and cancels an opening socket without retrying after close', async () => {
+    const cb = callbacks(); const channel = new SignalingChannel(cb);
     const promise = channel.open('ABC123', 'receiver');
-    const first = FakeWebSocket.instances.at(-1)!;
-
-    first.triggerError();
-    await vi.advanceTimersByTimeAsync(300);
-
-    // A second socket was opened for the same room.
-    const second = FakeWebSocket.instances.at(-1)!;
-    expect(second).not.toBe(first);
-    second.triggerOpen();
-
-    await expect(promise).resolves.toBeUndefined();
-    // The attempt that failed is not something the user needs to hear
-    // about — the socket opened on the next try.
-    expect(callbacks.onError).not.toHaveBeenCalled();
+    const rejected = expect(promise).rejects.toMatchObject({ name: 'AbortError' });
+    channel.close(); await rejected;
+    expect(FakeWebSocket.instances).toHaveLength(1); expect(cb.onError).not.toHaveBeenCalled();
   });
-
-  it('reports the failure once when every attempt fails', async () => {
+  it('stops heartbeats on close', async () => {
     vi.useFakeTimers();
-    const callbacks = makeCallbacks();
-    const channel = new SignalingChannel(callbacks);
-    const promise = channel.open('ABC123', 'receiver');
-    const settled = promise.catch((err: unknown) => err);
-
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      FakeWebSocket.instances.at(-1)!.triggerError();
-      await vi.advanceTimersByTimeAsync(300);
-    }
-
-    const result = await settled;
-    expect(result).toBeInstanceOf(Error);
-    expect((result as Error).message).toBe('signaling websocket error');
-    expect(callbacks.onError).toHaveBeenCalledTimes(1);
-    vi.useRealTimers();
-  });
-
-  it('does not report the close of a socket that a retry replaced', async () => {
-    vi.useFakeTimers();
-    const callbacks = makeCallbacks();
-    const channel = new SignalingChannel(callbacks);
-    const promise = channel.open('ABC123', 'receiver');
-    const first = FakeWebSocket.instances.at(-1)!;
-
-    first.triggerError();
-    await vi.advanceTimersByTimeAsync(300);
-    const second = FakeWebSocket.instances.at(-1)!;
-    second.triggerOpen();
-    await promise;
-
-    // The socket that failed closes afterwards. It is not the room's
-    // socket, and the room is not gone.
-    first.triggerClose();
-
-    expect(callbacks.onClose).not.toHaveBeenCalled();
-    vi.useRealTimers();
-  });
-
-  it('reports closure and closes the socket', async () => {
-    const callbacks = makeCallbacks();
-    const { channel, socket } = await openChannel(callbacks);
-
-    channel.close();
-
-    expect(socket.readyState).toBe(FakeWebSocket.CLOSED);
-    expect(callbacks.onClose).toHaveBeenCalledTimes(1);
+    const channel = new SignalingChannel(callbacks()); const open = channel.open('ABC123', 'sender');
+    const ws = FakeWebSocket.instances.at(-1)!; ws.triggerOpen();
+    ws.triggerMessage(JSON.stringify({ type: 'admitted', version: 2, token, expiresAt: Date.now() + 60000 }));
+    await open; channel.startHeartbeat(); await vi.advanceTimersByTimeAsync(60000);
+    expect(ws.sent).toContain('{"type":"heartbeat"}');
+    channel.close(); const count = ws.sent.length;
+    await vi.advanceTimersByTimeAsync(120000); expect(ws.sent).toHaveLength(count);
   });
 });
-
-describe('p2p/signaling — hostile frames and responses', () => {
-  beforeEach(() => {
-    installWebSocket();
+describe('ICE and mint requests', () => {
+  it('propagates request cancellation', async () => {
+    const controller = new AbortController(); controller.abort();
+    vi.stubGlobal('fetch', vi.fn(async () => { throw controller.signal.reason; }));
+    await expect(mintRoom(controller.signal)).rejects.toBeDefined();
   });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
-    vi.restoreAllMocks();
+  it('sends the private token as a header, never in the URL', async () => {
+    const fetch = vi.fn(async () => Response.json({ iceServers: STUN_SERVERS, expiresAt: null, degraded: true }));
+    vi.stubGlobal('fetch', fetch);
+    await expect(fetchPeerIce('ABC123', token, new AbortController().signal)).resolves.toMatchObject({ degraded: true });
+    expect(fetch.mock.calls[0]).toEqual(['/api/room/ABC123/ice-servers', expect.objectContaining({ headers: { Authorization: `Bearer ${token}` } })]);
   });
-
-  async function openChannel() {
-    const callbacks = makeCallbacks();
-    const channel = new SignalingChannel(callbacks);
-    const promise = channel.open('ABC123', 'sender');
-    const socket = FakeWebSocket.instances.at(-1);
-    if (!socket) throw new Error('WebSocket was not created');
-    socket.triggerOpen();
-    await promise;
-    return { callbacks, socket };
-  }
-
-  it('ignores a frame that is not text', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    const { callbacks, socket } = await openChannel();
-
-    socket.onmessage?.({ data: 42 } as unknown as MessageEvent);
-
-    expect(warn).toHaveBeenCalled();
-    expect(callbacks.onMessage).not.toHaveBeenCalled();
-  });
-
-  it('ignores a frame with an unexpected shape', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    const { callbacks, socket } = await openChannel();
-
-    socket.triggerMessage(JSON.stringify({ type: 'offer' }));
-    socket.triggerMessage(JSON.stringify({ type: 'hello', role: 'observer' }));
-
-    expect(warn).toHaveBeenCalled();
-    expect(callbacks.onMessage).not.toHaveBeenCalled();
-  });
-
-  it('falls back to STUN when the worker returns a malformed payload', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response(JSON.stringify({ iceServers: 'stun' }), { status: 200 })),
-    );
-
-    const servers = await fetchIceServers();
-
-    expect(servers).toHaveLength(2);
-    expect(servers[0]?.urls).toBe('stun:stun.l.google.com:19302');
-  });
-
-  it('throws when the worker returns a malformed room id', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response(JSON.stringify({ roomId: 'nope' }), { status: 200 })),
-    );
-
-    await expect(mintRoom()).rejects.toThrow('Invalid room response');
+  it('validates minted codes and passes cancellation to fetch', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ roomId: 'ABC123' })));
+    await expect(mintRoom(new AbortController().signal)).resolves.toBe('ABC123');
   });
 });

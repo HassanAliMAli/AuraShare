@@ -1,303 +1,141 @@
-# AuraShare API
+# AuraShare API and transfer protocol
 
-The AuraShare backend is a single Cloudflare Worker (`backend/index.ts`). It
-does two unrelated jobs:
+Implemented contract, 2026-11-14. This describes the working tree, not a claim
+that these changes have been deployed or runtime-tested.
 
-1. **Signalling** — mints a *transmission code* and relays WebSocket frames
-   between the two peers of a session.
-2. **Static assets** — serves the built SPA from `dist/` (configured in
-   `wrangler.toml`, not in this document).
+The Worker serves assets and signaling. HTTP JSON responses include no-store,
+JSON content type, nosniff, frame protection, and referrer-policy headers.
+Errors use `{ "error": { "code": "…", "message": "…" } }`.
 
-**File contents never pass through the Worker.** They travel peer-to-peer over
-a WebRTC data channel. The Worker only carries the signalling messages that
-let the two browsers find each other and negotiate that channel.
+## Bootstrap and admission
 
-Base URL: the same origin as the app — in production
-`https://aurashare.hassanali.site`. In development the Vite server on `:5173`
-proxies `/api` to the Wrangler worker on `:8787`.
+| Endpoint | Behavior |
+|---|---|
+| `GET /api/ice-servers` | Public STUN-only bootstrap: `{iceServers, expiresAt:null, degraded:true}`. Never contains TURN credentials, even with TURN secrets configured. |
+| `POST /api/room` | Mints a six-character Crockford code. Existing codes are rejected internally; retry at most five times, then return `503 room_unavailable`. |
+| `GET /api/room/{code}/ws?v=2` | WebSocket upgrade. Browser Origin must match the request origin or configured `APP_ORIGIN`. Maximum two peers; missing/expired reservations and full rooms are rejected before acceptance. |
+| `POST /api/room/{code}/ice-servers` | Requires `Authorization: Bearer <peer-token>`, a live admitted socket, and issuance rate/quota checks. |
 
-## Contents
-
-- [Conventions](#conventions)
-- [`GET /api/ice-servers`](#get-apiice-servers)
-- [`POST /api/room`](#post-apiroom)
-- [`GET /api/room/{code}/ws`](#get-apiroomcodews)
-- [Signalling frames](#signalling-frames)
-- [Durable Object lifecycle](#durable-object-lifecycle)
-- [Errors](#errors)
-- [Limits](#limits)
-
-## Conventions
-
-- Every response is `application/json` and carries the same security
-  headers: `X-Content-Type-Options: nosniff`, `Referrer-Policy:
-  strict-origin-when-cross-origin`, `X-Frame-Options: DENY` and
-  `Cache-Control: no-store`. Signalling responses are per-session state and
-  must never be cached.
-- There is **no authentication**. A transmission code is the only secret, and
-  it is a 6-character code from a 32-character alphabet — about 30 bits — so
-  a code is guessable in theory. Guessing one is worth nothing, though: a
-  code only opens a room that the Worker actually minted, and a room that
-  was never minted does not exist. See
-  [Durable Object lifecycle](#durable-object-lifecycle).
-- The two routes that can reach a room — `POST /api/room`, and a
-  `GET /api/room/{code}/ws` that carries the upgrade header — are **rate
-  limited** per client IP, 120 requests a minute. The limit is checked
-  before the room is touched, so a request that is turned away costs
-  nothing but itself. A request that cannot reach a room is not counted:
-  the wrong method on the mint path and a socket request without the
-  upgrade header are both refused before a room exists, so they cost the
-  Durable Object nothing and must not spend a real user's budget.
-- There is **no CORS negotiation**: the Worker answers `OPTIONS` with an
-  empty `200` and serves the same origin the app is served from.
-- The method must match the route exactly. `GET /api/ice-servers` is the only
-  method that reaches it, and `POST /api/room` the only one that reaches
-  that; the other method on either path is a `404`.
-
-## `GET /api/ice-servers`
-
-Returns the ICE server list the browser should use to find a peer.
-
-### Request
-
-No parameters, no body.
-
-### Response — `200 OK`
+The v2 socket receives a private server frame:
 
 ```json
-{
-  "iceServers": [
-    { "urls": "stun:stun.l.google.com:19302" },
-    { "urls": "stun:stun1.l.google.com:19302" },
-    { "urls": "stun:stun.cloudflare.com:3478" },
-    {
-      "urls": "turn:turn.cloudflare.com:3478?transport=udp",
-      "username": "a-very-short-lived-username",
-      "credential": "a-very-short-lived-credential"
-    }
-  ]
-}
+{"type":"admitted","version":2,"token":"<64 random hex characters>","expiresAt":1234567890000}
 ```
 
-Each entry is an [`RTCIceServer`][rtcice] — `urls` is a string or an array of
-strings; `username` and `credential` are present only for TURN.
+The token is scoped to that room and socket, kept in browser memory, and stored
+in the DO's socket attachment for hibernation. It is not a URL parameter and
+is never relayed to the other peer. Token lifetime is 24 hours, extended when
+fresh credentials are successfully issued. Disconnect/error/expiry revokes
+API authorization. Already-issued TURN credentials remain usable until their
+own expiry; API revocation cannot recall them.
 
-[rtcice]: https://developer.mozilla.org/docs/Web/API/RTCIceServer
+Client order: mint or enter code, open socket, wait for admission, obtain the
+peer's ICE config, prepare WebRTC, then send `ready`. Early signaling is bounded
+to 128 frames. Socket admission has a 10-second deadline and at most three
+attempts, with cancellable 250 ms retry delays.
 
-### TURN credentials
+Legacy sockets can still upgrade without `v=2`, but receive no token. The public
+STUN bootstrap remains available for old pages. Mixed transfer versions require
+reloading both devices; large unversioned text is not silently downgraded.
 
-If the Worker has the `TURN_KEY_ID` and `TURN_KEY_API_TOKEN` secrets, it asks
-the Cloudflare Calls API for **ephemeral** TURN credentials with a 24-hour
-TTL. The result is cached in the Worker isolate and re-minted one hour before
-it expires.
+## TURN configuration and renewal
 
-If the secrets are **not** set, the Cloudflare API fails, or it returns an
-empty list, the endpoint falls back to the three STUN servers above and
-returns `200` — never an error. A peer behind a symmetric NAT will not
-connect, but the failure is a connection timeout rather than a broken app.
+Protected response: `{iceServers, expiresAt, degraded, serverTime}`. With TURN
+configured, each peer gets its own one-hour credentials, renewed 15 minutes
+before expiry. Server time lets the browser derive a conservative local expiry
+without assuming synchronized device clocks. No global credential cache exists.
 
-> The credentials in the example above are illustrative. The real ones are
-> minted per Worker isolate and are not valid outside their TTL.
+A valid same-peer cache is reused; concurrent same-peer issuance coalesces.
+Credentials and quota metadata survive hibernation in socket attachments.
+Issuance permits at most four upstream attempts per peer per hour and requires
+30 seconds between upstream attempts. A separate approximate IP binding limits
+credential requests to 10/minute; binding errors/missing bindings fail closed.
+Room creation/socket rate limiting remains 120/minute/IP.
 
-## `POST /api/room`
+If TURN secrets are absent, protected lookup reports STUN-only degraded mode
+and the app displays a warning. If configured TURN issuance fails, lookup
+returns `503 turn_unavailable`, never stale/expired credentials.
 
-Mints a new transmission code and reserves the Durable Object behind it.
+Both devices update their ICE configuration before restart. Only the sender
+initiates offers. `refresh-request`, `refresh-prepare`, and `refresh-ready`
+coordinate renewal; offers, answers, and ICE carry a 32-hex-character generation.
+Candidates for previous generations are retired. A bounded renegotiation
+pauses new payload sends, then resumes on a stable, connected peer connection.
+Renewal is also checked on visibility changes. Renewal failure ends the session
+with a visible error rather than silently using expired credentials.
 
-### Request
+## Signaling and room lifetime
 
-No parameters, no body. The method **must** be `POST` — a `GET` to this path
-is a `404`.
+| Frame | Meaning |
+|---|---|
+| `hello` with `role`, `version:2` | Announce current client protocol. |
+| `ready` | ICE configuration and peer connection are prepared. |
+| `offer` / `answer` with `sdp`, `generation` | Initial or renewed SDP negotiation. |
+| `ice` with `candidate`, `generation` | Candidate for that negotiation. |
+| `refresh-request` | Receiver asks sender to coordinate renewal. |
+| `refresh-prepare` / `refresh-ready` with `id` | Both peers prepare renewed ICE configuration. |
+| `heartbeat` | Exact frame `{"type":"heartbeat"}`; consumed locally, not relayed. |
+| `peer-present`, `peer-left`, `room-expired` | Server-owned room lifecycle notifications. |
 
-### Response — `200 OK`
+The relay allows only client signaling types; client-supplied admission or room
+lifecycle frames are not forwarded. Binary signaling or frames over 256 KiB
+are dropped. Data-channel protocol validation remains the browser's job.
 
-```json
-{ "roomId": "A1B2C3" }
-```
+Unpaired code validity is 10 minutes from mint. Paired idle TTL is 30 minutes.
+Connected data channels send signaling heartbeats every 60 seconds; unpaired
+heartbeats cannot extend code validity. Alarms are updated only near expiry.
+Last-peer departure and expiry release storage and authorization.
 
-`roomId` is 6 characters from the Crockford base32 alphabet
-`0123456789ABCDEFGHJKMNPQRSTVWXYZ` — it excludes `I`, `L`, `O` and `U` so a
-code can never be misread aloud. The same alphabet is used by the client, and
-both sides must agree: a code the user typed perfectly well would otherwise
-resolve to a room that does not exist and the session would hang until it
-times out.
+## Data-channel v2
 
-### Behaviour
+Both sides first exchange `{"v":2,"kind":"hello"}`. A 10-second version
+handshake deadline prevents old peers from waiting indefinitely. Control frames
+must fit the negotiated SCTP message size and the local 64 KiB frame ceiling.
 
-The mint **reserves** the room: the Durable Object behind the code records
-that it was minted, and that record is what makes the code work. A peer that
-joins a code nobody minted is refused — see
-[`GET /api/room/{code}/ws`](#get-apiroomcodews).
+- `descriptors`: at most 32 files, sequential indices, sanitized names, at most
+  256 MiB each. Receiver requests one selected file at a time.
+- `request`: fresh 128-bit attempt `id` and descriptor `index`.
+- `start`: same `id`, `index`, `media` (`file` or `text`), and exact byte `size`.
+- Binary: 16-byte attempt ID + uint32 big-endian sequence + payload bytes.
+  Payloads are at most 16 KiB and smaller when negotiated limits require it.
+- `complete`: same `id`, CRC-32, and chunk count. Receiver verifies attempt,
+  sequence, exact size, checksum, and UTF-8 for text before acknowledging.
+- `ack`: same `id`; sender completion requires this acknowledgement.
+- `failed` / `cancel`: same `id` and bounded reason. Old-attempt data is ignored.
 
-The reservation is what stops a stranger from making the Worker allocate a
-Durable Object per guess. It goes through the Durable Object rather than a
-key-value store because the Durable Object is strongly consistent: the
-instance that answers the join is the very instance that was reserved, so
-the two can never disagree. A key-value read is eventually consistent, and a
-freshly minted code could still look missing.
+Text is UTF-8 encoded once and capped at 1 MiB. The editor shows a byte counter,
+rejects oversize drafts visibly, and preserves their contents. The receiver
+assembles all bytes before strict decoding, so multibyte characters may safely
+cross chunk boundaries. Text and files share backpressure and cancellation.
 
-If the room cannot be reserved, the answer is `503 room_unavailable` and no
-code is handed out.
+Response/ACK deadline is 30 seconds. Inactivity deadline is 120 seconds, refreshed
+by transfer progress rather than room heartbeats. There is no total duration
+limit for a progressing transfer. Cancelling releases timers, buffers, and drain
+waits. Failed files pause the batch and expose Retry/Skip; retries use a fresh
+attempt ID and restart at byte zero. Completed history is preserved. A text
+sender gets delivery status and a retry action on recoverable failure.
 
-A code that is already reserved keeps the deadline it had — the mint does
-not restart a room's clock, because the room it lands on may be a live
-session. See [Durable Object lifecycle](#durable-object-lifecycle).
+An ACK confirms verified receipt of bytes, not that the browser completed a
+save to disk. CRC-32 detects corruption; WebRTC DTLS supplies transport encryption.
 
-The code is valid for **10 minutes from the mint** — see
-[Durable Object lifecycle](#durable-object-lifecycle).
+## Errors and verification
 
-## `GET /api/room/{code}/ws`
+| Status | Codes |
+|---|---|
+| 401 | `unauthorized` |
+| 403 | `forbidden` |
+| 404 | `not_found`, `room_not_found` |
+| 409 | `room_full`, internal `room_conflict` |
+| 426 | `upgrade_required` |
+| 429 | `rate_limited` (with Retry-After) |
+| 503 | `room_unavailable`, `turn_unavailable` |
 
-Opens the signalling WebSocket for a room. This is the only endpoint that
-upgrades.
+Browser WebSocket handshake failures do not expose the HTTP response body.
+Wrong/expired codes therefore share a friendly join error. No CORS access is
+advertised for credential endpoints. Origin checks supplement token authorization;
+they are not authentication for non-browser clients. Anonymous room creation
+still needs usage monitoring; admission does not eliminate all relay abuse.
 
-### Request
-
-```
-GET /api/room/A1B2C3/ws
-Upgrade: websocket
-```
-
-`{code}` must match `^[0-9A-HJKMNP-TV-Z]{6}$` — exactly the codes
-`POST /api/room` can mint. A code outside that pattern is a `404` and never
-allocates a Durable Object.
-
-### Response — `101 Switching Protocols`
-
-The WebSocket is opened, and the Worker forwards it to the `RoomDO` for that
-code.
-
-### Behaviour
-
-The room accepts **at most two** peers.
-
-- A code that was **never minted** has no room behind it, and the join is
-  refused with `404 room_not_found`. The check happens before the socket is
-  accepted, so the client never sees an open connection that dies a moment
-  later — and no Durable Object is left behind for the attempt.
-- The first peer to connect is accepted silently.
-- When the second connects, the Worker sends `{"type":"peer-present"}` to the
-  peer that was already there.
-- A **third** peer is refused with `409 Room full` — the check happens
-  *before* the socket is accepted, so the refused client never sees an open
-  connection that dies a moment later.
-- Every frame one peer sends is relayed verbatim to the other one. The
-  Worker does not parse, validate or transform frames.
-
-## Signalling frames
-
-The relay is a **dumb pipe**: whatever a peer sends arrives at the other
-peer byte for byte. The Worker never inspects a frame.
-
-Validation is the client's job, and it happens in
-`frontend/src/lib/protocol.ts` — a frame that does not match one of the
-shapes below is dropped before it reaches the WebRTC layer.
-
-| Type | Shape | Direction | Meaning |
-|---|---|---|---|
-| `hello` | `{ type: "hello", role: "sender" \| "receiver" }` | client → peer | Sent by the client as soon as the socket opens, to announce its role. |
-| `peer-present` | `{ type: "peer-present" }` | Worker → peer | The second peer joined the room. |
-| `peer-left` | `{ type: "peer-left" }` | Worker → peer | The other peer closed its socket. |
-| `room-expired` | `{ type: "room-expired" }` | Worker → peer | The room's lease ran out. The socket is closed right after. |
-| `offer` | `{ type: "offer", sdp: RTCSessionDescriptionInit }` | either | SDP offer. |
-| `answer` | `{ type: "answer", sdp: RTCSessionDescriptionInit }` | either | SDP answer. |
-| `ice` | `{ type: "ice", candidate: RTCIceCandidateInit }` | either | Trickle ICE candidate. |
-
-A frame that is not valid JSON, or that is JSON but not one of these shapes,
-is ignored by the receiving client.
-
-## Durable Object lifecycle
-
-One `RoomDO` instance exists per transmission code, addressed by
-`env.ROOMS.idFromName(code)`.
-
-The room has a **lease**, and the lease is the alarm the Durable Object
-schedules for itself. The room moves through three states:
-
-| State | What it is | Lease |
-|---|---|---|
-| **Minted** | The code was handed out; nobody has joined yet. | 10 minutes from the mint. |
-| **Paired** | Two peers are connected. | 30 minutes, refreshed while the peers are talking. |
-| **Over** | The last peer left, or the lease ran out. | None — the room is gone. |
-
-- **One row is persisted**: the time the room was minted. Its presence is
-  what tells a reserved room from a guessed one.
-- The lease **never extends the code window**. The 10 minutes are measured
-  from the mint, so a code cannot be kept alive by talking to the room.
-- The lease is **not** re-armed on every relayed message. `setAlarm` is a
-  storage write, and the free plan allows 100,000 rows written a day — a
-  busy session must not spend that budget on its own. The alarm only moves
-  when the current one is close to firing.
-- A room that is **already reserved keeps its own deadline**. The code
-  space is 32⁶ ≈ 1.07 billion, so a second mint of the same code is rare —
-  but when it lands on a room that is already a live session, re-arming the
-  alarm would cut that session's lease short. The second mint is accepted
-  and changes nothing.
-- When the room ends — the last peer left, or the lease ran out — the
-  storage is deleted (`deleteAll`). An empty SQLite database still costs
-  about 12 KB, so a room that keeps its storage keeps costing.
-- A join for a code **nobody minted** costs one Durable Object request and
-  nothing else: the mint time is the only thing a room ever stores, so a
-  room without one never held a row, and there is nothing to release.
-- The DO **hibernates** between messages, so an idle room costs nothing.
-- When the lease runs out, every socket in the room is sent
-  `{"type":"room-expired"}` and then closed with code `1000` and the reason
-  `room expired`. The peer that is still waiting learns that nobody joined
-  instead of seeing a socket die for no reason.
-
-## Errors
-
-Every error response has the **same shape**, so a client can read it without
-checking which route it came from:
-
-```json
-{ "error": { "code": "not_found", "message": "Not found" } }
-```
-
-`code` is the machine-readable value to branch on; `message` is for humans
-and for logs. Error responses carry the same security headers and the same
-`application/json` content type as successful ones.
-
-| Status | `code` | When |
-|---|---|---|
-| `404` | `not_found` | The path does not match a route, the method is wrong for the path, or the room code is not one the Worker could have minted. |
-| `404` | `room_not_found` | The code is a valid one, but no room was ever minted for it — or the room it pointed at has already ended. |
-| `409` | `room_full` | A third peer tried to join a room that already has two. |
-| `426` | `upgrade_required` | The WebSocket route was called without an `Upgrade: websocket` header. |
-| `429` | `rate_limited` | The client IP went over the rate limit for the room routes. The answer carries `Retry-After: 60`. |
-| `503` | `room_unavailable` | The room could not be reserved, so no code was handed out. |
-
-The client only checks the status code (`res.ok`) and never parses an error
-body, so the shape is free to change — but it is documented and tested so
-that it does not change by accident.
-
-A **failed WebSocket handshake** is the one case the client cannot read:
-the browser gives a refused upgrade no body and no status, so a wrong code
-and an expired code look the same to it. The client shows one message for
-both — *"Could not join the room — check the code, it may be wrong or
-expired"*.
-
-## Limits
-
-| Limit | Value | Where |
-|---|---|---|
-| Peers per room | 2 | A third peer is refused with `409`. |
-| Transmission code validity | 10 minutes | Measured from the mint. After that the room is gone and the code opens nothing. |
-| Room idle TTL | 30 minutes | A room with two peers survives this long without any activity. |
-| Room request rate limit | 120 requests / minute / IP | Over the limit the answer is `429 rate_limited`. Only the requests that can reach a room are counted. |
-| Transmission code length | 6 characters | 32-character alphabet, ~30 bits. |
-| TURN credential TTL | 24 hours | Cloudflare Calls API. |
-| TURN cache refresh margin | 1 hour | The credential is re-minted when less than this remains. |
-
-> **TURN is configured on the live Worker.** `GET /api/ice-servers` returns
-> the STUN servers and a TURN entry with six URLs and ephemeral credentials.
-> A peer behind a symmetric NAT needs that entry to connect at all. See
-> [docs/DEPLOYMENT.md](DEPLOYMENT.md#turn-credentials).
-
-## Checking a deployment
-
-The contract above is enforced against the running Worker by
-`test/live/deployment.test.ts`, which is skipped unless `LIVE_URL` is set:
-
-```bash
-LIVE_URL=https://aurashare.hassanali.site npm run test:live
-```
+Unit/contract and E2E fixtures are updated for v2. Tests have not been executed
+under the user's no-tests instruction. Build/package checks do not prove real
+TURN renewal continuity, failure recovery, or cross-browser behavior.

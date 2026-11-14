@@ -112,6 +112,10 @@ export class FakePeerConnection {
 
   readonly config: RTCConfiguration;
   iceConnectionState: RTCIceConnectionState = 'new';
+  signalingState: RTCSignalingState = 'stable';
+  localDescription: RTCSessionDescriptionInit | null = null;
+  sctp = { maxMessageSize: 65536 };
+  setConfiguration = vi.fn();
   lastChannel: FakeDataChannel | null = null;
 
   onicecandidate: ((event: RTCPeerConnectionIceEvent) => void) | null = null;
@@ -128,7 +132,9 @@ export class FakePeerConnection {
 
   createOffer = vi.fn(async () => ({ type: 'offer' as const, sdp: 'offer-sdp' }));
   createAnswer = vi.fn(async () => ({ type: 'answer' as const, sdp: 'answer-sdp' }));
-  setLocalDescription = vi.fn(async () => undefined);
+  setLocalDescription = vi.fn(async (description: RTCSessionDescriptionInit) => {
+    this.localDescription = description; this.signalingState = description.type === 'offer' ? 'have-local-offer' : 'stable';
+  });
   /**
    * The remote description, once it has been applied.
    *
@@ -138,7 +144,7 @@ export class FakePeerConnection {
    */
   remoteDescription: RTCSessionDescriptionInit | null = null;
   setRemoteDescription = vi.fn(async (description: RTCSessionDescriptionInit) => {
-    this.remoteDescription = description;
+    this.remoteDescription = description; this.signalingState = description.type === 'offer' ? 'have-remote-offer' : 'stable';
   });
   addIceCandidate = vi.fn(async () => undefined);
   close = vi.fn(() => {
@@ -164,6 +170,9 @@ export function makeEvents() {
     onFileAcknowledged: vi.fn(),
     onFileDescriptorsReceived: vi.fn(),
     onTextReceived: vi.fn(),
+    onTextAcknowledged: vi.fn(),
+    onTransferFailed: vi.fn(),
+    onConnectionWarning: vi.fn(),
     onConnected: vi.fn(),
     onDisconnected: vi.fn(),
     onReceiverConnected: vi.fn(),

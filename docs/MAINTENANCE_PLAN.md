@@ -5,6 +5,87 @@
 **Scope:** the second major finding (outdated dependencies) and every minor
 finding, except the testing finding, which was deliberately deferred.
 
+## Issues 11–15 implementation — 2026-11-14
+
+- TURN issuance now requires a live socket's private token, separate IP limits,
+  per-peer quotas, and per-peer hibernation-compatible credential caching.
+  Public bootstrap remains STUN-only. One-hour credentials renew through a
+  sender-coordinated ICE restart with generation-specific candidates.
+- Fetches, socket admission/retry waits, SDP callbacks, and transfer waits have
+  explicit ownership/cancellation and bounded deadlines. Disposal is idempotent.
+- Data-channel v2 uses a version handshake, per-attempt IDs, binary sequence
+  headers, size/CRC verification, failure/cancel frames, inactivity timeouts,
+  and receiver ACKs. Failed files have Retry/Skip controls; text has delivery
+  acknowledgement and retry. Completed files retain their history.
+- Text shares use bounded UTF-8 binary chunks and strict final decoding. Both
+  outgoing drafts and incoming transfers enforce 1 MiB without truncation.
+- Installed jest-dom 7.0.1, explicit testing-library/dom 10.4.2, and jsdom 31.0.1.
+  Undici 7 overrides are scoped to 7.x consumers; jsdom resolves Undici 8.
+  Node requirements match jsdom. Removed baseUrl and ignoreDeprecations.
+  TypeScript stays at 6.0.3 because TypeScript-ESLint still excludes 7.
+- Generated Worker binding declarations and updated protocol/API documentation,
+  regression source, and E2E interception fixtures. No test suite, browser
+  transfer, live check, CI workflow, or deployment was started. Static checks
+  are reported separately from runtime behavior, which remains unverified.
+
+Final static verification for issues 11–15: ESLint passed; `npm run build`
+passed its full TypeScript project check and Vite production bundle; `npm ls
+--depth=0` reported a consistent direct dependency tree; installation audit
+reported zero vulnerabilities; `git diff --check` passed. Wrangler generated
+the binding declarations and `deploy --dry-run` packaged the Worker with both
+rate-limit bindings successfully. The dry run did not upload or deploy.
+
+## Code fixes — easy-to-hard list, items 1–10
+
+Implemented 2026-11-14:
+
+1. Landing, comparison, FAQ, and dropzone file-size copy use the validated
+   256 MiB limit through one derived label.
+2. Removed the unused reduced-motion wrapper and cancel action, and the
+   unreachable file-success branch. Global reduced-motion handling remains.
+3. Download request deduplication is cleared between batches and sessions.
+4. Backpressure waits release listeners on closing, close, or error, including
+   when the channel already closed before the listeners were attached.
+5. Browser and Worker share Crockford code rules and STUN defaults in `shared/`.
+6. Compatible dependency updates and the security override are recorded below;
+   the previously documented major-version deferrals remain.
+7. Room-code conflicts return an internal 409; minting retries up to five
+   times without handing an existing room to a new sender.
+8. Downloads keep completion history, deselect completed files, deduplicate
+   queued indices, and reject batch replacement while a download is active.
+9. Sender and receiver use shared lifecycle callbacks and cleanup. Callbacks
+   from replaced sessions are ignored; switching receive mode closes the old
+   session. Closed managers cannot resume setup after pending fetches finish.
+10. Connected data channels start a 60-second signaling heartbeat, consumed by
+    the room to refresh paired leases. Closing a session stops heartbeats;
+    an unpaired room still has its original fixed deadline.
+
+Validation: lint, TypeScript checking, and the production build passed.
+Existing test fixtures and assertions were adjusted for changed contracts;
+no tests were executed, as requested. Later transfer/TURN/text fixes are now
+recorded in the implementation section above.
+
+## Dependency update status — 2026-11-14
+
+Compatible direct and transitive updates are installed and recorded in
+`package-lock.json`; `package.json` now names the updated direct minimums.
+The install audit reports zero vulnerabilities. No tests were run, as
+requested; validation uses lint, the TypeScript build, and the production build.
+
+The scoped `@typescript-eslint/typescript-estree` override selects
+`minimatch ^11.0.8` to fix
+[GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249).
+The parser uses the named CommonJS `minimatch` function, which remains available
+in version 11. Remove this override when the upstream parser depends on a
+patched version itself. Avoid `npm audit fix --force`: its proposed downgrade
+of TypeScript-ESLint would change compiler compatibility.
+
+TypeScript stays at 6.0.3 because the installed TypeScript-ESLint peer range is
+`>=4.8.4 <6.1.0`. The jsdom 31 and jest-dom 7 migrations are now implemented
+as recorded above; their runtime behavior has not been verified while tests
+are excluded. Node types stay on major 24; major 26 is not required for
+the Node 22 CI runtime or Node 24 local runtime.
+
 Two things are **not** in this plan, on purpose:
 
 - **The backend coverage threshold.** Deferred by choice — the backend has
@@ -257,10 +338,9 @@ which is why the CI gate (`--audit-level=high`) passes today.
 
 - `npm audit fix` (without `--force`) fixes the `@vitest/mocker` advisory.
   It adds three packages and changes two.
-- The `minimatch` advisory stays: the fix is a breaking change and is not
-  worth it here. It is a build-time dependency and the advisory is a
-  denial-of-service in glob parsing. It is recorded here instead of being
-  forced in.
+- The `minimatch` advisory was initially deferred. The dependency update
+  status above supersedes that decision with a scoped override and lint/build
+  validation.
 
 Bumped alongside it, all patch-level:
 

@@ -55,8 +55,8 @@ One Durable Object per room code acts as a dumb WebSocket relay for SDP/ICE exch
 
 ## Development
 
-Requires **Node.js ≥ 22.12.0** — Vite 8 and Wrangler 4 both refuse to run on
-anything older.
+Requires **Node.js ^22.22.2, ^24.15.0, or ≥26.0.0**. These ranges cover the
+frontend, Worker tooling, and jsdom 31 development environment.
 
 ```bash
 # Terminal 1: Cloudflare Worker (Durable Objects + static assets)

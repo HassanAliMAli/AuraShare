@@ -101,6 +101,47 @@ standard forbids `Sec-`-prefixed headers, so they are stripped before the
 request leaves. `test/live/deployment.test.ts` therefore sends it over raw
 HTTP instead.
 
+## The content security policy
+
+The policy lives in `frontend/public/_headers` and is applied to every
+response by the Workers assets layer:
+
+```
+default-src 'self'; script-src 'self' https://static.cloudflareinsights.com;
+style-src 'self' 'unsafe-inline'; connect-src 'self' wss:;
+img-src 'self' data:; font-src 'self' data:
+```
+
+It is written by hand, so it drifts from the app silently — a directive
+that is too tight does not fail the build, it fails in the browser. Two
+allowances need a reason:
+
+- **`font-src 'self' data:`** — the display face is inlined into the
+  stylesheet as a `data:` URI. Without `data:` the browser refuses it and
+  the live site quietly falls back to a typeface that is not the design.
+- **`script-src 'self' https://static.cloudflareinsights.com`** — the
+  Cloudflare Web Analytics beacon the edge injects into every HTML
+  response. The **host** is allowed, not the script's path: the edge
+  injects the beacon with a version segment (`/beacon.min.js/vce70...`),
+  and a path source does not match that URL in Chrome — measured, the path
+  form Cloudflare's own FAQ suggests is refused. The automatic setup
+  reports to this domain's own `/cdn-cgi/rum`, so `connect-src 'self'`
+  covers the upload.
+
+Two things are deliberately **not** allowed:
+
+- **`'unsafe-inline'` for scripts** — the tempting way to unblock an
+  inline script, and the wrong way: it would let any injected script run.
+  The stylesheet keeps it, because React needs it for inline styles.
+- **Cloudflare's inline *JavaScript Detections* script** — it is a
+  bot-detection helper, unrelated to the app, and its body holds the
+  request's ray ID, so a hash would change on every response and
+  allowing it would mean `'unsafe-inline'`. It stays blocked, and the
+  console shows one CSP error for it on every page load.
+
+`test/lib/securityHeaders.test.ts` guards all of this, including the
+absence of `'unsafe-inline'` in `script-src`.
+
 ## TURN credentials
 
 **TURN is configured.** The Worker holds a Cloudflare Calls TURN key, and

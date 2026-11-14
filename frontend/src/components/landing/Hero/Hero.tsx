@@ -35,7 +35,7 @@ export function Hero() {
             </Button>
             <a
               href="#how-it-works"
-              className="inline-flex h-12 items-center rounded-md border border-border-strong px-6 text-md font-medium tracking-tight text-text transition-colors duration-[--duration-micro] hover:border-accent hover:text-accent"
+              className="inline-flex h-12 items-center rounded-md border border-border-strong px-6 text-md font-medium tracking-tight text-text transition-colors duration-(--duration-micro) hover:border-accent hover:text-accent"
             >
               {HERO.ctaSecondary}
             </a>

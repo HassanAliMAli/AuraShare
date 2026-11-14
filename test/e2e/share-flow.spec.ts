@@ -50,6 +50,14 @@ test.describe('AuraShare peer-to-peer transfer', () => {
 
     await receiver.getByRole('checkbox', { name: 'Select README.md' }).check();
 
+    // The checkbox wears the accent colour, which comes from a design token.
+    // It is read here because a token that never reaches the browser is
+    // invisible until something depends on it.
+    const accent = await receiver
+      .getByRole('checkbox', { name: 'Select README.md' })
+      .evaluate((el) => getComputedStyle(el).accentColor);
+    expect(accent).toBe('rgb(232, 163, 61)');
+
     // Register the download listener BEFORE the click. The transfer can
     // complete in a few milliseconds, and `waitForEvent` does not buffer
     // events — a download that lands between the click resolving and the

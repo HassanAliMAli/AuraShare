@@ -65,7 +65,7 @@ export function AuraDropzone({ onFileDrop, className }: AuraDropzoneProps) {
         if (e.key === 'Enter' || e.key === ' ') handleButtonClick();
       }}
       className={cn(
-        'flex w-full flex-col items-center justify-center gap-4 rounded-lg border-2 border-dashed p-10 text-center transition-colors duration-[--duration-micro]',
+        'flex w-full flex-col items-center justify-center gap-4 rounded-lg border-2 border-dashed p-10 text-center transition-colors duration-(--duration-micro)',
         isDragOver
           ? 'border-accent bg-accent/5'
           : 'border-border-strong hover:border-accent/60',

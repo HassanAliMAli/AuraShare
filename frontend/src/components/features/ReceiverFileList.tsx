@@ -45,7 +45,7 @@ export function ReceiverFileList() {
                   }}
                   disabled={state.downloadedFiles.has(i)}
                   aria-label={`Select ${file.name}`}
-                  className="h-4 w-4 shrink-0 accent-[--color-accent]"
+                  className="h-4 w-4 shrink-0 accent-(--color-accent)"
                 />
                 <FileIcon
                   name={file.name}

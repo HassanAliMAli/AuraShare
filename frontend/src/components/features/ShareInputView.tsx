@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 import { AuraDropzone } from '../AuraDropzone';
 import { AuraTextarea } from '../AuraTextarea';
 import { useAppStore } from '../../stores/appStore';

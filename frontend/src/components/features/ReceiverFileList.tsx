@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 import { Check, Clock } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { FileIcon } from '../ui/FileIcon';

@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 import { ArrowUp } from 'lucide-react';
 import { FOOTER, NAV_LINKS } from '../../lib/landingCopy';
 import { fadeUpVariants } from '../../lib/motion';

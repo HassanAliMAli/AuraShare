@@ -1,5 +1,5 @@
 import '@testing-library/jest-dom/vitest';
-import { MotionGlobalConfig } from 'framer-motion';
+import { MotionGlobalConfig } from 'motion/react';
 
 // Render animations instantly in tests — deterministic variant states.
 MotionGlobalConfig.skipAnimations = true;
@@ -12,7 +12,7 @@ MotionGlobalConfig.skipAnimations = true;
 window.requestAnimationFrame = () => 0;
 window.cancelAnimationFrame = () => {};
 
-// jsdom lacks matchMedia — framer-motion's useReducedMotion depends on it.
+// jsdom lacks matchMedia — motion's useReducedMotion depends on it.
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
   value: (query: string) => ({
@@ -27,7 +27,7 @@ Object.defineProperty(window, 'matchMedia', {
   }),
 });
 
-// jsdom lacks IntersectionObserver — framer-motion's whileInView needs it.
+// jsdom lacks IntersectionObserver — motion's whileInView needs it.
 class IntersectionObserverMock implements IntersectionObserver {
   readonly root: Element | null = null;
   readonly rootMargin: string = '';

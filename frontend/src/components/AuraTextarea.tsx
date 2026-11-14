@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 import { shareInputVariants } from '../lib/motion';
 import { Button } from './ui/Button';
 import { Panel } from './ui/Panel';

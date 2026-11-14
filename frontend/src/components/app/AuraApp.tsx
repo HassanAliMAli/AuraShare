@@ -1,4 +1,4 @@
-import { AnimatePresence } from 'framer-motion';
+import { AnimatePresence } from 'motion/react';
 import { ErrorBoundary } from 'react-error-boundary';
 import { AppProvider } from '../../stores/AppProvider';
 import { useAppStore } from '../../stores/appStore';

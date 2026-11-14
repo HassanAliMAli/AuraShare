@@ -46,7 +46,7 @@ describe('hooks/usePrefersReducedMotion', () => {
       removeEventListener: vi.fn(),
       dispatchEvent: vi.fn(),
     }));
-    // framer-motion caches the preference at module level; reset it so each
+    // motion caches the preference at module level; reset it so each
     // test observes the freshly stubbed matchMedia implementation.
     hasReducedMotionListener.current = false;
     prefersReducedMotion.current = null;

@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 import { FOOTER } from '../../lib/landingCopy';
 import { fadeUpVariants } from '../../lib/motion';
 

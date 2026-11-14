@@ -61,9 +61,9 @@ export class RoomDO {
     const mintedAt = await this.state.storage.get<number>(MINTED_KEY);
     if (mintedAt === undefined) {
       // Nobody minted this code, or the room it pointed at is gone. Either
-      // way there is no room to join — and the storage is released here
-      // rather than left behind for a room that will never be used.
-      await this.release();
+      // way there is no room to join — and there is nothing to release
+      // either: the mint time is the only thing this room ever stores, so a
+      // room without one never held a row in the first place.
       return apiError('room_not_found', 'No such room', 404);
     }
 
@@ -150,13 +150,23 @@ export class RoomDO {
    *
    * The reservation is one storage write and one alarm, and it is what
    * lets a later join tell a real room from a guess.
+   *
+   * A room that is already reserved is left exactly as it is. Its deadline
+   * is not ours to move: the code space is 32⁶ ≈ 1.07 billion, so a second
+   * mint of the same code is rare — but when it lands on a room that is
+   * already a live session, re-arming the alarm would cut that session's
+   * lease short.
    */
   private async reserve(): Promise<Response> {
+    const existing = await this.state.storage.get<number>(MINTED_KEY);
+    if (existing !== undefined) {
+      return json({ reserved: true });
+    }
     const now = Date.now();
     await this.state.storage.put(MINTED_KEY, now);
     // The code is valid for a fixed window from now. The alarm is what
     // takes the room away when nobody joins it.
-    await this.arm(now + CODE_VALIDITY_MS, true);
+    await this.arm(now + CODE_VALIDITY_MS);
     return json({ reserved: true });
   }
 
@@ -167,9 +177,9 @@ export class RoomDO {
    * — the free plan allows 100,000 rows written a day — so the alarm is
    * not re-armed on every relayed message.
    */
-  private async arm(deadline: number, force = false): Promise<void> {
+  private async arm(deadline: number): Promise<void> {
     const current = await this.currentDeadline();
-    if (!force && deadline <= current) return;
+    if (deadline <= current) return;
     await this.state.storage.setAlarm(deadline);
     this.deadline = deadline;
   }

@@ -235,8 +235,16 @@ export class P2PManager {
   }
 
   private attachDataChannel(dc: RTCDataChannel): void {
+    // The transfer session only ever speaks about the transfer, so it only
+    // gets the transfer events. The rest of the P2P events belong to this
+    // class and are handled here.
     this.transfer = new TransferSession(dc, {
-      ...this.events,
+      onProgress: this.events.onProgress,
+      onTransferComplete: this.events.onTransferComplete,
+      onFileComplete: this.events.onFileComplete,
+      onFileAcknowledged: this.events.onFileAcknowledged,
+      onFileDescriptorsReceived: this.events.onFileDescriptorsReceived,
+      onTextReceived: this.events.onTextReceived,
       onProtocolError: (message) => this.events.onError(message),
     });
     dc.onopen = () => {

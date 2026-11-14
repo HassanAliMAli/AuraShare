@@ -5,6 +5,10 @@
 **New suites:** `test/` (the 13 co-located `src/**/*.test.*` files were folded into the block suites during the restructure; every test now lives under `test/`)
 **Build:** PASS (`npm run build`)
 
+> **Current status (2026-11-14).** The suite is now **25 files / 364 tests** —
+> 358 passed and 6 skipped (the live-deployment suite, which needs `LIVE_URL`).
+> Everything below is the record of the 2026-11-12 run and is kept as it was.
+
 **Post-fix status:** PASS — the three failures below are fixed; `npm test` now reports 32 files / 329 tests passing. The failure analysis is preserved for the record.
 
 **Automated E2E:** PASS — `npm run test:e2e` (Playwright, `test/e2e/`) reports 4 passed covering text share, file share (byte-identical download), the unknown-code error path, and the malformed-code path.

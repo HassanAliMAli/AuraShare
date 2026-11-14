@@ -20,7 +20,7 @@ export const MAX_FILES_PER_TRANSFER = 32;
 export const MAX_TEXT_BYTES = 1024 * 1024; // 1 MiB
 
 /** Maximum length of a file name announced by a peer. */
-export const MAX_NAME_LENGTH = 255;
+const MAX_NAME_LENGTH = 255;
 
 /** Upper bound for a single received file — the buffer is held in memory. */
 export const MAX_TRANSFER_BYTES = MAX_FILE_SIZE;
@@ -40,7 +40,7 @@ function isIndex(value: unknown): value is number {
 }
 
 /** A file descriptor as announced by a peer. */
-export function isFileDescriptor(value: unknown): value is FileDescriptor {
+function isFileDescriptor(value: unknown): value is FileDescriptor {
   if (!isRecord(value)) return false;
   if (typeof value.name !== 'string' || value.name.length === 0) return false;
   if (value.name.length > MAX_NAME_LENGTH) return false;

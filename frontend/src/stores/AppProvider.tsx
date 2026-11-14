@@ -77,7 +77,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         onFileAcknowledged: (index) => dispatch({ type: 'FILE_ACKNOWLEDGED', index }),
         onTransferComplete: () => {},
         onError: (err) => {
-          console.error('[P2P] Signaling error:', err);
+          console.error('[P2P] error:', err);
           dispatch({ type: 'SET_ERROR', message: err });
         },
       });

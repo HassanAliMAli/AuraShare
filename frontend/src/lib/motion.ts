@@ -12,11 +12,11 @@
 import type { Transition } from 'framer-motion';
 
 /** The single easing curve. */
-export const EASE_OUT: [number, number, number, number] = [0.16, 1, 0.3, 1];
+const EASE_OUT: [number, number, number, number] = [0.16, 1, 0.3, 1];
 
-export const DURATION_MICRO = 0.12;
-export const DURATION_STANDARD = 0.2;
-export const DURATION_ENTER = 0.32;
+const DURATION_MICRO = 0.12;
+const DURATION_STANDARD = 0.2;
+const DURATION_ENTER = 0.32;
 
 /** Status-view entry/exit. Used by every routed feature view. */
 export const viewVariants = {
@@ -89,10 +89,4 @@ export const staggerItem = {
     y: 0,
     transition: { duration: DURATION_STANDARD, ease: EASE_OUT },
   },
-};
-
-/** Progress bar fill. The scale is the meaning — no loop. */
-export const progressVariants = {
-  hidden: { scaleX: 0 },
-  visible: { scaleX: 1, transition: { duration: DURATION_ENTER, ease: EASE_OUT } },
 };

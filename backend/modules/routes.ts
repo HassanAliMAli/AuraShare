@@ -49,17 +49,9 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
     return json({ iceServers });
   }
 
-  // The room routes are the ones that can spend the Durable Object budget,
-  // so they are the ones that are limited. This runs before the room is
-  // touched, so a request that is turned away costs nothing but itself.
-  if (path.startsWith('/api/room')) {
-    const allowed = await allowRequest(request, env.ROOM_RATE_LIMITER);
-    if (!allowed) {
-      return apiError('rate_limited', 'Too many requests', 429, { 'Retry-After': '60' });
-    }
-  }
-
   if (path === '/api/room' && request.method === 'POST') {
+    const limited = await rateLimited(request, env);
+    if (limited) return limited;
     const code = generateRoomCode();
     if (!(await reserveRoom(request, env, code))) {
       return apiError('room_unavailable', 'Could not open a room', 503);
@@ -72,6 +64,8 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
     if (request.headers.get('Upgrade') !== 'websocket') {
       return apiError('upgrade_required', 'Expected Upgrade: websocket', 426);
     }
+    const limited = await rateLimited(request, env);
+    if (limited) return limited;
     const id = env.ROOMS.idFromName(code);
     const stub = env.ROOMS.get(id);
     // Forward the original request so the DO sees the Upgrade header.
@@ -79,6 +73,21 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
   }
 
   return apiError('not_found', 'Not found', 404);
+}
+
+/**
+ * The rate-limit answer for a request, or null when it may proceed.
+ *
+ * Only the two routes that can actually reach a room are checked: the mint,
+ * and a socket request that is a real upgrade. A request that cannot touch a
+ * room — the wrong method on the mint path, a socket request without the
+ * upgrade header — must not spend a real user's budget, because it costs the
+ * Durable Object nothing.
+ */
+async function rateLimited(request: Request, env: Env): Promise<Response | null> {
+  const allowed = await allowRequest(request, env.ROOM_RATE_LIMITER);
+  if (allowed) return null;
+  return apiError('rate_limited', 'Too many requests', 429, { 'Retry-After': '60' });
 }
 
 /**

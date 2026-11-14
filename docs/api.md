@@ -40,9 +40,14 @@ proxies `/api` to the Wrangler worker on `:8787`.
   code only opens a room that the Worker actually minted, and a room that
   was never minted does not exist. See
   [Durable Object lifecycle](#durable-object-lifecycle).
-- The room routes are **rate limited** per client IP — 120 requests a
-  minute. The limit is checked before the room is touched, so a request
-  that is turned away costs nothing but itself.
+- The two routes that can reach a room — `POST /api/room`, and a
+  `GET /api/room/{code}/ws` that carries the upgrade header — are **rate
+  limited** per client IP, 120 requests a minute. The limit is checked
+  before the room is touched, so a request that is turned away costs
+  nothing but itself. A request that cannot reach a room is not counted:
+  the wrong method on the mint path and a socket request without the
+  upgrade header are both refused before a room exists, so they cost the
+  Durable Object nothing and must not spend a real user's budget.
 - There is **no CORS negotiation**: the Worker answers `OPTIONS` with an
   empty `200` and serves the same origin the app is served from.
 - The method must match the route exactly. `GET /api/ice-servers` is the only
@@ -266,7 +271,7 @@ expired"*.
 | Peers per room | 2 | A third peer is refused with `409`. |
 | Transmission code validity | 10 minutes | Measured from the mint. After that the room is gone and the code opens nothing. |
 | Room idle TTL | 30 minutes | A room with two peers survives this long without any activity. |
-| Room route rate limit | 120 requests / minute / IP | Over the limit the answer is `429 rate_limited`. |
+| Room request rate limit | 120 requests / minute / IP | Over the limit the answer is `429 rate_limited`. Only the requests that can reach a room are counted. |
 | Transmission code length | 6 characters | 32-character alphabet, ~30 bits. |
 | TURN credential TTL | 24 hours | Cloudflare Calls API. |
 | TURN cache refresh margin | 1 hour | The credential is re-minted when less than this remains. |

@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   Crc32,
   MAX_FILES_PER_TRANSFER,
-  MAX_TEXT_BYTES,
   MAX_TRANSFER_BYTES,
   isIceServerList,
   isRoomCode,
@@ -10,7 +9,6 @@ import {
   parseFileDescriptors,
   parseTransferMessage,
   parseWireSignal,
-  truncateToBytes,
 } from '@/lib/protocol';
 
 describe('lib/protocol — descriptor guards', () => {
@@ -168,15 +166,6 @@ describe('lib/protocol — worker responses', () => {
 });
 
 describe('lib/protocol — text and checksum helpers', () => {
-  it('leaves text within the budget untouched', () => {
-    expect(truncateToBytes('hello', MAX_TEXT_BYTES)).toBe('hello');
-  });
-
-  it('truncates text to the byte budget', () => {
-    const truncated = truncateToBytes('a'.repeat(MAX_TEXT_BYTES + 100), MAX_TEXT_BYTES);
-    expect(new TextEncoder().encode(truncated).byteLength).toBeLessThanOrEqual(MAX_TEXT_BYTES);
-  });
-
   it('computes the standard CRC-32 check value', () => {
     const crc = new Crc32();
     crc.update(new TextEncoder().encode('123456789'));

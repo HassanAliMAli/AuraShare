@@ -144,44 +144,24 @@ absence of `'unsafe-inline'` in `script-src`.
 
 ## TURN credentials
 
-**TURN is configured.** The Worker holds a Cloudflare Calls TURN key, and
-`GET /api/ice-servers` returns the STUN servers plus six TURN URLs with
-ephemeral credentials:
+The source now restricts TURN credentials to admitted room peers.
+`GET /api/ice-servers` is a public **STUN-only** bootstrap. It is not a check
+for whether TURN secrets are configured.
 
-```json
-{
-  "iceServers": [
-    { "urls": "stun:stun.cloudflare.com:3478" },
-    { "urls": "stun:stun.cloudflare.com:443" },
-    {
-      "urls": [
-        "turn:turn.cloudflare.com:3478?transport=udp",
-        "turn:turn.cloudflare.com:3478?transport=tcp",
-        "turns:turn.cloudflare.com:5349?transport=tcp",
-        "turn:turn.cloudflare.com:443?transport=udp",
-        "turn:turn.cloudflare.com:80?transport=tcp",
-        "turns:turn.cloudflare.com:443?transport=tcp"
-      ],
-      "username": "…",
-      "credential": "…"
-    }
-  ]
-}
-```
+After a v2 WebSocket admission, the browser uses its private peer token to
+call `POST /api/room/{code}/ice-servers`. The DO caches one-hour credentials
+per peer, and both browsers coordinate ICE renewal 15 minutes before expiry.
+An issuance failure returns an error; absent secrets produce a visible
+STUN-only warning. See [the API contract](api.md) for limits and renewal.
 
-STUN alone is enough for most peers: it discovers the public address of a
-NAT, and if the NAT is a normal cone or port-preserving mapping, the two
-peers can reach each other. It is **not** enough behind a symmetric NAT,
-where the mapping differs per destination — the most common case on a
-corporate or mobile network. Those peers simply cannot connect, and the
-failure looks like a timeout rather than an error. TURN is what makes them
-work.
+The deployment requires both `ROOM_RATE_LIMITER` and `ICE_RATE_LIMITER` from
+`wrangler.toml`; missing credential-rate bindings fail closed. Browser sockets
+must have the correct Origin. Local Vite preserves Host/Origin through the
+proxy. Set optional `APP_ORIGIN` only when the externally visible origin differs
+from the Worker request origin. Peer tokens must never appear in URLs or logs.
 
-The credentials are **ephemeral**: the Worker mints them per isolate with a
-24-hour TTL and re-mints them an hour before they expire, so nothing
-long-lived is ever handed to a browser. The endpoint falls back to STUN-only
-if the Cloudflare API is unreachable — it never returns an error, because a
-connection timeout is a better failure than a broken app.
+These changes are implemented locally; deployment and live behavior have not
+been checked during this work. Existing TURN secrets are not changed.
 
 ### Rotating the key
 
@@ -196,8 +176,8 @@ cf realtime turn keys create --name "aurashare"
 npx wrangler secret put TURN_KEY_ID
 npx wrangler secret put TURN_KEY_API_TOKEN
 
-# 3. confirm the endpoint serves TURN again
-curl https://aurashare.hassanali.site/api/ice-servers
+# 3. verify through an admitted app session when runtime verification is allowed
+# The public /api/ice-servers route intentionally returns STUN only.
 ```
 
 The old key can then be deleted:
@@ -408,7 +388,7 @@ there, and adding validation would change the contract in
 | The build fails with *"Missing entry-point to Worker script"* | `wrangler.toml` is not at the repository root |
 | The build fails with a missing `class_name` | The Durable Object class was renamed or is no longer re-exported from `backend/index.ts` |
 | The landing page loads but `/app` 404s | The assets are not being served — check that `dist/` was built and that `[assets]` in `wrangler.toml` still points at it |
-| The app connects and then drops | Usually ICE, not the Worker — check `/api/ice-servers` and whether TURN is configured |
+| The app connects and then drops | Inspect the authenticated room ICE response and credential renewal; the public bootstrap intentionally has no TURN |
 | The Worker is up but old | The deploy did not run — check the `Workers Builds: aurashare` check on the commit |
 | A code that was just minted is refused | The room ended early — the code is only valid for 10 minutes from the mint, and the room is released as soon as the last peer leaves |
 | Room requests answer `429` | A client went over the rate limit — see [Rate limiting](#rate-limiting-and-what-the-free-plan-allows) |

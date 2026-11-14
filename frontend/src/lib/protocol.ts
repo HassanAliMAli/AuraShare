@@ -68,8 +68,8 @@ export function parseFileDescriptors(value: unknown): FileDescriptor[] | null {
 }
 
 /**
- * Validate a control message received over the data channel.
- * Returns null for anything that does not match the protocol exactly.
+ * Recognize a legacy v1 control frame for the upgrade diagnostic.
+ * Current transfers use transfer-protocol.ts and never execute these frames.
  */
 export function parseTransferMessage(raw: unknown): SignalingMessage | null {
   if (!isRecord(raw)) return null;
@@ -159,8 +159,14 @@ export function parseWireSignal(raw: unknown): WireSignal | null {
   switch (type) {
     case 'hello': {
       if (raw.role !== 'sender' && raw.role !== 'receiver') return null;
-      return { type: 'hello', role: raw.role };
+      return { type: 'hello', role: raw.role, ...(raw.version === 2 ? { version: 2 as const } : {}) };
     }
+    case 'ready':
+    case 'refresh-request':
+      return { type };
+    case 'refresh-prepare':
+    case 'refresh-ready':
+      return typeof raw.id === 'string' && /^[a-f0-9]{32}$/.test(raw.id) ? { type, id: raw.id } : null;
     case 'peer-present':
       return { type: 'peer-present' };
     case 'peer-left':
@@ -169,15 +175,15 @@ export function parseWireSignal(raw: unknown): WireSignal | null {
       return { type: 'room-expired' };
     case 'offer': {
       if (!isSessionDescription(raw.sdp)) return null;
-      return { type: 'offer', sdp: raw.sdp };
+      return { type: 'offer', sdp: raw.sdp, generation: typeof raw.generation === 'string' && /^[a-f0-9]{32}$/.test(raw.generation) ? raw.generation : undefined };
     }
     case 'answer': {
       if (!isSessionDescription(raw.sdp)) return null;
-      return { type: 'answer', sdp: raw.sdp };
+      return { type: 'answer', sdp: raw.sdp, generation: typeof raw.generation === 'string' && /^[a-f0-9]{32}$/.test(raw.generation) ? raw.generation : undefined };
     }
     case 'ice': {
       if (!isIceCandidate(raw.candidate)) return null;
-      return { type: 'ice', candidate: raw.candidate };
+      return { type: 'ice', candidate: raw.candidate, generation: typeof raw.generation === 'string' && /^[a-f0-9]{32}$/.test(raw.generation) ? raw.generation : undefined };
     }
     default:
       return null;
@@ -187,26 +193,19 @@ export function parseWireSignal(raw: unknown): WireSignal | null {
 /** Validate the ICE server list returned by the Worker. */
 export function isIceServerList(value: unknown): value is { iceServers: RTCIceServer[] } {
   if (!isRecord(value) || !Array.isArray(value.iceServers)) return false;
-  return value.iceServers.every((server) => {
+  return value.iceServers.length > 0 && value.iceServers.length <= 16 && value.iceServers.every((server) => {
     if (!isRecord(server)) return false;
-    if (typeof server.urls === 'string') return true;
-    return (
-      Array.isArray(server.urls) &&
-      server.urls.every((url) => typeof url === 'string')
-    );
+    const urls = typeof server.urls === 'string' ? [server.urls] : server.urls;
+    return Array.isArray(urls) && urls.length > 0 && urls.every((url) =>
+      typeof url === 'string' && /^(stun|stuns|turn|turns):/.test(url)) &&
+      (server.username === undefined || typeof server.username === 'string') &&
+      (server.credential === undefined || typeof server.credential === 'string');
   });
 }
 
 /** Validate the room-minting response body. */
 export function isRoomResponse(value: unknown): value is { roomId: string } {
   return isRecord(value) && isRoomCode(value.roomId);
-}
-
-/** Truncate a string to a byte budget without splitting a UTF-8 sequence badly. */
-export function truncateToBytes(text: string, maxBytes: number): string {
-  const bytes = new TextEncoder().encode(text);
-  if (bytes.byteLength <= maxBytes) return text;
-  return new TextDecoder('utf-8', { fatal: false }).decode(bytes.slice(0, maxBytes));
 }
 
 const CRC32_TABLE = (() => {

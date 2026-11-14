@@ -1,162 +1,124 @@
-/**
- * Signaling transport: WebSocket relay to the RoomDO + ICE/room helpers.
- * Exchanges SDP offer/answer and trickle ICE candidates between the two peers.
- *
- * Frames arrive from the peer through the Worker relay, so every payload is
- * validated before it reaches the WebRTC layer.
- */
-
+/** Cancellable room admission, signaling, and per-peer ICE credentials. */
 import type { WireSignal } from '../types';
 import { isIceServerList, isRoomResponse, parseWireSignal } from './protocol';
-
+import { HEARTBEAT_FRAME, HEARTBEAT_INTERVAL_MS } from '../../../shared/heartbeat';
+import { abortError, delay } from './async';
 export type { WireSignal } from '../types';
+export type IceConfig = { iceServers: RTCIceServer[]; expiresAt: number | null; degraded: boolean };
+export type Admission = { token: string; expiresAt: number };
 
-const DEFAULT_ICE: RTCIceServer[] = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-];
-
-/** Fetch the STUN/TURN config from the Worker; fall back to STUN-only on error. */
-export async function fetchIceServers(): Promise<RTCIceServer[]> {
-  try {
-    const res = await fetch('/api/ice-servers');
-    if (res.ok) {
-      const data: unknown = await res.json();
-      if (isIceServerList(data) && data.iceServers.length > 0) return data.iceServers;
-    }
-  } catch (err) {
-    console.warn('[RTC] ice-servers fetch failed, using STUN defaults:', err);
-  }
-  return DEFAULT_ICE;
-}
-
-/** Ask the Worker to mint a fresh room code. */
-export async function mintRoom(): Promise<string> {
-  const res = await fetch('/api/room', { method: 'POST' });
-  if (!res.ok) throw new Error('Failed to mint room');
+export async function mintRoom(signal?: AbortSignal): Promise<string> {
+  const res = await fetch('/api/room', { method: 'POST', signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15_000)]) : AbortSignal.timeout(15_000) });
   const data: unknown = await res.json();
-  if (!isRoomResponse(data)) throw new Error('Invalid room response');
+  if (!res.ok || !isRoomResponse(data)) throw new Error('Could not open a room');
   return data.roomId;
 }
+export async function fetchPeerIce(code: string, token: string, signal: AbortSignal): Promise<IceConfig> {
+  const requestedAt = Date.now();
+  const response = await fetch(`/api/room/${code}/ice-servers`, {
+    method: 'POST', headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.any([signal, AbortSignal.timeout(15_000)]),
+  });
+  if (!response.ok) throw new Error('Could not obtain relay configuration');
+  const body: unknown = await response.json();
+  if (!isIceServerList(body) || !('expiresAt' in body) || !('degraded' in body) ||
+    typeof body.degraded !== 'boolean' ||
+    (body.expiresAt !== null && (typeof body.expiresAt !== 'number' || !Number.isFinite(body.expiresAt) || body.expiresAt <= 0))) {
+    throw new Error('Invalid relay configuration');
+  }
+  const expiresAt = body.expiresAt === null ? null :
+    ('serverTime' in body && typeof body.serverTime === 'number' && Number.isFinite(body.serverTime)
+      ? requestedAt + Number(body.expiresAt) - body.serverTime : Number(body.expiresAt));
+  if (expiresAt !== null && expiresAt <= Date.now()) throw new Error('Relay credentials have expired');
+  return { iceServers: body.iceServers, expiresAt, degraded: body.degraded };
+}
+export type SignalingCallbacks = { onMessage: (msg: WireSignal) => void; onError: () => void; onClose: () => void };
 
-export type SignalingCallbacks = {
-  onMessage: (msg: WireSignal) => void;
-  onError: () => void;
-  onClose: () => void;
-};
-
-/**
- * How many times the signalling socket is opened before the failure is
- * reported.
- *
- * A handshake can fail for reasons that have nothing to do with the room:
- * the connection is reset by Cloudflare's edge before the request is even
- * sent, so the Worker never sees it. It is intermittent — measured between
- * 8% and 50% of the handshakes from a desktop Chrome, and it happens with
- * HTTP/2 on and with HTTP/2 off alike, so it is not the protocol. Trying
- * again costs one request and gets past it.
- */
-const OPEN_ATTEMPTS = 3;
-
-/** The pause between attempts. */
-const OPEN_RETRY_DELAY_MS = 250;
-
-/** Thin wrapper over the signaling WebSocket. */
 export class SignalingChannel {
   private ws: WebSocket | null = null;
-  private cb: SignalingCallbacks;
-  /** True while the socket is being opened — a failure is then a retry. */
-  private opening = false;
+  private readonly cb: SignalingCallbacks;
+  private readonly lifetime = new AbortController();
+  private heartbeat: ReturnType<typeof setInterval> | null = null;
+  constructor(cb: SignalingCallbacks) { this.cb = cb; }
 
-  constructor(cb: SignalingCallbacks) {
-    this.cb = cb;
-  }
-
-  open(code: string, role: 'sender' | 'receiver'): Promise<void> {
-    this.opening = true;
-    return this.openWithRetry(code, role, OPEN_ATTEMPTS).finally(() => {
-      this.opening = false;
-    });
-  }
-
-  /**
-   * Open the socket, trying again when the handshake fails.
-   *
-   * Only the last failure is reported: the attempts in between are not
-   * something the user needs to hear about, and the app shows the error
-   * once, with the reason.
-   */
-  private async openWithRetry(
-    code: string,
-    role: 'sender' | 'receiver',
-    attempts: number,
-  ): Promise<void> {
-    try {
-      await this.openOnce(code, role);
-    } catch (err) {
-      if (attempts <= 1) {
-        // The socket gave up. This is the failure worth reporting.
-        this.ws = null;
-        this.cb.onError();
-        throw err;
+  async open(code: string, role: 'sender' | 'receiver'): Promise<Admission> {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      this.lifetime.signal.throwIfAborted();
+      try { return await this.openOnce(code, role); }
+      catch (error) {
+        if (this.lifetime.signal.aborted || attempt === 2) throw error;
+        await delay(250, this.lifetime.signal);
       }
-      await new Promise((resolve) => setTimeout(resolve, OPEN_RETRY_DELAY_MS));
-      return this.openWithRetry(code, role, attempts - 1);
     }
+    throw new Error('Could not open signaling');
   }
 
-  private openOnce(code: string, role: 'sender' | 'receiver'): Promise<void> {
-    const proto = globalThis.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${proto}//${globalThis.location.host}/api/room/${code}/ws`;
-    const ws = new WebSocket(wsUrl);
+  private openOnce(code: string, role: 'sender' | 'receiver'): Promise<Admission> {
+    const signal = this.lifetime.signal;
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${protocol}//${location.host}/api/room/${code}/ws?v=2`);
     this.ws = ws;
-    return new Promise<void>((resolve, reject) => {
-      ws.onopen = () => {
-        ws.send(JSON.stringify({ type: 'hello', role } satisfies WireSignal));
-        resolve();
+    return new Promise((resolve, reject) => {
+      let admitted = false;
+      const cleanupWait = () => { clearTimeout(timer); signal.removeEventListener('abort', abort); };
+      const detach = () => { ws.onopen = null; ws.onmessage = null; ws.onerror = null; ws.onclose = null; };
+      const fail = (error: Error) => {
+        cleanupWait(); detach();
+        if (this.ws === ws) this.ws = null;
+        ws.close(); reject(error);
       };
-      ws.onmessage = (e) => {
-        if (typeof e.data !== 'string') {
-          console.warn('[RTC] ignored non-text signaling frame');
-          return;
+      const abort = () => fail(abortError());
+      const timer = setTimeout(() => fail(new Error('Room admission timed out; reload both devices')), 10_000);
+      signal.addEventListener('abort', abort, { once: true });
+      if (signal.aborted) { abort(); return; }
+      ws.onopen = () => {
+        if (signal.aborted) { abort(); return; }
+        ws.send(JSON.stringify({ type: 'hello', role, version: 2 } satisfies WireSignal));
+      };
+      ws.onmessage = (event) => {
+        if (signal.aborted || this.ws !== ws || typeof event.data !== 'string' || event.data.length > 262144) return;
+        let raw: unknown;
+        try { raw = JSON.parse(event.data); } catch { return; }
+        if (!admitted && raw && typeof raw === 'object' && 'type' in raw && raw.type === 'admitted') {
+          if (!('version' in raw) || raw.version !== 2 || !('token' in raw) || typeof raw.token !== 'string' ||
+            !/^[a-f0-9]{64}$/.test(raw.token) || !('expiresAt' in raw) || typeof raw.expiresAt !== 'number' || raw.expiresAt <= Date.now()) {
+            fail(new Error('Unsupported room; reload both devices')); return;
+          }
+          admitted = true; cleanupWait(); resolve({ token: raw.token, expiresAt: raw.expiresAt }); return;
         }
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(e.data);
-        } catch (err) {
-          console.warn('[RTC] bad signaling message:', err);
-          return;
-        }
-        const msg = parseWireSignal(parsed);
-        if (!msg) {
-          console.warn('[RTC] rejected signaling message with an unexpected shape');
-          return;
-        }
-        this.cb.onMessage(msg);
+        const message = parseWireSignal(raw);
+        if (message) this.cb.onMessage(message);
       };
       ws.onerror = () => {
-        // While the socket is being opened, a failure is one attempt of a
-        // retry — the promise carries it, and the last attempt reports it.
-        if (!this.opening) this.cb.onError();
-        reject(new Error('signaling websocket error'));
+        if (!admitted) { fail(new Error('Signaling connection failed')); return; }
+        if (!signal.aborted && this.ws === ws) { this.stopHeartbeat(); this.cb.onError(); }
       };
       ws.onclose = () => {
-        // A socket that a retry has replaced is not the room's socket, and a
-        // close during the opening belongs to the attempt that failed.
-        if (this.opening || this.ws !== ws) return;
-        this.cb.onClose();
+        if (!admitted) { fail(new Error('Room closed before admission')); return; }
+        cleanupWait(); detach();
+        if (signal.aborted || this.ws !== ws) return;
+        this.ws = null; this.stopHeartbeat(); this.cb.onClose();
       };
     });
   }
-
   send(msg: WireSignal): void {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(msg));
-    }
+    if (this.lifetime.signal.aborted) return;
+    if (this.ws?.readyState !== WebSocket.OPEN) throw new Error('Signaling is not open');
+    this.ws.send(JSON.stringify(msg));
   }
-
+  startHeartbeat(): void {
+    this.stopHeartbeat();
+    this.heartbeat = setInterval(() => {
+      if (this.ws?.readyState !== WebSocket.OPEN) { this.stopHeartbeat(); return; }
+      try { this.ws.send(HEARTBEAT_FRAME); } catch { this.stopHeartbeat(); this.cb.onError(); }
+    }, HEARTBEAT_INTERVAL_MS);
+  }
+  stopHeartbeat(): void {
+    if (this.heartbeat !== null) clearInterval(this.heartbeat);
+    this.heartbeat = null;
+  }
   close(): void {
-    this.ws?.close();
-    this.ws = null;
+    this.stopHeartbeat(); this.lifetime.abort();
+    const ws = this.ws; this.ws = null;
+    if (ws) { ws.onopen = null; ws.onmessage = null; ws.onerror = null; ws.onclose = null; ws.close(); }
   }
 }

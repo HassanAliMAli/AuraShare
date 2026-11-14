@@ -52,3 +52,11 @@ namespace_id = "7321"
 #
 #   wrangler secret put TURN_KEY_ID
 #   wrangler secret put TURN_KEY_API_TOKEN
+
+# Credential issuance has a separate, stricter budget.
+[[ratelimits]]
+name = "ICE_RATE_LIMITER"
+namespace_id = "7322"
+[ratelimits.simple]
+limit = 10
+period = 60

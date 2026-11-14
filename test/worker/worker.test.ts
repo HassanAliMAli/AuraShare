@@ -6,6 +6,7 @@ import {
   MINT_PATH,
   ROOM_IDLE_TTL_MS,
 } from '../../backend/modules/room-protocol';
+import { generateIceConfig } from '../../backend/modules/turn';
 import { isRoomCode, ROOM_CODE_ALPHABET } from '@/lib/roomCode';
 
 type WorkerEnv = Parameters<typeof worker.fetch>[1];
@@ -21,9 +22,12 @@ function env(overrides: Partial<WorkerEnv> = {}): WorkerEnv {
 }
 
 function makeSocket() {
+  let data: unknown = null;
   return {
-    send: vi.fn(),
-    close: vi.fn(),
+    readyState: 1,
+    send: vi.fn(), close: vi.fn(),
+    serializeAttachment: vi.fn((value: unknown) => { data = structuredClone(value); }),
+    deserializeAttachment: vi.fn(() => structuredClone(data)),
   };
 }
 
@@ -107,7 +111,7 @@ function stubSwitchingProtocols(): void {
 
 /** A request that asks for the signalling socket of a room. */
 function socketRequest(path = '/api/room/ABC123/ws'): Request {
-  return new Request(`http://local${path}`, { headers: { Upgrade: 'websocket' } });
+  return new Request(`http://local${path}`, { headers: { Origin: 'http://local', Upgrade: 'websocket' } });
 }
 
 /** The internal request the Worker sends to reserve a room. */
@@ -174,7 +178,7 @@ describe('worker/worker — HTTP routes', () => {
   it('requires an uppercase room code in the websocket path', async () => {
     const response = await worker.fetch(
       new Request('http://local/api/room/abc123/ws', {
-        headers: { Upgrade: 'websocket' },
+        headers: { Origin: 'http://local', Upgrade: 'websocket' },
       }),
       env(),
     );
@@ -186,7 +190,7 @@ describe('worker/worker — HTTP routes', () => {
     // be able to allocate a Durable Object.
     const response = await worker.fetch(
       new Request('http://local/api/room/IL0OU1/ws', {
-        headers: { Upgrade: 'websocket' },
+        headers: { Origin: 'http://local', Upgrade: 'websocket' },
       }),
       env(),
     );
@@ -217,7 +221,7 @@ describe('worker/worker — HTTP routes', () => {
       } as unknown as WorkerEnv['ROOMS'],
     });
     const request = new Request('http://local/api/room/ABC123/ws', {
-      headers: { Upgrade: 'websocket' },
+      headers: { Origin: 'http://local', Upgrade: 'websocket' },
     });
 
     const response = await worker.fetch(request, roomEnv);
@@ -243,102 +247,33 @@ describe('worker/worker — HTTP routes', () => {
 });
 
 describe('worker/worker — TURN credential generation', () => {
-  beforeEach(() => {
-    vi.resetModules();
+  afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+  it('never issues TURN from the public bootstrap, even with configured secrets', async () => {
+    const upstream = vi.fn(); vi.stubGlobal('fetch', upstream);
+    const response = await worker.fetch(new Request('http://local/api/ice-servers'), env({ TURN_KEY_ID: 'key', TURN_KEY_API_TOKEN: 'secret' }));
+    const body = await response.json() as { degraded: boolean; iceServers: { urls: string }[] };
+    expect(body.degraded).toBe(true); expect(upstream).not.toHaveBeenCalled();
+    expect(body.iceServers.every((server) => server.urls.startsWith('stun:'))).toBe(true);
   });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
-    vi.restoreAllMocks();
+  it('generates one-hour credentials without a shared global cache', async () => {
+    const upstream = vi.fn(async () => Response.json({ iceServers: [{ urls: 'turn:relay', username: 'u', credential: 'c' }] }));
+    vi.stubGlobal('fetch', upstream);
+    const first = await generateIceConfig('key', 'secret');
+    await generateIceConfig('key', 'secret');
+    expect(upstream).toHaveBeenCalledTimes(2);
+    expect(first.expiresAt).toBeGreaterThan(Date.now() + 3500000);
+    expect(first.degraded).toBe(false);
   });
-
-  it('returns ephemeral TURN servers from the Cloudflare API', async () => {
-    const servers = [{ urls: 'turn:turn.cloudflare.com', username: 'u', credential: 'c' }];
-    const fetchSpy = vi.fn(async () =>
-      new Response(JSON.stringify({ iceServers: servers }), { status: 200 }),
-    );
-    vi.stubGlobal('fetch', fetchSpy);
-
-    const fresh = (await import('../../backend/index')).default;
-    const response = await fresh.fetch(
-      new Request('http://local/api/ice-servers'),
-      env({ TURN_KEY_ID: 'key', TURN_KEY_API_TOKEN: 'token' }),
-    );
-    const body = (await response.json()) as { iceServers: typeof servers };
-
-    expect(body.iceServers).toEqual(servers);
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchSpy.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toContain('/turn/keys/key/credentials/generate-ice-servers');
-    expect(init.method).toBe('POST');
-    expect(init.headers).toMatchObject({ Authorization: 'Bearer token' });
+  it('rejects issuance errors and malformed or empty credentials', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('failed', { status: 503 })));
+    await expect(generateIceConfig('key', 'secret')).rejects.toThrow();
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ iceServers: [{ urls: 'turn:relay' }] })));
+    await expect(generateIceConfig('key', 'secret')).rejects.toThrow();
   });
-
-  it('caches fresh TURN credentials across requests', async () => {
-    const fetchSpy = vi.fn(async () =>
-      new Response(JSON.stringify({ iceServers: [{ urls: 'turn:cached' }] }), { status: 200 }),
-    );
-    vi.stubGlobal('fetch', fetchSpy);
-
-    const fresh = (await import('../../backend/index')).default;
-    const roomEnv = env({ TURN_KEY_ID: 'key', TURN_KEY_API_TOKEN: 'token' });
-    await fresh.fetch(new Request('http://local/api/ice-servers'), roomEnv);
-    const second = await fresh.fetch(new Request('http://local/api/ice-servers'), roomEnv);
-    const body = (await second.json()) as { iceServers: { urls: string }[] };
-
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
-    expect(body.iceServers[0]?.urls).toBe('turn:cached');
-  });
-
-  it('falls back to STUN when the Cloudflare API errors', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('nope', { status: 500 })));
-
-    const fresh = (await import('../../backend/index')).default;
-    const response = await fresh.fetch(
-      new Request('http://local/api/ice-servers'),
-      env({ TURN_KEY_ID: 'key', TURN_KEY_API_TOKEN: 'token' }),
-    );
-    const body = (await response.json()) as { iceServers: { urls: string }[] };
-
-    expect(body.iceServers[0]?.urls).toBe('stun:stun.l.google.com:19302');
-    expect(warn).toHaveBeenCalled();
-  });
-
-  it('falls back to STUN when the API returns no servers', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response(JSON.stringify({ iceServers: [] }), { status: 200 })),
-    );
-
-    const fresh = (await import('../../backend/index')).default;
-    const response = await fresh.fetch(
-      new Request('http://local/api/ice-servers'),
-      env({ TURN_KEY_ID: 'key', TURN_KEY_API_TOKEN: 'token' }),
-    );
-    const body = (await response.json()) as { iceServers: { urls: string }[] };
-
-    expect(body.iceServers.length).toBe(3);
-  });
-
-  it('falls back to STUN when the API request throws', async () => {
-    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => {
-        throw new Error('offline');
-      }),
-    );
-
-    const fresh = (await import('../../backend/index')).default;
-    const response = await fresh.fetch(
-      new Request('http://local/api/ice-servers'),
-      env({ TURN_KEY_ID: 'key', TURN_KEY_API_TOKEN: 'token' }),
-    );
-    const body = (await response.json()) as { iceServers: { urls: string }[] };
-
-    expect(body.iceServers.length).toBe(3);
-    expect(error).toHaveBeenCalled();
+  it('requires a peer token before touching the room for ICE issuance', async () => {
+    const bindings = env();
+    const response = await worker.fetch(new Request('http://local/api/room/ABC123/ice-servers', { method: 'POST' }), bindings);
+    expect(response.status).toBe(401); expect(bindings.ROOMS.get).not.toHaveBeenCalled();
   });
 });
 
@@ -788,7 +723,7 @@ describe('worker/worker — rate limiting the room routes', () => {
     const roomLimiter = limiter();
     await worker.fetch(
       new Request('http://local/api/room/ABC123/ws', {
-        headers: { Upgrade: 'websocket', 'cf-connecting-ip': '203.0.113.7' },
+        headers: { Origin: 'http://local', Upgrade: 'websocket', 'cf-connecting-ip': '203.0.113.7' },
       }),
       env({ ROOM_RATE_LIMITER: roomLimiter }),
     );

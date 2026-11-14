@@ -20,7 +20,7 @@ export type AppStatus =
 
 export type ShareMode = 'text' | 'files';
 
-/** Discriminated union of every message sent over the RTC data channel. */
+/** Legacy v1 shapes, recognized only to show an upgrade message to old peers. */
 export type SignalingMessage =
   | { kind: 'file-descriptors'; files: FileDescriptor[] }
   | { kind: 'file-metadata'; name: string; size: number; type: string; index: number }
@@ -31,10 +31,14 @@ export type SignalingMessage =
 
 /** Discriminated union of every frame exchanged over the signaling socket. */
 export type WireSignal =
-  | { type: 'hello'; role: 'sender' | 'receiver' }
+  | { type: 'hello'; role: 'sender' | 'receiver'; version?: 2 }
+  | { type: 'ready' }
+  | { type: 'refresh-request' }
+  | { type: 'refresh-prepare'; id: string }
+  | { type: 'refresh-ready'; id: string }
   | { type: 'peer-present' }
   | { type: 'peer-left' }
   | { type: 'room-expired' }
-  | { type: 'offer'; sdp: RTCSessionDescriptionInit }
-  | { type: 'answer'; sdp: RTCSessionDescriptionInit }
-  | { type: 'ice'; candidate: RTCIceCandidateInit };
+  | { type: 'offer'; sdp: RTCSessionDescriptionInit; generation?: string }
+  | { type: 'answer'; sdp: RTCSessionDescriptionInit; generation?: string }
+  | { type: 'ice'; candidate: RTCIceCandidateInit; generation?: string };

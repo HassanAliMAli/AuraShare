@@ -1,12 +1,12 @@
 import { motion } from 'motion/react';
-import { Copy, Check } from 'lucide-react';
+import { Copy } from 'lucide-react';
 import { useState } from 'react';
 import { useAppStore } from '../../stores/appStore';
 import { viewVariants } from '../../lib/motion';
 import { Button } from '../ui/Button';
 import { Panel } from '../ui/Panel';
 
-/** Success screen: shows received text (with copy) or a completion notice. */
+/** Success screen: shows received text with a copy action. */
 export function SuccessView() {
   const { state, actions } = useAppStore();
   const [copyFailed, setCopyFailed] = useState(false);
@@ -29,37 +29,28 @@ export function SuccessView() {
           Transfer complete
         </div>
 
-        {state.receivedText ? (
-          <Panel className="mt-6 p-6">
-            <p className="max-h-60 overflow-y-auto whitespace-pre-wrap text-left font-mono text-sm leading-relaxed text-text">
-              {state.receivedText}
-            </p>
-            <div className="mt-5 border-t border-border pt-4">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={copyReceivedText}
-                aria-label="Copy received text to clipboard"
-              >
-                <Copy className="h-3.5 w-3.5" aria-hidden="true" />
-                Copy text
-              </Button>
-              {copyFailed && (
-                <p className="mt-3 text-xs text-error" role="status">
-                  Could not reach the clipboard. Select the text above and copy it
-                  manually.
-                </p>
-              )}
-            </div>
-          </Panel>
-        ) : (
-          <Panel className="mt-6 flex items-center gap-3 p-6">
-            <Check className="h-5 w-5 shrink-0 text-success" aria-hidden="true" />
-            <p className="text-sm text-text-2">
-              The files are ready to download.
-            </p>
-          </Panel>
-        )}
+        <Panel className="mt-6 p-6">
+          <p className="max-h-60 overflow-y-auto whitespace-pre-wrap text-left font-mono text-sm leading-relaxed text-text">
+            {state.receivedText}
+          </p>
+          <div className="mt-5 border-t border-border pt-4">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={copyReceivedText}
+              aria-label="Copy received text to clipboard"
+            >
+              <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+              Copy text
+            </Button>
+            {copyFailed && (
+              <p className="mt-3 text-xs text-error" role="status">
+                Could not reach the clipboard. Select the text above and copy it
+                manually.
+              </p>
+            )}
+          </div>
+        </Panel>
 
         <Button
           variant="secondary"

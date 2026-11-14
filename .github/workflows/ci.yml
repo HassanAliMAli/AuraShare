@@ -17,8 +17,8 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          # Wrangler 4 requires Node >= 22.12.0, and Vite 8 requires
-          # ^20.19.0 || >=22.12.0 — 22 is the floor that satisfies both.
+          # Latest Node 22 satisfies jsdom 31's >=22.22.2 floor as well
+          # as Vite and Wrangler. package.json records all supported ranges.
           node-version: 22
           cache: npm
 
@@ -59,7 +59,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          # Wrangler 4 requires Node >= 22.12.0 — the e2e job starts Wrangler.
+          # Latest Node 22 satisfies the project engines and runs Wrangler.
           node-version: 22
           cache: npm
 

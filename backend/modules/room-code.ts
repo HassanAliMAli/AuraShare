@@ -8,7 +8,9 @@
  */
 
 /** Crockford base32 — excludes I, L, O, U to avoid ambiguity. */
-export const CROCKFORD_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+import { ROOM_CODE_ALPHABET, ROOM_CODE_LENGTH, ROOM_CODE_SOURCE } from '../../shared/room-code';
+
+export { ROOM_CODE_ALPHABET as CROCKFORD_ALPHABET } from '../../shared/room-code';
 
 /**
  * The only room codes this Worker can ever serve.
@@ -16,14 +18,14 @@ export const CROCKFORD_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
  * Kept derived from the alphabet so the route and the mint can never drift
  * apart — an impossible code must not be able to allocate a Durable Object.
  */
-const ROOM_ROUTE_PATTERN = new RegExp(`^/api/room/([${CROCKFORD_ALPHABET}]{6})/ws$`);
+const ROOM_ROUTE_PATTERN = new RegExp(`^/api/room/(${ROOM_CODE_SOURCE})/ws$`);
 
 /** Mint a new transmission code. */
 export function generateRoomCode(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(6));
+  const bytes = crypto.getRandomValues(new Uint8Array(ROOM_CODE_LENGTH));
   let code = '';
   for (const byte of bytes) {
-    code += CROCKFORD_ALPHABET[byte % 32] ?? '0';
+    code += ROOM_CODE_ALPHABET[byte % ROOM_CODE_ALPHABET.length] ?? '0';
   }
   return code;
 }

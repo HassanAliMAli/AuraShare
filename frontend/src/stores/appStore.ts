@@ -25,6 +25,10 @@ export type AppState = {
   acknowledgedFiles: Set<number>;
   sentFiles: FileDescriptor[];
   receiverReady: boolean;
+  failedFileIndex: number | null;
+  transferError: string | null;
+  connectionWarning: string | null;
+  textAcknowledged: boolean;
 };
 
 export const initialState: AppState = {
@@ -45,6 +49,10 @@ export const initialState: AppState = {
   acknowledgedFiles: new Set(),
   sentFiles: [],
   receiverReady: false,
+  failedFileIndex: null,
+  transferError: null,
+  connectionWarning: null,
+  textAcknowledged: false,
 };
 
 export type AppAction =
@@ -53,7 +61,6 @@ export type AppAction =
   | { type: 'SET_JOIN_CODE'; code: string }
   | { type: 'SET_SHARE_MODE'; mode: ShareMode }
   | { type: 'START_RECEIVE' }
-  | { type: 'CANCEL_RECEIVE' }
   | { type: 'SET_ROOM'; roomId: string }
   | { type: 'SET_RECEIVER_READY' }
   | { type: 'SET_SENT_FILES'; files: FileDescriptor[] }
@@ -65,10 +72,35 @@ export type AppAction =
   | { type: 'RECEIVE_TEXT'; text: string }
   | { type: 'SET_ERROR'; message: string }
   | { type: 'SET_JOIN_CODE_ERROR'; message: string | null }
+  | { type: 'TRANSFER_FAILED'; index: number; message: string }
+  | { type: 'RETRY_TRANSFER' }
+  | { type: 'SKIP_TRANSFER' }
+  | { type: 'TEXT_ACKNOWLEDGED' }
+  | { type: 'TEXT_RETRY' }
+  | { type: 'CONNECTION_WARNING'; message: string | null }
   | { type: 'RESET' };
 
 export function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
+    case 'CONNECTION_WARNING': return { ...state, connectionWarning: action.message };
+    case 'TEXT_ACKNOWLEDGED': return { ...state, textAcknowledged: true, transferError: null };
+    case 'TEXT_RETRY': return { ...state, textAcknowledged: false, transferError: null };
+    case 'TRANSFER_FAILED':
+      return {
+        ...state, transferError: action.message, failedFileIndex: action.index >= 0 ? action.index : null,
+        downloadingFileIndex: null, transferProgress: 0,
+        ...(state.isReceiving && action.index < 0 ? { status: 'error' as const, errorMessage: action.message } : {}),
+      };
+    case 'RETRY_TRANSFER':
+      if (state.failedFileIndex === null || state.downloadingFileIndex !== null) return state;
+      return { ...state, downloadingFileIndex: state.failedFileIndex, failedFileIndex: null, transferError: null, transferProgress: 0 };
+    case 'SKIP_TRANSFER': {
+      if (state.failedFileIndex === null) return state;
+      const queue = state.downloadQueue.filter((index) => index !== state.failedFileIndex);
+      const selected = new Set(state.selectedFiles); selected.delete(state.failedFileIndex);
+      return { ...state, downloadQueue: queue, selectedFiles: selected,
+        downloadingFileIndex: queue[0] ?? null, failedFileIndex: null, transferError: null, transferProgress: 0 };
+    }
     case 'SET_STATUS':
       return { ...state, status: action.status };
     case 'SET_PROGRESS':
@@ -79,8 +111,6 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       return { ...state, shareMode: action.mode };
     case 'START_RECEIVE':
       return { ...state, isReceiving: true, status: 'idle', joinCodeError: null };
-    case 'CANCEL_RECEIVE':
-      return { ...state, isReceiving: false };
     case 'SET_ROOM':
       return { ...state, roomId: action.roomId };
     case 'SET_RECEIVER_READY':
@@ -90,39 +120,44 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case 'RECEIVE_DESCRIPTORS':
       return { ...state, receivedFiles: action.files, status: 'connected' };
     case 'TOGGLE_SELECT': {
+      if (state.downloadingFileIndex !== null || state.downloadedFiles.has(action.index)) return state;
       const next = new Set(state.selectedFiles);
       if (action.selected) next.add(action.index);
       else next.delete(action.index);
       return { ...state, selectedFiles: next };
     }
     case 'DOWNLOAD_START': {
-      const first = action.indices[0];
+      if (state.downloadingFileIndex !== null || state.failedFileIndex !== null) return state;
+      const indices = [...new Set(action.indices)].filter((index) => !state.downloadedFiles.has(index));
+      const first = indices[0];
       return {
         ...state,
-        downloadQueue: [...action.indices],
+        downloadQueue: indices,
         downloadingFileIndex: first === undefined ? null : first,
-        downloadedFiles: new Set(),
         transferProgress: 0,
       };
     }
     case 'FILE_COMPLETE': {
+      if (state.downloadingFileIndex !== action.index) return state;
       const downloaded = new Set(state.downloadedFiles);
       downloaded.add(action.index);
+      const selected = new Set(state.selectedFiles);
+      selected.delete(action.index);
       const queue = state.downloadQueue.filter((i) => i !== action.index);
       const next = queue[0] ?? null;
-      const batchDone = queue.length === 0;
       return {
         ...state,
         downloadedFiles: downloaded,
+        selectedFiles: selected,
         downloadQueue: queue,
         downloadingFileIndex: next,
-        transferProgress: batchDone ? 0 : state.transferProgress,
+        transferProgress: 0,
       };
     }
     case 'FILE_ACKNOWLEDGED': {
       const next = new Set(state.acknowledgedFiles);
       next.add(action.index);
-      return { ...state, acknowledgedFiles: next };
+      return { ...state, acknowledgedFiles: next, ...(state.failedFileIndex === action.index ? { failedFileIndex: null, transferError: null } : {}) };
     }
     case 'RECEIVE_TEXT':
       return { ...state, receivedText: action.text, status: 'success' };
@@ -144,11 +179,14 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 export type AppActions = {
   startShare: (files?: File[], text?: string) => void;
   startReceive: () => void;
-  cancelReceive: () => void;
   setShareMode: (mode: ShareMode) => void;
   setJoinCode: (code: string) => void;
   join: (code: string) => void;
   downloadSelected: () => void;
+  retryTransfer: () => void;
+  skipTransfer: () => void;
+  cancelTransfer: () => void;
+  retryText: () => void;
   toggleFileSelected: (index: number, selected: boolean) => void;
   copyText: (text: string) => Promise<boolean>;
   reset: () => void;

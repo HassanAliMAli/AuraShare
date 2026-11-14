@@ -19,9 +19,13 @@ const SECURITY_HEADERS: Record<string, string> = {
 
 /** The machine-readable codes a client can branch on. */
 export type ApiErrorCode =
+  | 'unauthorized'
+  | 'forbidden'
+  | 'turn_unavailable'
   | 'not_found'
   | 'upgrade_required'
   | 'room_full'
+  | 'room_conflict'
   | 'room_not_found'
   | 'room_unavailable'
   | 'rate_limited';

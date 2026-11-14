@@ -43,7 +43,7 @@ export function ReceiverFileList() {
                     if (state.downloadedFiles.has(i)) return;
                     actions.toggleFileSelected(i, e.target.checked);
                   }}
-                  disabled={state.downloadedFiles.has(i)}
+                  disabled={state.downloadedFiles.has(i) || state.downloadingFileIndex !== null}
                   aria-label={`Select ${file.name}`}
                   className="h-4 w-4 shrink-0 accent-(--color-accent)"
                 />
@@ -90,11 +90,26 @@ export function ReceiverFileList() {
           ))}
         </Panel>
 
+        {state.transferError && (
+          <div className="mt-4 border border-error/40 p-3" role="alert">
+            <p className="text-sm text-error">{state.transferError}</p>
+            {state.failedFileIndex !== null && (
+              <div className="mt-3 flex gap-3">
+                <Button onClick={actions.retryTransfer}>Retry file</Button>
+                <Button onClick={actions.skipTransfer}>Skip file</Button>
+              </div>
+            )}
+          </div>
+        )}
+        {state.downloadingFileIndex !== null && (
+          <Button variant="muted" className="mt-4" onClick={actions.cancelTransfer}>Cancel current file</Button>
+        )}
         <div className="mt-5 flex gap-3">
           {state.selectedFiles.size > 0 && (
             <Button
               variant="primary"
               onClick={actions.downloadSelected}
+              disabled={state.downloadingFileIndex !== null || state.failedFileIndex !== null}
               className="flex-1"
             >
               Download ({state.selectedFiles.size})

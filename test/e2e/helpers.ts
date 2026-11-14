@@ -25,11 +25,11 @@ export const APP_URL = '/app';
  * what the suite is testing here is the peer-to-peer flow, not the ICE list.
  */
 async function serveLocalIceServers(page: Page): Promise<void> {
-  await page.route('**/api/ice-servers', async (route) => {
+  await page.route('**/api/room/*/ice-servers', async (route) => {
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify(localIceServers()),
+      body: JSON.stringify({ ...localIceServers(), expiresAt: null, degraded: true }),
     });
   });
 }
@@ -154,7 +154,13 @@ export async function joinRoom(page: Page, code: string): Promise<void> {
   await page.getByRole('button', { name: 'Establish connection' }).click();
 }
 
-/** Wait until the sender reports that the receiver is connected. */
+/**
+ * Wait until the sender reports that the receiver is connected.
+ *
+ * A text share is acknowledged as soon as the channel opens, so the status
+ * line can move from "Receiver connected" to "Text delivered" between two
+ * polls. Both labels prove the peer link is up.
+ */
 export async function expectPeerConnected(sender: Page): Promise<void> {
-  await expect(sender.getByText('Receiver Connected')).toBeVisible();
+  await expect(sender.getByText(/receiver connected|text delivered/i)).toBeVisible();
 }

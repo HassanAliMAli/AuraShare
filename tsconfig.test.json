@@ -6,7 +6,6 @@
     "module": "esnext",
     "types": ["node", "vitest/globals", "@testing-library/jest-dom", "@cloudflare/workers-types"],
     "skipLibCheck": true,
-    "ignoreDeprecations": "6.0",
 
     /* Bundler mode */
     "moduleResolution": "bundler",
@@ -29,5 +28,5 @@
       "@/*": ["./frontend/src/*"]
     }
   },
-  "include": ["test", "playwright.config.ts"]
+  "include": ["test", "playwright.config.ts", "backend/bindings.d.ts"]
 }

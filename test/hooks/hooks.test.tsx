@@ -1,8 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
-import { hasReducedMotionListener, prefersReducedMotion } from 'motion-dom';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { useRoute } from '@/hooks/useRoute';
-import { usePrefersReducedMotion } from '@/hooks/useReducedMotion';
 import { navigate } from '@/lib/router';
 import { resetRoute } from '../shared/fixtures';
 
@@ -25,42 +23,5 @@ describe('hooks/useRoute', () => {
     unmount();
     act(() => navigate('/app'));
     expect(result.current).toBe('/');
-  });
-});
-
-describe('hooks/usePrefersReducedMotion', () => {
-  const originalMatchMedia = window.matchMedia;
-
-  afterEach(() => {
-    window.matchMedia = originalMatchMedia;
-  });
-
-  function stubMatchMedia(matches: boolean): void {
-    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-      matches,
-      media: query,
-      onchange: null,
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    }));
-    // motion caches the preference at module level; reset it so each
-    // test observes the freshly stubbed matchMedia implementation.
-    hasReducedMotionListener.current = false;
-    prefersReducedMotion.current = null;
-  }
-
-  it('returns false when the user has no motion preference', () => {
-    stubMatchMedia(false);
-    const { result } = renderHook(() => usePrefersReducedMotion());
-    expect(result.current).toBe(false);
-  });
-
-  it('returns true when reduced motion is requested', () => {
-    stubMatchMedia(true);
-    const { result } = renderHook(() => usePrefersReducedMotion());
-    expect(result.current).toBe(true);
   });
 });

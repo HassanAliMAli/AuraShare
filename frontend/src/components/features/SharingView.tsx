@@ -108,9 +108,17 @@ export function SharingView() {
         </Panel>
 
         <p className="mt-5 text-center font-mono text-xs uppercase tracking-[0.14em] text-text-3">
-          {state.receiverReady ? 'Receiver connected' : 'Waiting for the other device'}
+          {state.textAcknowledged ? 'Text delivered' : state.receiverReady ? 'Receiver connected' : 'Waiting for the other device'}
         </p>
 
+        {state.transferError && (
+          <div role="alert" className="mt-4 border border-error/40 p-3 text-sm text-error">
+            <p>{state.transferError}</p>
+            {state.sentFiles.length === 0 ? (
+              <Button className="mt-3" onClick={actions.retryText}>Retry text</Button>
+            ) : <p className="mt-2">The receiving device can retry or skip this file.</p>}
+          </div>
+        )}
         {state.sentFiles.length > 0 && (
           <div className="mt-8">
             <div className="flex items-baseline justify-between border-b border-border pb-2">

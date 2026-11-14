@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AppProvider } from '@/stores/AppProvider';
 import { useAppStore } from '@/stores/appStore';
+import { MAX_TEXT_BYTES } from '@/lib/protocol';
 import { createFile } from '../shared/fixtures';
 
 type FakeManager = {
@@ -17,6 +18,9 @@ type FakeManager = {
     onFileAcknowledged?: (index: number) => void;
     onFileDescriptorsReceived?: (files: { name: string; size: number; type: string }[]) => void;
     onTextReceived?: (text: string) => void;
+    onTransferFailed?: (index: number, message: string) => void;
+    onTextAcknowledged?: () => void;
+    onConnectionWarning?: (message: string | null) => void;
   };
   initialize: ReturnType<typeof vi.fn>;
   join: ReturnType<typeof vi.fn>;
@@ -24,6 +28,7 @@ type FakeManager = {
   sendMeta: ReturnType<typeof vi.fn>;
   sendText: ReturnType<typeof vi.fn>;
   requestFile: ReturnType<typeof vi.fn>;
+  cancelTransfer: ReturnType<typeof vi.fn>;
 };
 
 const hoisted = vi.hoisted(() => ({
@@ -46,6 +51,7 @@ vi.mock('@/lib/webrtc', () => {
     sendMeta = vi.fn();
     sendText = vi.fn();
     requestFile = vi.fn();
+    cancelTransfer = vi.fn();
 
     constructor(events: FakeManager['events']) {
       this.events = events;
@@ -78,12 +84,20 @@ function Probe() {
       <span data-testid="received-text">{state.receivedText ?? 'none'}</span>
       <span data-testid="error">{state.errorMessage ?? 'none'}</span>
       <span data-testid="join-code-error">{state.joinCodeError ?? 'none'}</span>
+      <span data-testid="transfer-error">{state.transferError ?? 'none'}</span>
+      <span data-testid="failed-index">{state.failedFileIndex ?? 'none'}</span>
+      <span data-testid="connection-warning">{state.connectionWarning ?? 'none'}</span>
+      <span data-testid="text-acknowledged">{String(state.textAcknowledged)}</span>
+      <span data-testid="downloading">{state.downloadingFileIndex ?? 'none'}</span>
 
       <button type="button" onClick={() => actions.startShare([SHARED_FILE], 'hello peer')}>
         share
       </button>
       <button type="button" onClick={() => actions.startShare(undefined, 'text only')}>
         share text
+      </button>
+      <button type="button" onClick={() => actions.startShare(undefined, 'x'.repeat(MAX_TEXT_BYTES + 1))}>
+        share huge text
       </button>
       <button type="button" onClick={() => actions.join('abc123')}>
         join
@@ -108,6 +122,18 @@ function Probe() {
       ))}
       <button type="button" onClick={() => actions.copyText('copied text')}>
         copy
+      </button>
+      <button type="button" onClick={actions.retryTransfer}>
+        retry transfer
+      </button>
+      <button type="button" onClick={actions.skipTransfer}>
+        skip transfer
+      </button>
+      <button type="button" onClick={actions.cancelTransfer}>
+        cancel transfer
+      </button>
+      <button type="button" onClick={actions.retryText}>
+        retry text
       </button>
       <button type="button" onClick={actions.reset}>
         reset
@@ -491,5 +517,151 @@ describe('stores/AppProvider — lifecycle and actions', () => {
 
     unmount();
     expect(manager.close).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('stores/AppProvider — recovery and new session state', () => {
+  beforeEach(() => {
+    hoisted.managers.length = 0;
+    hoisted.initializeRejects = false;
+    hoisted.joinRejects = false;
+    vi.stubGlobal(
+      'URL',
+      Object.assign(URL, {
+        createObjectURL: vi.fn(() => 'blob:test'),
+        revokeObjectURL: vi.fn(),
+      }),
+    );
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it('rejects text beyond the protocol limit before opening a room', async () => {
+    renderProvider();
+    fireEvent.click(screen.getByRole('button', { name: 'share huge text' }));
+
+    expect(await screen.findByText('Text exceeds the 1 MiB limit')).toBeInTheDocument();
+    expect(hoisted.managers).toHaveLength(0);
+  });
+
+  it('surfaces a relay warning and clears it when credentials are healthy', async () => {
+    renderProvider();
+    fireEvent.click(screen.getByRole('button', { name: 'join' }));
+    const manager = lastManager();
+
+    act(() => manager.events.onConnectionWarning?.('Relay unavailable'));
+    expect(screen.getByTestId('connection-warning')).toHaveTextContent('Relay unavailable');
+
+    act(() => manager.events.onConnectionWarning?.(null));
+    expect(screen.getByTestId('connection-warning')).toHaveTextContent('none');
+  });
+
+  it('records text delivery acknowledgement', async () => {
+    renderProvider();
+    fireEvent.click(screen.getByRole('button', { name: 'share text' }));
+    await screen.findByText('ABC123');
+    const manager = lastManager();
+    act(() => manager.events.onReceiverConnected?.());
+
+    act(() => manager.events.onTextAcknowledged?.());
+    expect(screen.getByTestId('text-acknowledged')).toHaveTextContent('true');
+  });
+
+  it('retries and skips a failed file transfer', async () => {
+    renderProvider();
+    fireEvent.click(screen.getByRole('button', { name: 'join' }));
+    const manager = lastManager();
+    act(() => manager.events.onFileDescriptorsReceived?.([
+      { name: 'one.txt', size: 10, type: 'text/plain' },
+      { name: 'two.txt', size: 20, type: 'text/plain' },
+    ]));
+
+    fireEvent.click(screen.getByRole('checkbox', { name: 'select one.txt' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'select two.txt' }));
+    fireEvent.click(screen.getByRole('button', { name: 'download' }));
+    expect(manager.requestFile).toHaveBeenCalledWith(0);
+
+    act(() => manager.events.onTransferFailed?.(0, 'timed out'));
+    expect(screen.getByTestId('transfer-error')).toHaveTextContent('timed out');
+    expect(screen.getByTestId('failed-index')).toHaveTextContent('0');
+    expect(screen.getByTestId('downloading')).toHaveTextContent('none');
+
+    fireEvent.click(screen.getByRole('button', { name: 'retry transfer' }));
+    expect(manager.requestFile).toHaveBeenCalledTimes(2);
+    expect(manager.requestFile).toHaveBeenLastCalledWith(0);
+
+    act(() => manager.events.onTransferFailed?.(0, 'timed out again'));
+    fireEvent.click(screen.getByRole('button', { name: 'skip transfer' }));
+    expect(screen.getByTestId('transfer-error')).toHaveTextContent('none');
+    expect(screen.getByTestId('failed-index')).toHaveTextContent('none');
+    expect(manager.requestFile).toHaveBeenLastCalledWith(1);
+  });
+
+  it('cancels the active file transfer through the manager', async () => {
+    renderProvider();
+    fireEvent.click(screen.getByRole('button', { name: 'join' }));
+    const manager = lastManager();
+    act(() => manager.events.onFileDescriptorsReceived?.([
+      { name: 'one.txt', size: 10, type: 'text/plain' },
+    ]));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'select one.txt' }));
+    fireEvent.click(screen.getByRole('button', { name: 'download' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'cancel transfer' }));
+    expect(manager.cancelTransfer).toHaveBeenCalledTimes(1);
+  });
+
+  it('resends text after a failed outgoing text transfer', async () => {
+    renderProvider();
+    fireEvent.click(screen.getByRole('button', { name: 'share text' }));
+    await screen.findByText('ABC123');
+    const manager = lastManager();
+    act(() => manager.events.onReceiverConnected?.());
+    expect(manager.sendText).toHaveBeenCalledWith('text only');
+
+    act(() => manager.events.onTransferFailed?.(-1, 'cancelled'));
+    expect(screen.getByTestId('transfer-error')).toHaveTextContent('cancelled');
+
+    fireEvent.click(screen.getByRole('button', { name: 'retry text' }));
+    expect(manager.sendText).toHaveBeenCalledTimes(2);
+    expect(manager.sendText).toHaveBeenLastCalledWith('text only');
+  });
+
+  it('ignores download and retry actions without a selection or failure', () => {
+    renderProvider();
+    fireEvent.click(screen.getByRole('button', { name: 'download' }));
+    fireEvent.click(screen.getByRole('button', { name: 'retry text' }));
+
+    expect(hoisted.managers).toHaveLength(0);
+  });
+
+  it('closes the previous session when a new share starts', async () => {
+    renderProvider();
+    fireEvent.click(screen.getByRole('button', { name: 'share' }));
+    await screen.findByText('ABC123');
+    const first = lastManager();
+
+    fireEvent.click(screen.getByRole('button', { name: 'share text' }));
+    await screen.findByText('ABC123');
+    const second = lastManager();
+
+    expect(first.close).toHaveBeenCalledTimes(1);
+    expect(second).not.toBe(first);
+  });
+
+  it('closes the share session when the user starts receiving', async () => {
+    renderProvider();
+    fireEvent.click(screen.getByRole('button', { name: 'share' }));
+    await screen.findByText('ABC123');
+    const sharing = lastManager();
+
+    fireEvent.click(screen.getByRole('button', { name: 'receive' }));
+    expect(sharing.close).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('status')).toHaveTextContent('idle');
   });
 });

@@ -154,7 +154,13 @@ export async function joinRoom(page: Page, code: string): Promise<void> {
   await page.getByRole('button', { name: 'Establish connection' }).click();
 }
 
-/** Wait until the sender reports that the receiver is connected. */
+/**
+ * Wait until the sender reports that the receiver is connected.
+ *
+ * A text share is acknowledged as soon as the channel opens, so the status
+ * line can move from "Receiver connected" to "Text delivered" between two
+ * polls. Both labels prove the peer link is up.
+ */
 export async function expectPeerConnected(sender: Page): Promise<void> {
-  await expect(sender.getByText('Receiver Connected')).toBeVisible();
+  await expect(sender.getByText(/receiver connected|text delivered/i)).toBeVisible();
 }

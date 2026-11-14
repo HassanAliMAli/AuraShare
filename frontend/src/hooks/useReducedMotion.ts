@@ -1,4 +1,4 @@
-import { useReducedMotion } from 'framer-motion';
+import { useReducedMotion } from 'motion/react';
 
 /**
  * Re-export so components import from our hooks barrel. Returns true when the

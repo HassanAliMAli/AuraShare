@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 import { HERO } from '../../../lib/landingCopy';
 import { navigate } from '../../../lib/router';
 import { fadeUpVariants } from '../../../lib/motion';

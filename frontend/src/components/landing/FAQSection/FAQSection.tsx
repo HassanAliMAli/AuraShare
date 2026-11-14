@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 import { FAQS } from '../../../lib/landingCopy';
 import { Section, SectionHeader } from '../Section';
 import { FAQItem } from './FAQItem';

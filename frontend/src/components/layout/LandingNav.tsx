@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 import { NAV_LINKS, HERO } from '../../lib/landingCopy';
 import { navigate } from '../../lib/router';
 import { fadeLeftVariants, fadeRightVariants } from '../../lib/motion';

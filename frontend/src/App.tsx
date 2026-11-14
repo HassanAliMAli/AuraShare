@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { MotionConfig } from 'framer-motion';
+import { MotionConfig } from 'motion/react';
 import { useRoute } from './hooks';
 import { LandingPage } from './components/landing';
 

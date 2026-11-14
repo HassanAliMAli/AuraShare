@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 import { COMPARISON } from '../../../lib/landingCopy';
 import { Section, SectionHeader } from '../Section';
 import { sectionRevealVariants } from '../../../lib/motion';

@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 import { HOW_IT_WORKS } from '../../../lib/landingCopy';
 import { Section, SectionHeader } from '../Section';
 import { DevicePairGlyph } from './DevicePairGlyph';

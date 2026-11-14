@@ -9,8 +9,8 @@ import { createFile, resetRoute } from '../shared/fixtures';
 // The test setup stubs rAF (see src/test/setup.ts), which leaves
 // AnimatePresence's "wait" exits stuck mid-animation. The app suite asserts
 // routed views, not animation choreography, so render children immediately.
-vi.mock('framer-motion', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('framer-motion')>();
+vi.mock('motion/react', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('motion/react')>();
   return {
     ...actual,
     AnimatePresence: ({ children }: { children: ReactNode }) => <>{children}</>,

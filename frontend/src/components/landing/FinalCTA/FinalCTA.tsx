@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 import { FINAL_CTA } from '../../../lib/landingCopy';
 import { navigate } from '../../../lib/router';
 import { sectionRevealVariants } from '../../../lib/motion';

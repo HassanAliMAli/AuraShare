@@ -9,7 +9,7 @@
  *    so individual components do not need to branch on it.
  */
 
-import type { Transition } from 'framer-motion';
+import type { Transition } from 'motion/react';
 
 /** The single easing curve. */
 const EASE_OUT: [number, number, number, number] = [0.16, 1, 0.3, 1];

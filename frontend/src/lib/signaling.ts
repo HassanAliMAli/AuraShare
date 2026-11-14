@@ -50,9 +50,10 @@ export type SignalingCallbacks = {
  * reported.
  *
  * A handshake can fail for reasons that have nothing to do with the room:
- * the browser reuses its HTTP/2 connection for the socket, and Cloudflare's
- * edge resets those — measured at roughly half of the handshakes from a
- * desktop Chrome, on the deployed Worker as well as on the old one. Trying
+ * the connection is reset by Cloudflare's edge before the request is even
+ * sent, so the Worker never sees it. It is intermittent — measured between
+ * 8% and 50% of the handshakes from a desktop Chrome, and it happens with
+ * HTTP/2 on and with HTTP/2 off alike, so it is not the protocol. Trying
  * again costs one request and gets past it.
  */
 const OPEN_ATTEMPTS = 3;

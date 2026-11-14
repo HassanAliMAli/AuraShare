@@ -266,26 +266,35 @@ What the free plan also takes away, for whoever upgrades:
 The Workers binding has none of those limits, which is why it is what this
 project uses.
 
-## The signalling socket, and Chrome's HTTP/2
+## The signalling socket, and the edge's connection resets
 
-Roughly half of the WebSocket handshakes from a desktop Chrome fail against
-the deployed Worker. The connection is reset **before the request is sent**,
-so the Worker never sees it and the Worker logs show nothing.
+A desktop Chrome's WebSocket handshake against the deployed Worker fails
+intermittently. The connection is reset **before the request is sent**, so
+the Worker never sees it — the Worker logs show no entry for those attempts,
+and the browser reports `net::ERR_CONNECTION_RESET`.
 
-The cause is on the edge, not in the Worker:
+What is known, and what is not:
 
-- Chrome reuses its HTTP/2 connection for the WebSocket — RFC 8441, the
-  "extended CONNECT" — and Cloudflare's edge resets those.
-- With `--disable-http2` Chrome opens an HTTP/1.1 connection instead, and
-  every handshake succeeds (measured: 7 of 7 against 4 of 8).
-- The same failure happens on the deployment from **before** the room work,
-  so it is not something that work introduced.
-- Plain HTTPS from the same browser is unaffected (25 of 25).
+| Check | Result |
+|---|---|
+| The refused handshake | Reaches the Worker? **No** — no log entry, and Chrome's network events show the request was never sent |
+| Rate | **Variable**: 1 in 12, then 3 in 20, and 4 in 8 at another moment. It is not a stable 50% |
+| With `--disable-http2` | **The same failures** (1 in 10 with HTTP/2 on, 2 in 10 with it off, measured with the rounds interleaved) — so HTTP/2 is *not* the cause |
+| Plain HTTPS from the same browser | Unaffected (25 of 25) |
+| Node's WebSocket, and curl's | Unaffected |
+| The local Worker (`wrangler dev`) | Unaffected (8 of 8) |
+| The deployment from **before** the room work | Equally affected — this did not come with the room work |
+
+The reset happens between the browser and Cloudflare's edge, on a connection
+that never carried a request. What causes it is not established: it is not
+the HTTP protocol, not this Worker's code, and not the room work. It is
+worth a Cloudflare support ticket with the measurements above.
 
 The app opens the signalling socket with three attempts, which gets past it
-almost every time. The permanent fix is on Cloudflare's side; the one on
-ours is turning HTTP/2 off for the zone, which is a trade-off for every app
-that shares it.
+almost every time (measured: 10 of 10 sessions started against the live
+deployment). Turning HTTP/2 off for the zone was tried as a fix and **does
+not work** — it is not the protocol, and the setting would cost every other
+app on the zone for nothing.
 
 ## What a flood costs, and what protects the app
 

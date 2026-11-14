@@ -295,6 +295,35 @@ describe('stores/AppProvider — lifecycle and actions', () => {
     expect(anchorClick).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps a received file readable long enough to download it', () => {
+    vi.useFakeTimers();
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+
+    renderProvider();
+    fireEvent.click(screen.getByRole('button', { name: 'join' }));
+    act(() => {
+      lastManager().events.onFileComplete?.(
+        0,
+        createFile('report..pdf', 10, 'application/pdf'),
+      );
+    });
+
+    const revoke = vi.mocked(URL.revokeObjectURL);
+
+    // A second later the file must still be readable: a big file on a slow
+    // link is still being written when the download starts.
+    act(() => {
+      vi.advanceTimersByTime(2_000);
+    });
+    expect(revoke).not.toHaveBeenCalled();
+
+    // It is released eventually, so the blob is not held for ever.
+    act(() => {
+      vi.advanceTimersByTime(60_000);
+    });
+    expect(revoke).toHaveBeenCalledWith('blob:test');
+  });
+
   it('receives text and moves to success', () => {
     renderProvider();
     fireEvent.click(screen.getByRole('button', { name: 'join' }));

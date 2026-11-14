@@ -9,6 +9,16 @@ import type { AppActions } from './appStore';
 const CONNECT_TIMEOUT_MS = 30_000;
 
 /**
+ * How long a received file's object URL stays alive.
+ *
+ * The URL is where the browser reads the file from, and the browser may
+ * still be reading it long after the click: a large file on a slow link
+ * takes minutes to arrive. Revoking the URL while the download is running
+ * kills it, so the URL is kept for a minute and then released.
+ */
+const OBJECT_URL_TTL_MS = 60_000;
+
+/**
  * Owns the reducer + P2P manager lifecycle and exposes state + actions via
  * context. The single integration point; Phase 2 swaps the P2PManager internals
  * for raw WebRTC without changing this surface.
@@ -208,5 +218,5 @@ function autoSaveFile(file: File): void {
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  setTimeout(() => URL.revokeObjectURL(url), OBJECT_URL_TTL_MS);
 }

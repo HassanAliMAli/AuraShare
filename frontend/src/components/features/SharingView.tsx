@@ -71,13 +71,9 @@ export function ReceiveCodeForm() {
           </Button>
         </form>
 
-        <button
-          type="button"
-          onClick={actions.reset}
-          className="mt-6 w-full text-sm text-text-3 transition-colors hover:text-accent"
-        >
+        <Button variant="muted" onClick={actions.reset} className="mt-6 w-full">
           Cancel
-        </button>
+        </Button>
       </Panel>
     </motion.div>
   );
@@ -148,13 +144,9 @@ export function SharingView() {
           </div>
         )}
 
-        <button
-          type="button"
-          onClick={actions.reset}
-          className="mt-8 w-full text-sm text-text-3 transition-colors hover:text-accent"
-        >
+        <Button variant="muted" onClick={actions.reset} className="mt-8 w-full">
           End session
-        </button>
+        </Button>
       </div>
     </motion.div>
   );

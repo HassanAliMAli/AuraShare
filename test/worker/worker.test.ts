@@ -778,6 +778,33 @@ describe('worker/worker — rate limiting the room routes', () => {
     expect(roomLimiter.limit).not.toHaveBeenCalled();
   });
 
+  it('does not count a request that cannot reach a room', async () => {
+    const roomLimiter = limiter();
+
+    // The wrong method on the mint path: a 404 that never touches a room.
+    const wrongMethod = await worker.fetch(
+      new Request('http://local/api/room', {
+        method: 'GET',
+        headers: { 'cf-connecting-ip': '203.0.113.7' },
+      }),
+      env({ ROOM_RATE_LIMITER: roomLimiter }),
+    );
+
+    // A socket request that is not an upgrade: a 426, also without a room.
+    const noUpgrade = await worker.fetch(
+      new Request('http://local/api/room/ABC123/ws', {
+        headers: { 'cf-connecting-ip': '203.0.113.7' },
+      }),
+      env({ ROOM_RATE_LIMITER: roomLimiter }),
+    );
+
+    expect(wrongMethod.status).toBe(404);
+    expect(noUpgrade.status).toBe(426);
+    // Neither request can spend the Durable Object budget, so neither may
+    // spend a real user's rate-limit budget.
+    expect(roomLimiter.limit).not.toHaveBeenCalled();
+  });
+
   it('lets the request through when the limiter itself fails', async () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     const broken = {

@@ -243,8 +243,12 @@ the class itself lives in `backend/modules/room-do.ts`.
 
 The room routes — `POST /api/room` and the WebSocket route — are the ones
 that can spend the Durable Object budget, so they are rate limited per client
-IP. The limit is a **Workers rate limiting binding**, declared in
-`wrangler.toml`:
+IP. Only the requests that can actually reach a room are counted: the mint,
+and a WebSocket request that carries the upgrade header. A request that is
+refused before a room exists — the wrong method on the mint path, a socket
+request without the upgrade header — costs the Durable Object nothing, so it
+does not spend a real user's budget. The limit is a **Workers rate limiting
+binding**, declared in `wrangler.toml`:
 
 ```toml
 [[ratelimits]]

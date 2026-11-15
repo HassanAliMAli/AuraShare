@@ -1,5 +1,8 @@
 # Maintenance Plan — dependencies and the minor findings
 
+> **2026-11-15:** the test suite was removed from this project. Test commands
+> below are historical and do not describe the current repository.
+
 **Date:** 2026-11-14
 **Origin:** the final code review of 2026-11-14 (see the audit report)
 **Scope:** the second major finding (outdated dependencies) and every minor
@@ -183,18 +186,15 @@ header (a 426) each burn a token of a real user's budget.
 **Fix:** limit the two routes that actually touch a room — the mint, and a
 socket request that is a real upgrade.
 
-### m7 — the test report is a snapshot
+### m7 — the test report is gone
 
-`docs/TEST_REPORT.md` describes the 2026-11-12 run ("32 files / 329 tests").
-The suite is now 25 files / 364 tests. The record stays as it is — it is a
-report of that run — with one line added at the top giving the current
-numbers and the date.
+`docs/TEST_REPORT.md` was removed with the test suite on 2026-11-15. This
+section is kept only as a record of the 2026-11-12 plan.
 
 ### Verification
 
-`npm run lint`, `npm run typecheck`, `npm run test`, then the Playwright
-matrix. Nothing should change: no test asserts on the exports being removed,
-and the button variant is a visual no-op.
+`npm run lint`, `npm run typecheck`, and `npm run build`. The button variant
+is a visual no-op.
 
 ---
 

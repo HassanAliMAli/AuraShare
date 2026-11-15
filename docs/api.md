@@ -136,6 +136,6 @@ advertised for credential endpoints. Origin checks supplement token authorizatio
 they are not authentication for non-browser clients. Anonymous room creation
 still needs usage monitoring; admission does not eliminate all relay abuse.
 
-Unit/contract and E2E fixtures are updated for v2. Tests have not been executed
-under the user's no-tests instruction. Build/package checks do not prove real
-TURN renewal continuity, failure recovery, or cross-browser behavior.
+The project has no test suite by the owner's decision. Build/package checks do
+not prove real TURN renewal continuity, failure recovery, or cross-browser
+behavior.

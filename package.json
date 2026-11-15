@@ -10,13 +10,6 @@
     "deploy": "npm run build && wrangler deploy",
     "lint": "eslint .",
     "typecheck": "tsc -b",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
-    "test:e2e": "playwright test",
-    "test:e2e:fresh": "node --experimental-strip-types test/e2e/e2e-preflight.ts --kill && playwright test",
-    "test:e2e:report": "playwright show-report",
-    "test:live": "vitest run test/live",
     "preview": "vite preview --config frontend/vite.config.ts"
   },
   "dependencies": {
@@ -34,28 +27,20 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261114.1",
     "@eslint/js": "^10.0.1",
-    "@playwright/test": "^1.65.1",
     "@tailwindcss/vite": "^4.3.5",
-    "@testing-library/jest-dom": "^7.0.1",
-    "@testing-library/react": "^16.3.3",
-    "@testing-library/user-event": "^14.6.10",
     "@types/node": "^24.19.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.3.0",
-    "@vitest/coverage-v8": "^5.1.0",
     "eslint": "^10.15.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.7",
     "globals": "^17.14.0",
-    "jsdom": "^31.0.1",
     "tailwindcss": "^4.3.5",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.72.2",
     "vite": "^8.3.8",
-    "vitest": "^5.1.0",
-    "wrangler": "^4.162.0",
-    "@testing-library/dom": "^10.4.2"
+    "wrangler": "^4.162.0"
   },
   "overrides": {
     "@typescript-eslint/typescript-estree": {

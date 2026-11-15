@@ -1,3 +1,4 @@
+import { Brand } from '../ui/Brand';
 import { motion } from 'motion/react';
 import { useAppStore } from '../../stores/appStore';
 import { fadeLeftVariants, fadeRightVariants } from '../../lib/motion';
@@ -13,23 +14,7 @@ export function SiteNav() {
   return (
     <nav className="absolute inset-x-0 top-0 z-50 px-4 pt-[calc(1rem+env(safe-area-inset-top))] md:px-8 md:pt-[calc(2rem+env(safe-area-inset-top))]">
       <div className="flex items-center justify-between">
-        <motion.button
-          type="button"
-          variants={fadeLeftVariants}
-          initial="hidden"
-          animate="visible"
-          onClick={actions.reset}
-          // The negative margin keeps the visual position while the padding
-          // gives the control a 44px tap target — WCAG 2.2 sets 24px as the
-          // minimum, but a phone thumb wants the Apple HIG's 44pt.
-          className="flex items-center gap-2.5 py-2 -my-2"
-          aria-label="AuraShare — start over"
-        >
-          <img src="/logo.svg" alt="" className="h-7 w-7" />
-          <span className="font-display text-md font-semibold tracking-tight text-text [font-stretch:108%]">
-            AuraShare
-          </span>
-        </motion.button>
+        <Brand element="button" onClick={actions.reset} label="AuraShare — start over" logoSize={7} variants={fadeLeftVariants} />
 
         <motion.div
           variants={fadeRightVariants}

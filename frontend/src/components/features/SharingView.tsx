@@ -1,3 +1,4 @@
+import { TransmissionCodePanel } from '../ui/TransmissionCodePanel';
 import { motion } from 'motion/react';
 import { Check, Clock } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
@@ -92,20 +93,7 @@ export function SharingView() {
       className="z-40 flex w-full flex-col items-center px-4"
     >
       <div className="w-full max-w-md">
-        <Panel className="p-6">
-          <div className="flex items-baseline justify-between">
-            <span className="font-mono text-xs uppercase tracking-[0.18em] text-text-3">
-              Transmission code
-            </span>
-            <span className="font-mono text-xs text-text-3">6 characters</span>
-          </div>
-          <p className="mt-5 text-center font-mono text-3xl font-medium tracking-[0.18em] text-accent md:text-4xl">
-            {state.roomId}
-          </p>
-          <p className="mt-5 border-t border-border pt-4 text-sm leading-relaxed text-text-2">
-            Enter this code on the other device to open the link.
-          </p>
-        </Panel>
+        <TransmissionCodePanel code={state.roomId} alignment="center" />
 
         <p className="mt-5 text-center font-mono text-xs uppercase tracking-[0.14em] text-text-3">
           {state.textAcknowledged ? 'Text delivered' : state.receiverReady ? 'Receiver connected' : 'Waiting for the other device'}

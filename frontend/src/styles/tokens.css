@@ -63,7 +63,7 @@
   --radius-full: 9999px;
 
   /* ─── Motion ────────────────────────────────────────────────────────────
-     One easing curve, three durations. No decorative loops. */
+     Two easing curves, three durations. No decorative loops. */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
   --duration-micro: 120ms;

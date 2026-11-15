@@ -5,7 +5,7 @@ import path from 'path'
 
 // This config lives in frontend/, so the Vite root is this directory and the
 // production bundle is emitted to the repository-level dist/ that the Worker
-// serves (see backend/wrangler.toml → assets.directory).
+// serves (see wrangler.toml → assets.directory).
 const root = import.meta.dirname
 
 export default defineConfig({
@@ -38,7 +38,7 @@ export default defineConfig({
   },
   server: {
     // Wrangler writes Durable Object state and build output into .wrangler/
-    // (backend/.wrangler/ when running from the backend config). Without this
+    // at the repository root, beside wrangler.toml. Without this
     // the dev server watches those files and can full-reload the page
     // mid-transfer, which breaks any browser-driven session.
     watch: {

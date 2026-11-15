@@ -29,3 +29,12 @@ dist-ssr
 .commandcode/
 .wrangler/
 .playwright-mcp/
+
+# Local credentials and generated reports
+.env
+.env.*
+!.env.example
+.dev.vars
+.dev.vars.*
+coverage/
+test-results/

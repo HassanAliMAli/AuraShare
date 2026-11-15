@@ -31,7 +31,8 @@ function AppShell() {
 
       <main
         id="main-content"
-        className="relative z-40 flex flex-1 flex-col items-center justify-center px-4 py-24 md:px-8 md:py-28"
+        tabIndex={-1}
+        className="focus:outline-none relative z-40 flex flex-1 flex-col items-center justify-center px-4 py-24 md:px-8 md:py-28"
       >
         {state.connectionWarning && <p role="status" className="mb-4 max-w-lg text-center text-sm text-text-2">{state.connectionWarning}</p>}
         <h1 className="sr-only">AuraShare — peer-to-peer file transfer</h1>
@@ -47,7 +48,7 @@ function AppShell() {
             ) : state.status === 'idle' && state.isReceiving ? (
               <ReceiveCodeForm key="receive-form" />
             ) : state.status === 'connecting' ? (
-              <LoaderView key="connecting" label="Establishing a direct connection" />
+              <LoaderView key="connecting" label="Establishing an encrypted connection" />
             ) : state.status === 'sharing' ? (
               <SharingView key="sharing" />
             ) : state.status === 'connected' ? (

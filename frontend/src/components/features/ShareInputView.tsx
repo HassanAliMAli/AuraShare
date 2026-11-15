@@ -14,18 +14,17 @@ export function ShareInputView() {
       initial="hidden"
       animate="visible"
       exit="exit"
-      role="tabpanel"
-      id={`share-panel-${state.shareMode}`}
-      aria-labelledby={`share-tab-${state.shareMode}`}
       className="z-30 flex w-full justify-center"
     >
-      <div className="w-full max-w-xl">
-        {state.shareMode === 'files' ? (
-          <AuraDropzone onFileDrop={(f) => actions.startShare(f, undefined)} />
-        ) : (
-          <AuraTextarea onTextShare={(t) => actions.startShare(undefined, t)} />
-        )}
-      </div>
+      {(['text', 'files'] as const).map((mode) => (
+        <div key={mode} role="tabpanel" id={`share-panel-${mode}`}
+          aria-labelledby={`share-tab-${mode}`} hidden={state.shareMode !== mode}
+          className="w-full max-w-xl">
+          {state.shareMode === mode && (mode === 'files'
+            ? <AuraDropzone onFileDrop={(f) => actions.startShare(f, undefined)} />
+            : <AuraTextarea onTextShare={(t) => actions.startShare(undefined, t)} />)}
+        </div>
+      ))}
     </motion.div>
   );
 }

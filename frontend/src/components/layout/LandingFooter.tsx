@@ -1,3 +1,4 @@
+import { Brand } from '../ui/Brand';
 import { motion } from 'motion/react';
 import { ArrowUp } from 'lucide-react';
 import { FOOTER, NAV_LINKS } from '../../lib/landingCopy';
@@ -15,16 +16,7 @@ export function LandingFooter() {
         className="mx-auto grid max-w-6xl gap-10 md:grid-cols-12"
       >
         <div className="md:col-span-5">
-          <a
-            href="#top"
-            className="flex items-center gap-2.5 py-2 -my-2"
-            aria-label="AuraShare — back to top"
-          >
-            <img src="/logo.svg" alt="" className="h-6 w-6" />
-            <span className="font-display text-md font-semibold tracking-tight text-text [font-stretch:108%]">
-              AuraShare
-            </span>
-          </a>
+          <Brand element="link" href="#top" label="AuraShare — back to top" />
           <p className="mt-4 max-w-xs text-sm leading-relaxed text-text-2">{FOOTER.tagline}</p>
         </div>
 

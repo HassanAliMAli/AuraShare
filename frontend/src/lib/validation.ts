@@ -3,6 +3,9 @@
  * Pure functions — no React imports.
  */
 
+/** Maximum number of files announced in one share. */
+export const MAX_FILES_PER_TRANSFER = 32;
+
 /**
  * Hard ceiling for a single file.
  * The receiver assembles files in memory, so the limit is deliberately
@@ -20,7 +23,7 @@ const ALLOWED_MIME_PREFIXES = [
 ] as const;
 
 export type ValidationError = {
-  code: 'too_large' | 'mime_not_allowed' | 'empty';
+  code: 'too_large' | 'mime_not_allowed' | 'empty' | 'too_many' | 'invalid_metadata';
   message: string;
   maxSize?: number;
   actualSize?: number;
@@ -32,6 +35,9 @@ export type Result<T, E = ValidationError> =
 
 /** Validate a single file against size + MIME rules. */
 export function validateFile(file: File): Result<File, ValidationError> {
+  if (!file.name || file.name.length > 255 || file.type.length > 255) {
+    return { success: false, error: { code: 'invalid_metadata', message: 'File name or type exceeds the 255-character limit' } };
+  }
   if (file.size === 0) {
     return { success: false, error: { code: 'empty', message: 'File is empty' } };
   }
@@ -62,6 +68,10 @@ export function validateFileList(files: FileList | File[]): {
   errors: { fileName: string; error: ValidationError }[];
 } {
   const fileArray = files instanceof FileList ? Array.from(files) : files;
+  if (fileArray.length > MAX_FILES_PER_TRANSFER) {
+    return { valid: [], errors: [{ fileName: 'Selection', error: { code: 'too_many',
+      message: `Select up to ${MAX_FILES_PER_TRANSFER} files at a time (${fileArray.length} selected)` } }] };
+  }
   const valid: File[] = [];
   const errors: { fileName: string; error: ValidationError }[] = [];
 

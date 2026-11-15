@@ -44,13 +44,19 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
     }
     // Credential issuance fails closed if its limiter cannot answer.
     const ip = request.headers.get('cf-connecting-ip') ?? 'local';
-    if (!env.ICE_RATE_LIMITER) return apiError('turn_unavailable', 'Credential limiter unavailable', 503);
+    if (!env.ICE_RATE_LIMITER) {
+      console.error(JSON.stringify({ event: 'ice_limiter_unavailable' }));
+      return apiError('turn_unavailable', 'Credential limiter unavailable', 503);
+    }
     try {
       if (!(await env.ICE_RATE_LIMITER.limit({ key: ip })).success) {
         return apiError('rate_limited', 'Too many credential requests', 429, { 'Retry-After': '60' });
       }
-    } catch { return apiError('turn_unavailable', 'Credential limiter unavailable', 503); }
-    return env.ROOMS.get(env.ROOMS.idFromName(iceCode)).fetch(request);
+    } catch {
+      console.error(JSON.stringify({ event: 'ice_limiter_unavailable' }));
+      return apiError('turn_unavailable', 'Credential limiter unavailable', 503);
+    }
+    return forwardRoom(env, iceCode, request, true);
   }
 
   if (path === '/api/room' && request.method === 'POST') {
@@ -75,10 +81,8 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
     }
     const limited = await rateLimited(request, env);
     if (limited) return limited;
-    const id = env.ROOMS.idFromName(code);
-    const stub = env.ROOMS.get(id);
     // Forward the original request so the DO sees the Upgrade header.
-    return stub.fetch(request);
+    return forwardRoom(env, code, request, false);
   }
 
   return apiError('not_found', 'Not found', 404);
@@ -120,8 +124,19 @@ async function reserveRoom(
     );
     if (response.status === 409) return 'conflict';
     return response.ok ? 'reserved' : 'unavailable';
-  } catch (err) {
-    console.error('[Worker] could not reserve a room:', err);
+  } catch {
+    console.error(JSON.stringify({ event: 'room_reservation_failed' }));
     return 'unavailable';
+  }
+}
+
+/** Await inside the boundary so rejected binding calls retain our API error contract. */
+async function forwardRoom(env: Env, code: string, request: Request, credentials: boolean): Promise<Response> {
+  try { return await env.ROOMS.get(env.ROOMS.idFromName(code)).fetch(request); }
+  catch {
+    console.error(JSON.stringify({ event: 'room_forward_failed', operation: credentials ? 'credentials' : 'socket' }));
+    return credentials
+      ? apiError('turn_unavailable', 'Relay configuration is temporarily unavailable', 503)
+      : apiError('room_unavailable', 'The room is temporarily unavailable', 503);
   }
 }

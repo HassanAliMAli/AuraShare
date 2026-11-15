@@ -7,14 +7,14 @@
  */
 
 import type { FileDescriptor, SignalingMessage, WireSignal } from '../types';
-import { MAX_FILE_SIZE, sanitizeFilename } from './validation';
+import { MAX_FILES_PER_TRANSFER, MAX_FILE_SIZE, sanitizeFilename } from './validation';
 import { isRoomCode } from './roomCode';
 
 /** Re-exported so wire-protocol consumers keep a single import site. */
 export { isRoomCode };
 
 /** Maximum number of files a single transfer may announce. */
-export const MAX_FILES_PER_TRANSFER = 32;
+export { MAX_FILES_PER_TRANSFER } from './validation';
 
 /** Maximum payload of a text share, in bytes. */
 export const MAX_TEXT_BYTES = 1024 * 1024; // 1 MiB

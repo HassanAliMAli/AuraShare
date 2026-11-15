@@ -47,7 +47,7 @@ namespace_id = "7321"
 
 # Cloudflare Calls TURN — ephemeral credential generation.
 # Create a TURN key in the dashboard (Cloudflare → Calls → Turn Applications),
-# then set these two secrets. The Worker mints short-lived (24h) credentials
+# then set these two secrets. The Worker mints short-lived (1h) credentials
 # per session via the Cloudflare API. If unset, falls back to STUN-only.
 #
 #   wrangler secret put TURN_KEY_ID
@@ -60,3 +60,17 @@ namespace_id = "7322"
 [ratelimits.simple]
 limit = 10
 period = 60
+
+# Sample diagnostics without application payloads; traces can retain request paths.
+[observability]
+enabled = true
+head_sampling_rate = 0.1
+redact_query_string = true
+
+[observability.logs]
+enabled = true
+invocation_logs = false
+
+[observability.traces]
+enabled = true
+head_sampling_rate = 0.01

@@ -3,6 +3,7 @@ import type { FileDescriptor } from '../types';
 import { Crc32, MAX_FILES_PER_TRANSFER, MAX_TEXT_BYTES, MAX_TRANSFER_BYTES, parseTransferMessage } from './protocol';
 import { HEADER_BYTES, MAX_CHUNK_BYTES, frameChunk, newTransferId, parseControl, readChunk, type Control } from './transfer-protocol';
 import { abortError } from './async';
+import { ReceiveBuffer } from './receive-buffer';
 
 export type TransferEvents = {
   onProgress: (progress: number) => void;
@@ -19,7 +20,7 @@ export type TransferEvents = {
 type Attempt = {
   id: string; index: number; media: 'file' | 'text'; size: number;
   stage: 'requested' | 'transferring' | 'awaiting-ack';
-  bytes: number; sequence: number; crc: Crc32; buffers: ArrayBuffer[];
+  bytes: number; sequence: number; crc: Crc32; buffer: ReceiveBuffer | null;
   lastProgress: number; abort: AbortController; timer: ReturnType<typeof setTimeout> | null;
 };
 const INACTIVITY_MS = 120_000;
@@ -66,7 +67,7 @@ export class TransferSession {
   }
   private attempt(id: string, index: number, media: 'file' | 'text', size: number): Attempt {
     return { id, index, media, size, stage: 'requested', bytes: 0, sequence: 0,
-      crc: new Crc32(), buffers: [], lastProgress: 0, abort: new AbortController(), timer: null };
+      crc: new Crc32(), buffer: null, lastProgress: 0, abort: new AbortController(), timer: null };
   }
   private watch(attempt: Attempt, ms = INACTIVITY_MS): void {
     if (attempt.timer !== null) clearTimeout(attempt.timer);
@@ -74,7 +75,7 @@ export class TransferSession {
   }
   private release(attempt: Attempt): void {
     if (attempt.timer !== null) clearTimeout(attempt.timer);
-    attempt.abort.abort(); attempt.buffers = [];
+    attempt.abort.abort(); attempt.buffer?.clear(); attempt.buffer = null;
     if (this.incoming === attempt) this.incoming = null;
     if (this.outgoing === attempt) this.outgoing = null;
   }
@@ -134,7 +135,8 @@ export class TransferSession {
           (message.media === 'file' && (!descriptor || descriptor.size !== message.size))) {
           this.fatal('File metadata does not match the requested file'); return;
         }
-        attempt.size = message.size; attempt.stage = 'transferring'; this.watch(attempt); return;
+        attempt.size = message.size; attempt.buffer = new ReceiveBuffer(message.size);
+        attempt.stage = 'transferring'; this.watch(attempt); return;
       }
       case 'complete': {
         const attempt = this.incoming;
@@ -148,13 +150,14 @@ export class TransferSession {
         if (attempt.media === 'text') {
           const bytes = new Uint8Array(attempt.size);
           let offset = 0;
-          for (const buffer of attempt.buffers) { bytes.set(new Uint8Array(buffer), offset); offset += buffer.byteLength; }
+          for (const buffer of attempt.buffer!.parts()) { bytes.set(new Uint8Array(buffer), offset); offset += buffer.byteLength; }
           try { text = new TextDecoder('utf-8', { fatal: true }).decode(bytes); }
           catch { this.fail(attempt, 'Received text is not valid UTF-8'); return; }
         } else {
           const descriptor = this.descriptors[attempt.index];
           if (!descriptor) { this.fatal('Unknown file'); return; }
-          file = new File(attempt.buffers, descriptor.name, { type: descriptor.type });
+          try { file = new File(attempt.buffer!.parts(), descriptor.name, { type: descriptor.type }); }
+          catch { this.fail(attempt, 'Not enough memory to assemble this file. Try a smaller file.'); return; }
         }
         this.control({ v: 2, kind: 'ack', id: attempt.id });
         this.lastIncomingId = attempt.id;
@@ -190,7 +193,9 @@ export class TransferSession {
     if (!attempt || attempt.id !== chunk.id) return;
     if (attempt.stage !== 'transferring' || attempt.sequence !== chunk.sequence ||
       attempt.bytes + chunk.payload.byteLength > attempt.size) { this.fatal('Unexpected transfer chunk'); return; }
-    attempt.crc.update(new Uint8Array(chunk.payload)); attempt.buffers.push(chunk.payload);
+    try { attempt.buffer!.append(chunk.payload); }
+    catch { this.fail(attempt, 'Not enough memory to receive this file. Try a smaller file.'); return; }
+    attempt.crc.update(new Uint8Array(chunk.payload));
     attempt.bytes += chunk.payload.byteLength; attempt.sequence++; this.watch(attempt);
     this.progress(attempt);
   }

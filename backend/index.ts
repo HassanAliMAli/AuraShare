@@ -22,6 +22,7 @@
  * The API contract these implement is in `docs/api.md`.
  */
 
+import { apiError } from './modules/errors';
 import { RoomDO } from './modules/room-do';
 import { handleRequest, type Env } from './modules/routes';
 
@@ -30,6 +31,10 @@ export { generateRoomCode } from './modules/room-code';
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    return handleRequest(request, env);
+    try { return await handleRequest(request, env); }
+    catch {
+      console.error(JSON.stringify({ event: 'request_failed' }));
+      return apiError('internal_error', 'The request could not be completed', 500);
+    }
   },
 };

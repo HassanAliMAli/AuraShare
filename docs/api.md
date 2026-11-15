@@ -1,6 +1,6 @@
 # AuraShare API and transfer protocol
 
-Implemented contract, 2026-11-14. This describes the working tree, not a claim
+Implemented contract, 2026-11-16. This describes the working tree, not a claim
 that these changes have been deployed or runtime-tested.
 
 The Worker serves assets and signaling. HTTP JSON responses include no-store,
@@ -47,10 +47,13 @@ without assuming synchronized device clocks. No global credential cache exists.
 
 A valid same-peer cache is reused; concurrent same-peer issuance coalesces.
 Credentials and quota metadata survive hibernation in socket attachments.
+Cached ICE configuration is capped at 1,200 UTF-8 JSON bytes, reserving attachment
+space for authorization, quotas and traffic counters; oversized configuration
+fails closed with `503 turn_unavailable`.
 Issuance permits at most four upstream attempts per peer per hour and requires
 30 seconds between upstream attempts. A separate approximate IP binding limits
 credential requests to 10/minute; binding errors/missing bindings fail closed.
-Room creation/socket rate limiting remains 120/minute/IP.
+Room creation/socket handshake rate limiting remains 120/minute/IP.
 
 If TURN secrets are absent, protected lookup reports STUN-only degraded mode
 and the app displays a warning. If configured TURN issuance fails, lookup
@@ -77,9 +80,20 @@ with a visible error rather than silently using expired credentials.
 | `heartbeat` | Exact frame `{"type":"heartbeat"}`; consumed locally, not relayed. |
 | `peer-present`, `peer-left`, `room-expired` | Server-owned room lifecycle notifications. |
 
-The relay allows only client signaling types; client-supplied admission or room
-lifecycle frames are not forwarded. Binary signaling or frames over 256 KiB
-are dropped. Data-channel protocol validation remains the browser's job.
+The relay validates client signaling shapes and forwards accepted frames unchanged;
+client-supplied admission or room lifecycle frames are never forwarded. Legacy
+SDP/ICE frames without a generation remain accepted for upgrade diagnostics.
+Frames over 256 KiB measured as UTF-8 bytes (or binary byte length) close the
+socket with 1009. Binary frames and malformed/unsupported JSON count as invalid.
+Each socket has a fixed 60-second traffic window: at most 300 messages and
+2 MiB of inbound data, including heartbeats and invalid frames. The eighth
+invalid frame or exceeding either traffic budget closes the socket with 1008.
+Counters survive DO hibernation alongside peer authorization and TURN quota;
+credential updates merge current attachment state instead of restoring old
+traffic counters. Closing revokes authorization and notifies the remaining peer
+through the normal disconnect flow. Invalid messages never renew the lease.
+These limits bound a socket, not distributed abuse across many rooms.
+Data-channel protocol validation remains the browser's job.
 
 Unpaired code validity is 10 minutes from mint. Paired idle TTL is 30 minutes.
 Connected data channels send signaling heartbeats every 60 seconds; unpaired
@@ -93,7 +107,11 @@ handshake deadline prevents old peers from waiting indefinitely. Control frames
 must fit the negotiated SCTP message size and the local 64 KiB frame ceiling.
 
 - `descriptors`: at most 32 files, sequential indices, sanitized names, at most
-  256 MiB each. Receiver requests one selected file at a time.
+  256 MiB each. Receiver requests one selected file at a time. Sender selection
+  rejects more than 32 files before room creation. Names and MIME strings must fit 255 characters;
+  existing empty-file, size and MIME restrictions apply. Mixed valid/invalid
+  selections show rejection reasons and require explicit confirmation to share
+  the valid subset.
 - `request`: fresh 128-bit attempt `id` and descriptor `index`.
 - `start`: same `id`, `index`, `media` (`file` or `text`), and exact byte `size`.
 - Binary: 16-byte attempt ID + uint32 big-endian sequence + payload bytes.
@@ -109,6 +127,21 @@ Text is UTF-8 encoded once and capped at 1 MiB. The editor shows a byte counter,
 rejects oversize drafts visibly, and preserves their contents. The receiver
 assembles all bytes before strict decoding, so multibyte characters may safely
 cross chunk boundaries. Text and files share backpressure and cancellation.
+Incoming payloads are copied into blocks of at most 1 MiB; retained buffer count depends on announced size,
+not the number of frames. Even 1-byte chunks do not create one retained object
+per frame. Buffer allocation/assembly failures produce a recoverable transfer
+error and release receive storage.
+
+The page-wide download budget is 512 MiB of accounted file bytes: retained
+object URLs plus twice the next file size for assembly and File creation.
+The receiver waits before requesting a file if it would exceed this budget,
+shows a preparing status, and permits cancelling that queued file. There is no
+peer response timeout until the request is actually sent. Completed download
+URLs retain their existing 60-second lifetime; expiry resumes eligible queued
+work. Reset/unmount cancels waits but does not prematurely revoke initiated
+downloads. Re-entering the app shares the same page budget. This bounds app-owned
+file storage, not exact browser RSS, garbage-collection timing or browser download
+internals. It does not indicate when a save to disk completes.
 
 Response/ACK deadline is 30 seconds. Inactivity deadline is 120 seconds, refreshed
 by transfer progress rather than room heartbeats. There is no total duration
@@ -136,6 +169,7 @@ socket with code 1011; a concurrent close does not prevent cleanup.
 | 409 | `room_full`, internal `room_conflict` |
 | 426 | `upgrade_required` |
 | 429 | `rate_limited` (with Retry-After) |
+| 500 | `internal_error` |
 | 503 | `room_unavailable`, `turn_unavailable` |
 
 Browser WebSocket handshake failures do not expose the HTTP response body.
@@ -143,3 +177,10 @@ Wrong/expired codes therefore share a friendly join error. No CORS access is
 advertised for credential endpoints. Origin checks supplement token authorization;
 they are not authentication for non-browser clients. Anonymous room creation
 still needs usage monitoring; admission does not eliminate all relay abuse.
+
+Durable Object forwarding rejections return JSON `503 room_unavailable` for
+socket requests or `503 turn_unavailable` for credential requests. Unexpected
+Worker handler exceptions return JSON `500 internal_error`. These responses use
+the standard security headers and reveal no exception details. Successful
+WebSocket upgrade responses pass through unchanged. Failures outside the
+application handler remain platform-controlled.

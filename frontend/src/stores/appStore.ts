@@ -8,6 +8,7 @@ import type { AppStatus, FileDescriptor, ShareMode } from '../types';
 export type AppState = {
   status: AppStatus;
   transferProgress: number;
+  waitingForMemory: boolean;
   joinCode: string;
   isReceiving: boolean;
   shareMode: ShareMode;
@@ -33,6 +34,7 @@ export type AppState = {
 
 export const initialState: AppState = {
   status: 'idle',
+  waitingForMemory: false,
   transferProgress: 0,
   joinCode: '',
   isReceiving: false,
@@ -56,6 +58,7 @@ export const initialState: AppState = {
 };
 
 export type AppAction =
+  | { type: 'MEMORY_WAIT'; waiting: boolean }
   | { type: 'SET_STATUS'; status: AppStatus }
   | { type: 'SET_PROGRESS'; progress: number }
   | { type: 'SET_JOIN_CODE'; code: string }
@@ -82,12 +85,13 @@ export type AppAction =
 
 export function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
+    case 'MEMORY_WAIT': return { ...state, waitingForMemory: action.waiting };
     case 'CONNECTION_WARNING': return { ...state, connectionWarning: action.message };
     case 'TEXT_ACKNOWLEDGED': return { ...state, textAcknowledged: true, transferError: null };
     case 'TEXT_RETRY': return { ...state, textAcknowledged: false, transferError: null };
     case 'TRANSFER_FAILED':
       return {
-        ...state, transferError: action.message, failedFileIndex: action.index >= 0 ? action.index : null,
+        ...state, waitingForMemory: false, transferError: action.message, failedFileIndex: action.index >= 0 ? action.index : null,
         downloadingFileIndex: null, transferProgress: 0,
         ...(state.isReceiving && action.index < 0 ? { status: 'error' as const, errorMessage: action.message } : {}),
       };
@@ -147,6 +151,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       const next = queue[0] ?? null;
       return {
         ...state,
+        waitingForMemory: false,
         downloadedFiles: downloaded,
         selectedFiles: selected,
         downloadQueue: queue,
@@ -162,7 +167,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case 'RECEIVE_TEXT':
       return { ...state, receivedText: action.text, status: 'success' };
     case 'SET_ERROR':
-      return { ...state, errorMessage: action.message, status: 'error' };
+      return { ...state, waitingForMemory: false, errorMessage: action.message, status: 'error' };
     case 'SET_JOIN_CODE_ERROR':
       return { ...state, joinCodeError: action.message };
     case 'RESET':

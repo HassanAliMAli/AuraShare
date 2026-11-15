@@ -39,14 +39,14 @@ export async function allowRequest(
   try {
     const { success } = await limiter.limit({ key: ip });
     return success;
-  } catch (err) {
+  } catch {
     // A limiter that cannot answer must not take the app down with it: the
     // request goes through. The budget it protects is finite, but a broken
     // limiter would make the app unusable right now. This deliberately favours
     // availability over the daily room/DO budget during limiter outages.
     // Explicit denials still return 429; peer TURN issuance limits and
     // authorization are independent and remain enforced.
-    console.error('[RateLimit] the limiter failed:', err);
+    console.error(JSON.stringify({ event: 'room_limiter_failed' }));
     return true;
   }
 }

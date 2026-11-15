@@ -2,7 +2,7 @@
 
 **Audit date:** 2026-11-15
 **Verdict at audit time:** NON-COMPLIANT
-**Progress:** 27 issues implemented/resolved · M8 N/A (coverage removed) · M12 awaiting local-state deletion approval. Runtime/browser acceptance remains unverified.
+**Progress:** 28 issues implemented/resolved · M8 N/A (coverage removed). Runtime/browser acceptance remains unverified.
 **Task split:** P0 34 · P1 65 · P2 44
 
 Tick a **task** when that step is done. Tick the **issue** only when every task
@@ -56,10 +56,13 @@ tick work that is only planned.
   test scripts, test dependencies or CI test job were reintroduced.
 - M9–M11: README facts, Vite/Worker comments and API ending now describe current
   code. Historical execution notes remain in history documents only.
-- M12: ignored/untracked status checked for all six paths. Only `dist/`
-  (~1 MiB), `backend/.wrangler/` (8 KiB), and `.wrangler/` (~20 MiB) currently
-  exist. `dist/` was kept/rebuilt; other paths are absent. Local state is
-  preserved pending the deletion question; 0 bytes removed.
+- M12: owner approved deletion after the local-state reset implications were
+  explained. Rechecked ignore rules and confirmed no tracked files before
+  deleting `.wrangler/` and `backend/.wrangler/`; `coverage/`, `test-results/`
+  and `.playwright-mcp/` were already absent. Reclaimed 20,897,792 allocated bytes
+  (19.93 MiB, measured with du before deletion).
+  All five approved paths are absent. `dist/`, source and `node_modules/`
+  were preserved. Local Wrangler room state was reset; production was untouched.
 - M13: archive the three existing audit/design/implementation plans for history
   using `git mv`; `docs/archive/README.md` records reasons and replacements.
   TEST_REPORT.md was already absent after suite removal and was not restored.
@@ -517,7 +520,7 @@ browser accessibility pass, live runtime check or production deployment ran.
       `docs/` for other “this session”, “not been executed” or “user’s no-tests”
       notes and move them to `docs/PROCESS_NOTES.md` if the history matters.
 
-- [ ] **M12. Clean generated/local dead weight.**
+- [x] **M12. Clean generated/local dead weight.**
 
   `test-results/.last-run.json`, `coverage/`, `dist/`, `backend/.wrangler/`,
   `.wrangler/` and `.playwright-mcp/` console logs. Confirm before deleting;
@@ -527,15 +530,15 @@ browser accessibility pass, live runtime check or production deployment ran.
       `git ls-files <path>`: confirm it is ignored and untracked. Current sizes:
       `coverage/` 1.2M, `dist/` 1.0M, `backend/.wrangler/` 8K, `.wrangler/` 20M,
       `.playwright-mcp/` 2.4M, `test-results/` 8K.
-    - [ ] **M12.2** Ask the user before deleting anything; `.wrangler/` contains
+    - [x] **M12.2** Ask the user before deleting anything; `.wrangler/` contains
       local Durable Object state and `.playwright-mcp/` may contain screenshots
       or console logs the user still wants.
-    - [ ] **M12.3** Delete the approved paths only; never delete source,
+    - [x] **M12.3** Delete the approved paths only; never delete source,
       `node_modules/` or tracked files.
     - [x] **M12.4** Keep `dist/` if it is needed to serve a local preview, and
       rebuild it with `npm run build` when that becomes necessary (build
       execution is deferred under the current ban).
-    - [ ] **M12.5** Record what was removed and the reclaimed size in this item so
+    - [x] **M12.5** Record what was removed and the reclaimed size in this item so
       the next audit does not re-litigate it.
 
 - [x] **M13. Archive or delete delivered and historical docs.**

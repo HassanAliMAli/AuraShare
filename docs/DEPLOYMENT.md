@@ -109,7 +109,8 @@ response by the Workers assets layer:
 
 ```
 default-src 'self'; script-src 'self' https://static.cloudflareinsights.com;
-style-src 'self' 'unsafe-inline'; connect-src 'self' wss:;
+style-src 'self' 'unsafe-inline'; connect-src 'self' wss://aurashare.hassanali.site;
+object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self';
 img-src 'self' data:; font-src 'self' data:
 ```
 
@@ -253,19 +254,12 @@ The count is **per Cloudflare location**, so the limit is approximate
 worldwide, and it is approximate within a location too. That is fine for the
 job: the point is to stop a flood, not to meter a customer.
 
-### Changing or removing it
+### Changing the limit
 
-The limit is a number in `wrangler.toml`. Change it and push:
-
-```toml
-  [ratelimits.simple]
-  limit = 300   # was 120
-  period = 60
-```
-
-To remove the limit entirely, delete the `[[ratelimits]]` block. The Worker
-treats the binding as optional, and a Worker without it does not limit
-anything.
+Preserve the room and credential bindings. Review legitimate traffic before
+changing their limits; do not remove a limiter to work around an outage. The
+room limiter's documented availability policy is separate from credential
+issuance, which fails closed.
 
 ### Why there is no WAF rule for it
 
@@ -345,8 +339,9 @@ errors until the budget resets at 00:00 UTC. Three things stand between the
 app and that:
 
 1. **A room only exists if it was minted.** A stranger who guesses a code
-   finds no room, no Durable Object is allocated for the attempt, and
-   nothing is stored.
+   is rejected by the addressed Durable Object. The attempt can
+   invoke an object, but it creates no reservation row. HTTP rate limiting
+   happens before that invocation.
 2. **A room gives its storage back.** The 12 KB an empty SQLite database
    costs is released the moment the room ends, instead of sitting there
    until the alarm fires.
@@ -374,16 +369,15 @@ The plan is bought in the Cloudflare dashboard, not from here.
 | Answers `429 rate_limited` | A client went over 120 room requests a minute. Normal for a script; not normal for a person. |
 | Every request fails, even `/api/ice-servers` | The Worker itself is not deploying or is erroring — check the `Workers Builds: aurashare` check and the Worker logs. |
 
-## The signing relay is a dumb pipe
+## Signaling validation and traffic limits
 
-The Worker never parses, validates or transforms a signalling frame. Whatever
-one peer sends arrives at the other byte for byte. Validation is the client's
-job, in `frontend/src/lib/protocol.ts` — a frame that does not match one of
-the documented shapes is dropped before it reaches the WebRTC layer.
-
-This matters when reading the Worker code: there is nothing to validate
-there, and adding validation would change the contract in
-[`docs/api.md`](api.md).
+The relay validates signaling shapes before forwarding the original accepted
+frame. Only valid signaling or exact heartbeats can renew paired-room leases.
+Each socket is limited to 300 messages and 2 MiB per fixed 60-second window,
+including invalid messages and heartbeats. Oversized frames close with 1009;
+traffic-budget violations or eight invalid frames close with 1008. Counters
+survive hibernation. See [the API contract](api.md) for accepted frames and
+legacy compatibility. Per-socket limits do not prevent distributed room abuse.
 
 ## If a deploy goes wrong
 
@@ -418,3 +412,41 @@ The static CSP restricts connections to the same origin and explicitly permits
 hostname must update that exact WebSocket source. Vite development does not
 apply `_headers`; STUN/TURN ICE transport is separate from Fetch/WebSocket
 `connect-src` connections. Object embedding, base URLs and framing are disabled.
+
+## Operational logs and traces
+
+The descriptor enables application logs at 10% sampling and traces at 1%.
+Invocation logs are disabled and query strings are redacted. Application events
+contain fixed event names and coarse operation/reason values, never peer tokens,
+TURN credentials, room codes, SDP/ICE payloads or raw exceptions. Platform traces
+can contain request paths (including room codes) and connection metadata; restrict
+observability access and review sampling/retention before deployment. Sampling
+means an individual failure may have no retained event.
+
+In the Cloudflare dashboard, open this Worker under Observability. Filter logs
+by `room_reservation_failed`, `room_forward_failed`, `request_failed`,
+`room_limiter_failed`, `turn_issuance_failed` or `signaling_policy_close`.
+A socket close for `traffic_budget` or `frame_size` indicates policy enforcement.
+Use sampled traces to inspect upstream latency and failed binding calls. An ICE
+limiter failure emits `ice_limiter_unavailable` without exposing the client IP.
+Do not copy credential headers or raw session payloads into logs or reports.
+
+For a live stream when authorized, use `npx wrangler tail aurashare`. This
+configuration is prepared in source; it does not establish that telemetry is
+active or validate live TURN issuance before deployment.
+
+## Dependency compatibility
+
+TypeScript 6.0.3 remains intentional: the installed `typescript-eslint` 8.72.2
+peer range is `>=4.8.4 <6.1.0`. TypeScript 7.0.2 is a native compiler with a
+separate programmatic-API compatibility path; replacing this dependency directly
+would leave lint tooling outside its supported range. Revisit migration when
+that toolchain supports it or a separate compiler/compatibility-package migration
+is explicitly scoped. Node typings remain on the supported Node 24 major;
+the existence of Node 26 typings is not a security defect. Workers type patches
+can be updated within their existing major with the required project gates.
+
+The generic audit/testing skills in `.opencode/` still describe mandatory tests
+and an older directory layout. The repository's `AGENTS.md` takes precedence:
+no tests, approved `shared/` contracts and root configuration. Those protected
+skill files were not edited as part of these application fixes.

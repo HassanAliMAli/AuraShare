@@ -2,6 +2,7 @@
 
 import { apiError, json } from './errors';
 import { PeerAuth, type TurnEnv } from './peer-auth';
+import { allowSignal, MAX_SIGNAL_BYTES, validSignal } from './signaling-guard';
 import { HEARTBEAT_FRAME } from '../../shared/heartbeat';
 import {
   CODE_VALIDITY_MS,
@@ -94,20 +95,31 @@ export class RoomDO {
   }
 
   async webSocketMessage(ws: WebSocket, message: ArrayBuffer | string): Promise<void> {
-    // A room with two peers is a live session: keep its lease running.
-    if (this.state.getWebSockets().length >= 2) {
+    if (this.auth.isRevoked(ws)) return;
+    const bytes = typeof message === 'string' ? new TextEncoder().encode(message).byteLength : message.byteLength;
+    if (bytes > MAX_SIGNAL_BYTES) {
+      console.warn(JSON.stringify({ event: 'signaling_policy_close', reason: 'frame_size' }));
+      await this.disconnect(ws, 1009, 'Signaling frame too large');
+      return;
+    }
+    const heartbeat = message === HEARTBEAT_FRAME;
+    let frame: unknown;
+    if (!heartbeat && typeof message === 'string') {
+      try { frame = JSON.parse(message); } catch { /* counted as invalid below */ }
+    }
+    const valid = heartbeat || validSignal(frame);
+    if (!allowSignal(ws, bytes, valid)) {
+      console.warn(JSON.stringify({ event: 'signaling_policy_close', reason: 'traffic_budget' }));
+      await this.disconnect(ws, 1008, 'Signaling traffic limit exceeded');
+      return;
+    }
+    if (!valid) return;
+    if (this.state.getWebSockets().filter((socket) => !this.auth.isRevoked(socket)).length >= 2) {
       await this.keepAlive(ROOM_IDLE_TTL_MS);
     }
-    if (message === HEARTBEAT_FRAME) return;
-    // Only clients' signaling types may be relayed. Admission tokens and
-    // room lifecycle frames are server-owned and never accepted from a peer.
-    if (typeof message !== 'string' || message.length > 262144) return;
-    let frame: unknown;
-    try { frame = JSON.parse(message); } catch { return; }
-    if (!frame || typeof frame !== 'object' || !('type' in frame) ||
-      !['hello', 'ready', 'offer', 'answer', 'ice', 'refresh-request', 'refresh-prepare', 'refresh-ready'].includes(String(frame.type))) return;
+    if (heartbeat) return;
     for (const socket of this.state.getWebSockets()) {
-      if (socket !== ws) socket.send(message);
+      if (socket !== ws && !this.auth.isRevoked(socket) && socket.readyState === 1) socket.send(message);
     }
   }
 
@@ -116,7 +128,8 @@ export class RoomDO {
   }
 
   async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
-    console.error('[RoomDO] websocket error:', error);
+    void error;
+    console.error(JSON.stringify({ event: 'websocket_error' }));
     await this.disconnect(ws, 1011, 'WebSocket error');
   }
 
@@ -129,7 +142,7 @@ export class RoomDO {
           socket.send(JSON.stringify({ type: 'peer-left' }));
         } catch {
           // Another socket may already be closing; still release this peer.
-          console.error('[RoomDO] peer-left delivery failed');
+          console.error(JSON.stringify({ event: 'peer_left_delivery_failed' }));
         }
       }
     } finally {

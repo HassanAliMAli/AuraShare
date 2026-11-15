@@ -98,6 +98,11 @@ export function ReceiverFileList() {
           </>
         )}
 
+        {state.waitingForMemory && (
+          <p role="status" className="mt-4 text-sm text-text-2">
+            Preparing the next file. Waiting for previous downloads to release memory.
+          </p>
+        )}
         {state.transferError && (
           <div className="mt-4 border border-error/40 p-3" role="alert">
             <p className="text-sm text-error">{state.transferError}</p>

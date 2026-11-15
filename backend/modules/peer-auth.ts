@@ -1,4 +1,5 @@
 import { apiError, json } from './errors';
+import { patchSocketState } from './socket-state';
 import { generateIceConfig, TURN_RENEW_MARGIN_MS, type IceConfig } from './turn';
 
 const TOKEN_TTL_MS = 24 * 60 * 60_000;
@@ -39,7 +40,7 @@ export class PeerAuth {
   admit(socket: WebSocket): void {
     const token = Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) => b.toString(16).padStart(2, '0')).join('');
     const peer: Peer = { token, expiresAt: Date.now() + TOKEN_TTL_MS, attempts: 0, windowStart: 0, lastAttempt: 0 };
-    socket.serializeAttachment(peer);
+    patchSocketState(socket, peer);
     socket.send(JSON.stringify({ type: 'admitted', version: 2, token, expiresAt: peer.expiresAt }));
   }
 
@@ -84,17 +85,20 @@ export class PeerAuth {
     }
     peer.lastAttempt = now;
     peer.attempts++;
-    socket.serializeAttachment(peer);
+    patchSocketState(socket, { windowStart: peer.windowStart, attempts: peer.attempts, lastAttempt: peer.lastAttempt });
     try {
       const config = await generateIceConfig(this.env.TURN_KEY_ID, this.env.TURN_KEY_API_TOKEN);
       if (socket.readyState !== 1 || !attachment(socket) || !this.state.getWebSockets().includes(socket)) {
         return apiError('unauthorized', 'Session ended', 401);
       }
-      peer.config = config;
-      peer.expiresAt = Date.now() + TOKEN_TTL_MS;
-      socket.serializeAttachment(peer);
+      // Reserve attachment space for authorization, quotas and future traffic counters.
+      if (new TextEncoder().encode(JSON.stringify(config)).byteLength > 1200) {
+        throw new Error('Relay configuration exceeds the socket cache budget');
+      }
+      patchSocketState(socket, { config, expiresAt: Date.now() + TOKEN_TTL_MS });
       return json({ ...config, serverTime: Date.now() });
     } catch {
+      console.error(JSON.stringify({ event: 'turn_issuance_failed' }));
       return apiError('turn_unavailable', 'Relay credentials could not be issued', 503);
     }
   }

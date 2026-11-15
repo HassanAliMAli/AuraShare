@@ -2,7 +2,8 @@ import { useReducer, useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { P2PManager } from '../lib/webrtc';
 import { MAX_TEXT_BYTES } from '../lib/protocol';
-import { sanitizeFilename } from '../lib/validation';
+import { validateFileList } from '../lib/validation';
+import { downloadBudget } from '../lib/download-budget';
 import { isRoomCode, normalizeRoomCode, ROOM_CODE_HINT } from '../lib/roomCode';
 import { AppContext, appReducer, initialState } from './appStore';
 import type { AppActions } from './appStore';
@@ -10,21 +11,12 @@ import type { AppActions } from './appStore';
 const CONNECT_TIMEOUT_MS = 30_000;
 
 /**
- * How long a received file's object URL stays alive.
- *
- * The URL is where the browser reads the file from, and the browser may
- * still be reading it long after the click: a large file on a slow link
- * takes minutes to arrive. Revoking the URL while the download is running
- * kills it, so the URL is kept for a minute and then released.
- */
-const OBJECT_URL_TTL_MS = 60_000;
-
-/**
  * Owns the reducer + P2P manager lifecycle and exposes state + actions via
  * context. Shared callbacks handle the sender and receiver lifecycle.
  */
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, initialState);
+  const requestWaitRef = useRef<AbortController | null>(null);
   const managerRef = useRef<P2PManager | null>(null);
   const pendingFilesRef = useRef<File[] | null>(null);
   const pendingTextRef = useRef<string | null>(null);
@@ -39,15 +31,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
       lastRequestedIndexRef.current = null;
       return;
     }
-    if (lastRequestedIndexRef.current === state.downloadingFileIndex) return;
-    lastRequestedIndexRef.current = state.downloadingFileIndex;
-    managerRef.current?.requestFile(state.downloadingFileIndex);
-  }, [state.downloadingFileIndex]);
+    const index = state.downloadingFileIndex;
+    const manager = managerRef.current;
+    const file = state.receivedFiles[index];
+    if (!manager || !file || lastRequestedIndexRef.current === index) return;
+    const wait = new AbortController();
+    requestWaitRef.current = wait;
+    const budget = downloadBudget;
+    if (!budget.hasCapacity(file.size)) dispatch({ type: 'MEMORY_WAIT', waiting: true });
+    void budget.waitForCapacity(file.size, wait.signal).then(() => {
+      if (wait.signal.aborted || managerRef.current !== manager) return;
+      requestWaitRef.current = null;
+      lastRequestedIndexRef.current = index;
+      dispatch({ type: 'MEMORY_WAIT', waiting: false });
+      manager.requestFile(index);
+    }).catch(() => {
+      if (!wait.signal.aborted && managerRef.current === manager) {
+        dispatch({ type: 'TRANSFER_FAILED', index, message: 'Not enough memory to receive this file' });
+      }
+    });
+    return () => {
+      wait.abort();
+      if (requestWaitRef.current === wait) requestWaitRef.current = null;
+    };
+  }, [state.downloadingFileIndex, state.receivedFiles]);
 
   // Tear down the peer connection on unmount.
   useEffect(() => {
     return () => {
       if (connectTimeoutRef.current) clearTimeout(connectTimeoutRef.current);
+      requestWaitRef.current?.abort();
       managerRef.current?.close();
       managerRef.current = null;
     };
@@ -60,6 +73,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   function closeSession(): void {
     clearConnectTimeout();
+    requestWaitRef.current?.abort();
+    requestWaitRef.current = null;
     const previous = managerRef.current;
     managerRef.current = null;
     previous?.close();
@@ -74,6 +89,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const fail = (message: string) => {
       if (!current()) return;
       clearConnectTimeout();
+      requestWaitRef.current?.abort();
+      requestWaitRef.current = null;
       managerRef.current = null;
       mgr.close();
       dispatch({ type: 'SET_ERROR', message });
@@ -112,8 +129,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       },
       onFileComplete: (index, file) => {
         if (!current() || role !== 'receiver') return;
-        dispatch({ type: 'FILE_COMPLETE', index });
-        autoSaveFile(file);
+        try {
+          downloadBudget.save(file);
+          dispatch({ type: 'FILE_COMPLETE', index });
+        } catch {
+          dispatch({ type: 'TRANSFER_FAILED', index, message: 'Could not start the download. Retry this file.' });
+        }
       },
       onTextReceived: (text) => {
         if (current() && role === 'receiver') dispatch({ type: 'RECEIVE_TEXT', text });
@@ -136,6 +157,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const actions: AppActions = {
     startShare: (files, text) => {
+      if (files) {
+        const selection = validateFileList(files);
+        if (!files.length || selection.errors.length) {
+          dispatch({ type: 'SET_ERROR', message: selection.errors[0]?.error.message ?? 'Select at least one file' });
+          return;
+        }
+      }
       if (text !== undefined && new TextEncoder().encode(text).byteLength > MAX_TEXT_BYTES) {
         dispatch({ type: 'SET_ERROR', message: 'Text exceeds the 1 MiB limit' }); return;
       }
@@ -208,7 +236,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     retryTransfer: () => { lastRequestedIndexRef.current = null; dispatch({ type: 'RETRY_TRANSFER' }); },
     skipTransfer: () => dispatch({ type: 'SKIP_TRANSFER' }),
-    cancelTransfer: () => managerRef.current?.cancelTransfer(),
+    cancelTransfer: () => {
+      if (requestWaitRef.current && state.downloadingFileIndex !== null) {
+        requestWaitRef.current.abort();
+        requestWaitRef.current = null;
+        dispatch({ type: 'TRANSFER_FAILED', index: state.downloadingFileIndex, message: 'Transfer cancelled' });
+      } else managerRef.current?.cancelTransfer();
+    },
     retryText: () => {
       if (!pendingTextRef.current || !state.transferError) return;
       dispatch({ type: 'TEXT_RETRY' }); managerRef.current?.sendText(pendingTextRef.current);
@@ -240,16 +274,4 @@ export function AppProvider({ children }: { children: ReactNode }) {
       {children}
     </AppContext>
   );
-}
-
-/** Trigger a browser download for a received file and release the object URL. */
-function autoSaveFile(file: File): void {
-  const url = URL.createObjectURL(file);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = sanitizeFilename(file.name);
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), OBJECT_URL_TTL_MS);
 }

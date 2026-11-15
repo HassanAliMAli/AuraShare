@@ -19,6 +19,7 @@ const SECURITY_HEADERS: Record<string, string> = {
 
 /** The machine-readable codes a client can branch on. */
 export type ApiErrorCode =
+  | 'internal_error'
   | 'unauthorized'
   | 'forbidden'
   | 'turn_unavailable'

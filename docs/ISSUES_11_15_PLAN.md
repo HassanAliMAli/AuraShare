@@ -1,5 +1,8 @@
 # Plan for issues 11–15
 
+> **2026-11-15:** the test suite was removed from this project. Test commands
+> and coverage claims below are historical.
+
 Prepared: 2026-11-14. This covers the numbered easy-to-hard list from the review.
 Status: implemented in the working tree, with TypeScript 7 intentionally held
 until supported upstream. See `docs/api.md` for the final protocol and

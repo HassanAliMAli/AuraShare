@@ -1,5 +1,8 @@
 # AuraShare — Project Audit
 
+> **2026-11-15:** the test suite was removed from this project. Test commands
+> and coverage claims below are historical.
+
 **Date:** 2026-11-12  
 **Verdict:** **NON-COMPLIANT**  
 **Scope:** AGENTS.md, frontend/backend/testing standards, source, worker, tests, docs, config, dependencies, and a browser pass at 375px and 1280px.

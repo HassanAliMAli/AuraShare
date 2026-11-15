@@ -33,16 +33,18 @@ deploy when you need one, and it is **not** part of the normal flow.
 
 ## Checking a deployment
 
-The fastest check is the live one:
+There is no test suite. Check the deployed Worker directly:
 
 ```bash
-LIVE_URL=https://aurashare.hassanali.site npm run test:live
-```
+# public STUN bootstrap
+curl -sS https://aurashare.hassanali.site/api/ice-servers
 
-It runs six checks against the deployed Worker — the landing page, the app
-screen, the ICE server list, room minting, and the two error shapes from the
-API contract. It is skipped unless `LIVE_URL` is set, so the normal suite
-never depends on a deployment being up.
+# mint a room
+curl -sS -X POST https://aurashare.hassanali.site/api/room
+
+# app screen: open https://aurashare.hassanali.site/app in a browser;
+# plain curl gets a JSON 404 by design
+```
 
 To see what is actually deployed:
 
@@ -98,8 +100,7 @@ curl -H 'Sec-Fetch-Mode: navigate' https://aurashare.hassanali.site/app
 
 `fetch()` in the browser and in Node cannot make this request: the Fetch
 standard forbids `Sec-`-prefixed headers, so they are stripped before the
-request leaves. `test/live/deployment.test.ts` therefore sends it over raw
-HTTP instead.
+request leaves. Use a raw HTTP client such as `curl` instead.
 
 ## The content security policy
 
@@ -139,8 +140,11 @@ Two things are deliberately **not** allowed:
   allowing it would mean `'unsafe-inline'`. It stays blocked, and the
   console shows one CSP error for it on every page load.
 
-`test/lib/securityHeaders.test.ts` guards all of this, including the
-absence of `'unsafe-inline'` in `script-src`.
+There is no test guarding this. After a deploy, inspect the live header:
+
+```bash
+curl -sSI https://aurashare.hassanali.site | grep -i content-security-policy
+```
 
 ## TURN credentials
 

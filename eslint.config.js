@@ -6,11 +6,11 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist', 'coverage', 'test-results', 'playwright-report']),
+  globalIgnores(['dist']),
 
   {
-    // The React app and its tests run in a browser (jsdom) environment.
-    files: ['frontend/**/*.{ts,tsx}', 'test/**/*.{ts,tsx}'],
+    // The React app runs in a browser environment.
+    files: ['frontend/**/*.{ts,tsx}'],
     extends: [
       js.configs.recommended,
       tseslint.configs.recommended,

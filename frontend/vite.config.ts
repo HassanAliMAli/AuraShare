@@ -40,8 +40,7 @@ export default defineConfig({
     // Wrangler writes Durable Object state and build output into .wrangler/
     // (backend/.wrangler/ when running from the backend config). Without this
     // the dev server watches those files and can full-reload the page
-    // mid-transfer, which breaks any browser-driven session (including the
-    // Playwright E2E suite).
+    // mid-transfer, which breaks any browser-driven session.
     watch: {
       ignored: ['**/.wrangler/**'],
     },

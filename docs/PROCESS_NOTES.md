@@ -4,6 +4,10 @@ Short notes on things that cost time, written down so the next session does
 not pay for them again. Each one is a mistake that was actually made here,
 not a hypothetical.
 
+> **2026-11-15:** the test suite was removed from this project. Notes about
+> tests and Playwright below are historical and do not describe the current
+> commands.
+
 ## `gh api -f body=@file` does not read the file
 
 ```bash

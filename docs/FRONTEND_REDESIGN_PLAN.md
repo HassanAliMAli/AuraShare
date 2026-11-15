@@ -1,5 +1,8 @@
 # AuraShare — Frontend Redesign & Restructure Plan
 
+> **2026-11-15:** the test suite was removed from this project. Test commands
+> and coverage claims below are historical.
+
 **Date:** 2026-11-12
 **Status:** **Delivered** — PR #3 (this plan), PR #4 (restructure), PR #5 (redesign)
 **Scope:** Frontend only for PRs 1–2. PR 3 is backend and is listed for completeness.

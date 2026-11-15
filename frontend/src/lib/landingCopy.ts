@@ -19,7 +19,7 @@ export const HERO = {
   eyebrow: 'Peer-to-peer file transfer',
   title: 'Send files between your devices.',
   subtitle:
-    'Open AuraShare on two devices, enter the six-character code, and the files travel directly between them. No account, no upload step, no server in the path.',
+    'Open AuraShare on two devices, enter the six-character code, and send files end-to-end encrypted — directly when the network allows it, through TURN when it does not.',
   ctaPrimary: 'Start sharing',
   ctaSecondary: 'See how it works',
   /** Short factual facts, not marketing badges. */
@@ -36,14 +36,14 @@ export const HOW_IT_WORKS = {
   eyebrow: 'How it works',
   title: 'One code. Two devices.',
   subtitle:
-    'Nothing is uploaded. The server introduces your two devices and then steps out of the path.',
+    'File contents are never stored. The server introduces your two devices and then leaves the data path alone — unless a direct connection fails, when TURN relays the encrypted packets.',
   steps: [
     {
       id: '01',
       from: 'phone',
       to: 'computer',
       title: 'Phone to computer',
-      description: 'Take a photo on your phone and send it to your laptop. No cable, no upload.',
+      description: 'Take a photo on your phone and send it to your laptop. No cable, no file storage.',
     },
     {
       id: '02',
@@ -71,7 +71,7 @@ export const HOW_IT_WORKS = {
     'Drop your files',
     'Enter the 6-character code',
   ],
-  mechanismTail: 'Files flow directly between them.',
+  mechanismTail: 'Files flow between them, encrypted end to end.',
 } as const;
 
 /**
@@ -91,7 +91,7 @@ export const COMPARISON = {
   rows: [
     {
       label: 'File route',
-      values: ['Device to device', 'Via server', 'Via server', 'Device to device'],
+      values: ['Direct, or TURN relay', 'Via server', 'Via server', 'Device to device'],
     },
     {
       label: 'Account required',
@@ -116,19 +116,19 @@ export const COMPARISON = {
 
 export const PRIVACY = {
   eyebrow: 'Privacy',
-  title: 'Your files never touch a server.',
+  title: 'Your files are never stored.',
   subtitle:
-    'The cloud introduces your two devices and then steps out of the path. It never sees your files, your metadata, or you.',
+    'AuraShare keeps no copy of what you send. The signaling server sees the room code, SDP/ICE handshake and connection metadata; when a direct path fails, TURN relays the encrypted packets without being able to read them.',
   points: [
     'No account',
     'No ads',
-    'No tracking',
-    'Nothing stored',
+    'No file storage',
+    'End-to-end encrypted',
   ],
-  relayLabel: 'Handshake only',
-  directLabel: 'File data, direct',
+  relayLabel: 'Handshake + room code',
+  directLabel: 'File data, direct or via TURN',
   caption:
-    'The six-character code and the SDP handshake are the only things the server ever handles.',
+    'Signaling sees the room code, SDP/ICE handshake and connection metadata. File contents stay end-to-end encrypted; TURN may relay the encrypted packets when a direct path fails.',
 } as const;
 
 export const FAQS = [
@@ -140,7 +140,7 @@ export const FAQS = [
   {
     id: 'different',
     q: 'How is this different from WeTransfer or Google Drive?',
-    a: 'Those route your files through a server. AuraShare connects your two devices directly — nothing is uploaded, nothing is stored, and there is nothing to clean up afterward.',
+    a: 'Those route your files through a server. AuraShare connects your two devices directly when the network allows it; if a direct path fails, TURN relays the encrypted packets. File contents are never stored, and there is nothing to clean up afterward.',
   },
   {
     id: 'install',
@@ -155,7 +155,7 @@ export const FAQS = [
   {
     id: 'security',
     q: 'Is it secure?',
-    a: 'Yes. Files travel over an end-to-end encrypted WebRTC connection (DTLS). The server relays only the initial handshake and never sees file content.',
+    a: 'Yes. Files travel over an end-to-end encrypted WebRTC connection (DTLS). The server relays the initial handshake and, when a direct path fails, encrypted TURN packets; it never sees file content.',
   },
   {
     id: 'network',
@@ -173,5 +173,5 @@ export const FINAL_CTA = {
 export const FOOTER = {
   tagline: 'Peer-to-peer file transfer between your own devices.',
   backToTop: 'Back to top',
-  trust: ['NO ACCOUNT', 'NO SERVER', 'END-TO-END ENCRYPTED'],
+  trust: ['NO ACCOUNT', 'NO FILE STORAGE', 'END-TO-END ENCRYPTED'],
 } as const;

@@ -97,7 +97,9 @@ must fit the negotiated SCTP message size and the local 64 KiB frame ceiling.
 - `request`: fresh 128-bit attempt `id` and descriptor `index`.
 - `start`: same `id`, `index`, `media` (`file` or `text`), and exact byte `size`.
 - Binary: 16-byte attempt ID + uint32 big-endian sequence + payload bytes.
-  Payloads are at most 16 KiB and smaller when negotiated limits require it.
+  Payloads are at most 16 KiB (excluding the 20-byte header) and smaller when
+  negotiated limits require it. Oversized or empty binary payloads are invalid
+  frames and terminate the transfer session.
 - `complete`: same `id`, CRC-32, and chunk count. Receiver verifies attempt,
   sequence, exact size, checksum, and UTF-8 for text before acknowledging.
 - `ack`: same `id`; sender completion requires this acknowledgement.
@@ -118,6 +120,12 @@ sender gets delivery status and a retry action on recoverable failure.
 An ACK confirms verified receipt of bytes, not that the browser completed a
 save to disk. CRC-32 detects corruption; WebRTC DTLS supplies transport encryption.
 
+On socket close or error, authorization and cached TURN credentials are revoked.
+The remaining peer receives `peer-left` once; repeated error/close callbacks for
+that socket are deduplicated with a hibernation-compatible attachment marker.
+The last departing peer releases room storage immediately. An error closes the
+socket with code 1011; a concurrent close does not prevent cleanup.
+
 ## Errors and verification
 
 | Status | Codes |
@@ -135,7 +143,3 @@ Wrong/expired codes therefore share a friendly join error. No CORS access is
 advertised for credential endpoints. Origin checks supplement token authorization;
 they are not authentication for non-browser clients. Anonymous room creation
 still needs usage monitoring; admission does not eliminate all relay abuse.
-
-The project has no test suite by the owner's decision. Build/package checks do
-not prove real TURN renewal continuity, failure recovery, or cross-browser
-behavior.

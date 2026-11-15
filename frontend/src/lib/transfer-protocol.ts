@@ -2,6 +2,7 @@
 import type { FileDescriptor } from '../types';
 import { MAX_FILES_PER_TRANSFER, MAX_TEXT_BYTES, MAX_TRANSFER_BYTES, parseFileDescriptors } from './protocol';
 export const HEADER_BYTES = 20; // 128-bit attempt ID and uint32 sequence number
+export const MAX_CHUNK_BYTES = 16 * 1024; // payload only; excludes HEADER_BYTES
 export const VERSION = 2;
 export type Control =
   | { v: 2; kind: 'hello' }
@@ -55,7 +56,7 @@ export function frameChunk(id: string, sequence: number, payload: ArrayBuffer): 
 export function readChunk(data: unknown): { id: string; sequence: number; payload: ArrayBuffer } | null {
   if (Object.prototype.toString.call(data) !== '[object ArrayBuffer]') return null;
   const buffer = data as ArrayBuffer;
-  if (buffer.byteLength <= HEADER_BYTES) return null;
+  if (buffer.byteLength <= HEADER_BYTES || buffer.byteLength > HEADER_BYTES + MAX_CHUNK_BYTES) return null;
   const bytes = new Uint8Array(buffer);
   const id = Array.from(bytes.subarray(0, 16), (b) => b.toString(16).padStart(2, '0')).join('');
   return { id, sequence: new DataView(buffer).getUint32(16), payload: buffer.slice(HEADER_BYTES) };

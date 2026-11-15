@@ -15,16 +15,45 @@ AuraShare is a peer-to-peer file and text sharing app.
 - **Node.js:** `^22.22.2 || ^24.15.0 || >=26.0.0`.
 - **Deploy:** Cloudflare Workers Builds on every push to `main`.
 
-### Repository layout
+## Project layout
 
 ```text
 frontend/      React app, Vite config, public assets
 backend/       Worker entry, routes, RoomDO, TURN service
 shared/        protocol and room contracts used by both sides
-docs/          API contract, deployment runbook, audits, plans
+docs/          API contract, deployment runbook, audits, archive
 wrangler.toml  deployment descriptor (Worker entry + SPA assets)
 dist/          generated Vite build output — never edit
 ```
+
+The allowed top-level directories are `frontend/`, `backend/`, `shared/` and
+`docs/`. Root configuration files (`wrangler.toml`, `package.json`,
+`package-lock.json`, `tsconfig*.json`, `eslint.config.js`, `.gitignore`,
+`.github/`) sit at the root because the tooling expects them there.
+
+Where a new file belongs:
+
+- React component, hook, store, style or browser-side WebRTC code → `frontend/`.
+- Worker route, Durable Object, rate limit, origin check or TURN service →
+  `backend/`.
+- The same pure contract imported by both the browser and the Worker →
+  `shared/`.
+- Contract, runbook, maintenance note or historical record → `docs/`.
+- A runnable helper script → a documented section of the code it supports,
+  never a root scratch file. Root scratch scripts are not committed.
+
+### Approved exceptions
+
+Two root-level entries are exceptions to the directory rule, both with a
+concrete reason:
+
+- **`shared/`** holds only pure contracts imported by both the browser and the
+  Worker (`heartbeat.ts`, `ice.ts`, `room-code.ts`). It is not a general
+  utility folder and must not grow into one. Moving these files into either
+  side would duplicate the contract or create a cross-boundary import.
+- **Root `wrangler.toml`** stays at the repository root because Workers Builds
+  runs `npx wrangler deploy` from the root, and Wrangler only searches the
+  working directory and its ancestors.
 
 There is **no `test/` directory** and no test suite. Do not create one.
 
@@ -37,13 +66,13 @@ There is **no `test/` directory** and no test suite. Do not create one.
   thresholds, or CI test jobs.
 - `npm test` intentionally does not exist. Do not recreate it.
 - Historical docs (`docs/PROCESS_NOTES.md`, `docs/MAINTENANCE_PLAN.md`,
-  `docs/FRONTEND_REDESIGN_PLAN.md`, `docs/PROJECT_AUDIT_2026-11-12.md`,
+  `docs/archive/FRONTEND_REDESIGN_PLAN.md`, `docs/archive/PROJECT_AUDIT_2026-11-12.md`,
   `docs/AUDIT_CHECKLIST_2026-11-15.md`) mention tests. Those references are
   historical; do not treat them as current commands.
 - If the owner explicitly asks for tests, that request overrides this section
   for that session only.
 
-## Quality gates
+## Verification
 
 Before calling work complete, run:
 
@@ -60,6 +89,10 @@ npm audit --audit-level=high
 - `npm run build` runs `tsc -b` and the Vite production build into `dist/`.
 - If a gate cannot run — for example, the npm registry is unavailable — say so.
   Never claim a gate passed when it did not.
+- A guard is only a guard once it has been watched failing on the bug it is
+  meant to catch. If a check is added in a future session with tests enabled,
+  quote the failure, then restore the fix. Do not call static inspection a
+  passing behaviour check.
 
 ## Commands
 
@@ -73,7 +106,7 @@ npm run typecheck    # tsc -b (no emit)
 npm run preview      # Preview the production build locally
 ```
 
-## Architecture and contracts
+## Where code lives
 
 - `frontend/` owns the React UI, stores, hooks, and browser-side WebRTC and
   transfer logic. Keep WebRTC code out of the landing-page bundle.
@@ -145,6 +178,32 @@ npm run preview      # Preview the production build locally
 - Report changes, verification results, assumptions, and unresolved risks
   honestly. State explicitly what could not be verified.
 
+## Git workflow
+
+1. Branch from `main`; never commit directly to `main`.
+2. Make the change, run the verification gates above, and inspect the diff.
+3. Commit with a message that says what changed and why.
+4. Push the branch, open a pull request, and wait for the required CI check
+   (`Lint + Typecheck + Build + Audit`) to pass.
+5. Merge only when the checks are green, then report the pull request link.
+6. Remember that Workers Builds deploys `main` on push; it does not wait for
+   CI, so a merge is a production deploy.
+
+Keep `shared/` unchanged unless the owner explicitly asks for a contract change.
+Change both consumers together when a contract does change.
+
+## Do not
+
+- Do not add, restore or run a test suite, test config, test dependency or CI
+  test job unless the owner explicitly asks in the current session.
+- Do not commit root scratch scripts or one-off probes.
+- Do not commit secrets, tokens or local environment files.
+- Do not weaken or remove a rate limit, origin check, peer token, TURN
+  authorization rule, CSP directive or security header to silence a symptom.
+- Do not modify `.opencode/` unless the owner explicitly asks.
+- Do not claim a gate, deployment or runtime behaviour was verified when it
+  was not.
+
 ## Cloudflare
 
 - This project has `wrangler.toml`, so use Wrangler for local development,
@@ -160,6 +219,8 @@ npm run preview      # Preview the production build locally
 
 - Do not modify `.opencode/` unless the owner explicitly asks. It contains
   tooling and skills, not project source.
+- Global agent behaviour lives in `.opencode/AGENTS.md`. This file adds the
+  AuraShare-specific rules; it does not repeat the global list.
 
 ## Final rule
 

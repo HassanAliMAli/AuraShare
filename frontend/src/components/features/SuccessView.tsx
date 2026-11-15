@@ -77,12 +77,14 @@ export function ErrorView() {
       className="z-40 flex w-full flex-col items-center px-4"
     >
       <div className="w-full max-w-lg text-center">
-        <div className="font-mono text-xs uppercase tracking-[0.18em] text-error">
-          Connection failed
+        <div role="alert" aria-atomic="true">
+          <h2 className="font-mono text-xs uppercase tracking-[0.18em] text-error">
+            Connection failed
+          </h2>
+          <p className="mt-4 text-sm leading-relaxed text-text-2">
+            {state.errorMessage || 'Link failed'}
+          </p>
         </div>
-        <p className="mt-4 text-sm leading-relaxed text-text-2">
-          {state.errorMessage || 'Link failed'}
-        </p>
         <Button variant="secondary" onClick={actions.reset} className="mt-6">
           Try again
         </Button>

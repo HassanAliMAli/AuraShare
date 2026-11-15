@@ -112,25 +112,34 @@ export class RoomDO {
   }
 
   async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
-    this.auth.revoke(ws);
-    for (const socket of this.state.getWebSockets()) {
-      if (socket !== ws) socket.send(JSON.stringify({ type: 'peer-left' }));
-    }
-    try {
-      ws.close(code, reason);
-    } catch {
-      // workerd may close the socket before invoking this handler; a second
-      // close() throws and would otherwise surface as an uncaught DO error.
-    }
-    // The room is over once the last peer leaves. Release the storage now
-    // rather than letting it sit there until the alarm fires.
-    await this.releaseIfEmpty(ws);
+    await this.disconnect(ws, code, reason);
   }
 
   async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
-    this.auth.revoke(ws);
     console.error('[RoomDO] websocket error:', error);
-    ws.close(1011, 'WebSocket error');
+    await this.disconnect(ws, 1011, 'WebSocket error');
+  }
+
+  private async disconnect(ws: WebSocket, code: number, reason: string): Promise<void> {
+    if (!this.auth.revoke(ws)) return;
+    try {
+      for (const socket of this.state.getWebSockets()) {
+        if (socket === ws || this.auth.isRevoked(socket)) continue;
+        try {
+          socket.send(JSON.stringify({ type: 'peer-left' }));
+        } catch {
+          // Another socket may already be closing; still release this peer.
+          console.error('[RoomDO] peer-left delivery failed');
+        }
+      }
+    } finally {
+      try {
+        ws.close(code, reason);
+      } catch {
+        // The runtime may have closed the socket before the callback.
+      }
+      await this.releaseIfEmpty(ws);
+    }
   }
 
   async alarm(): Promise<void> {
@@ -212,7 +221,7 @@ export class RoomDO {
 
   /** Release the room's storage once the last peer has left. */
   private async releaseIfEmpty(closing?: WebSocket): Promise<void> {
-    const remaining = this.state.getWebSockets().filter((socket) => socket !== closing);
+    const remaining = this.state.getWebSockets().filter((socket) => socket !== closing && !this.auth.isRevoked(socket));
     if (remaining.length > 0) return;
     await this.release();
   }

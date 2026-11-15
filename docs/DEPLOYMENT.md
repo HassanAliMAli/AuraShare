@@ -396,3 +396,25 @@ there, and adding validation would change the contract in
 | The Worker is up but old | The deploy did not run — check the `Workers Builds: aurashare` check on the commit |
 | A code that was just minted is refused | The room ended early — the code is only valid for 10 minutes from the mint, and the room is released as soon as the last peer leaves |
 | Room requests answer `429` | A client went over the rate limit — see [Rate limiting](#rate-limiting-and-what-the-free-plan-allows) |
+
+
+## Room limiter availability decision
+
+The IP binding guards room creation and real WebSocket upgrades. Explicit
+limiter denials return 429 with Retry-After. A missing binding, missing client
+IP (local development), or a limiter exception allows the room request to
+proceed. This deliberately keeps signaling available during limiter outages,
+at the risk of spending the daily Worker/Durable Object budget sooner. Monitor
+limiter error logs and request usage; restore the binding rather than disabling
+origin checks or admission controls.
+
+This is separate from TURN credential authorization and issuance limits:
+live socket tokens, per-peer cooldown/hourly quotas, and the credential-route
+IP limiter remain enforced. A missing credential limiter in production fails
+closed as described above.
+
+The static CSP restricts connections to the same origin and explicitly permits
+`wss://aurashare.hassanali.site` for browser compatibility. A new production
+hostname must update that exact WebSocket source. Vite development does not
+apply `_headers`; STUN/TURN ICE transport is separate from Fetch/WebSocket
+`connect-src` connections. Object embedding, base URLs and framing are disabled.

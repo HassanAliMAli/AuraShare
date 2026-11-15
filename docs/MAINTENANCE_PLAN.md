@@ -457,3 +457,20 @@ short:
 The app is the product, so the live site gets a real session: two browsers,
 a text payload, and the file arriving intact. The dependency upgrades touch
 the client bundle, so this is the check that matters.
+
+
+## Dependency holds — 2026-11-15
+
+`typescript` remains `~6.0.3`: installed `typescript-eslint@8.72.2`
+accepts `>=4.8.4 <6.1.0`, so 6.0.x is the supported compiler ceiling.
+Revisit TypeScript 7 when the upstream peer range includes it, checking the
+compiler configs and CI together.
+
+`@types/node` remains on major 24 to match the supported Node 24 baseline;
+the engine range also supports Node 22 and 26 (`^22.22.2 || ^24.15.0 || >=26.0.0`).
+This does not mean Node 24 is the minimum supported runtime. Newer Node types
+must not silently permit APIs unavailable on the supported runtimes. Review
+Node types, engine ranges and CI together when revisiting these holds.
+
+The older coverage plans above are historical. Coverage and backend thresholds
+are N/A after removal of the test suite; do not recreate them.

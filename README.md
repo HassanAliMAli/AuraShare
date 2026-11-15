@@ -1,6 +1,6 @@
 # AuraShare
 
-Peer-to-peer file sharing with an ambient, organic UI. No servers, no limits, end-to-end encrypted. Files flow directly between devices via WebRTC — the cloud only relays the initial handshake.
+Peer-to-peer file and text sharing with a **Field Instrument** interface — precision network equipment, not a toy. A Cloudflare Worker mints a six-character code and relays the WebRTC handshake. File data travels directly between the two browsers when ICE can find a path, and through Cloudflare TURN when it cannot. File contents are never stored, and TURN only relays encrypted packets.
 
 ## Stack
 
@@ -10,7 +10,7 @@ Peer-to-peer file sharing with an ambient, organic UI. No servers, no limits, en
 | Language | TypeScript 6 (strict mode) |
 | Build | Vite 8 |
 | Styling | Tailwind CSS 4 (`@theme` tokens) |
-| Animation | Motion 12 (Framer Motion) |
+| Animation | Motion 14 |
 | P2P | Raw WebRTC (DataChannels) |
 | Signaling | Cloudflare Durable Objects (Hibernatable WebSockets) |
 | Icons | lucide-react |
@@ -31,25 +31,48 @@ Worker serves the SPA with `not_found_handling = "single-page-application"`.
 ### Repository layout
 
 ```
-frontend/   React app — components, hooks, stores, lib, types, styles, Vite config
-backend/    Cloudflare Worker — Durable Object relay, TURN credentials
+frontend/      React app — components, hooks, stores, lib, types, styles, Vite config
+backend/       Cloudflare Worker — routes, RoomDO signaling relay, TURN credentials
+shared/        Room-code, heartbeat and ICE contracts imported by both sides
+docs/          API contract, deployment runbook, maintenance plan, process notes, archive
 wrangler.toml  deployment descriptor (Worker entry + SPA assets)
-docs/       API contract, audits, redesign plan
+dist/          generated Vite build output — never edit
 ```
 
 ```
-Browser A (Sender)                         Browser B (Receiver)
-     │                                          │
-     │  POST /api/room → mint 6-char code        │
-     │  WS  /api/room/:id/ws                    │
-     │──────────────► RoomDO ◄──────────────────│
-     │   SDP offer/answer + trickle ICE relay    │
-     │                                          │
+Browser A (Sender)                          Browser B (Receiver)
+     │                                           │
+     │  POST /api/room → mint 6-char code         │
+     │  WS  /api/room/:id/ws                     │
+     │──────────────► RoomDO ◄───────────────────│
+     │   SDP offer/answer + trickle ICE relay     │
+     │                                           │
      │◄═══════════ WebRTC DataChannel ══════════►│
-     │         (direct P2P, E2E encrypted)       │
+     │        direct path when ICE finds one      │
+     │                    │                       │
+     │                    ▼                       │
+     │              TURN relay                    │
+     │   only when a direct path fails; the       │
+     │   packets stay end-to-end encrypted        │
 ```
 
-One Durable Object per room code acts as a dumb WebSocket relay for SDP/ICE exchange. File data never touches the server — it flows directly between peers via a WebRTC DataChannel, encrypted with DTLS.
+One Durable Object per room code acts as a dumb WebSocket relay for SDP/ICE exchange. File data travels directly between peers over a WebRTC DataChannel, encrypted with DTLS. When ICE cannot find a direct pair — symmetric NAT, a restrictive firewall — the browser routes the same encrypted packets through Cloudflare TURN.
+
+What each part can see:
+
+- **Signaling (RoomDO):** the room code, SDP/ICE, and connection metadata needed to introduce the peers. It never receives file contents.
+- **TURN:** encrypted packets and the addressing needed to relay them. It cannot read the plaintext.
+- **Storage:** none of the file contents. The room’s only persisted row is the time its code was minted, and it is released when the room ends.
+
+## Limits
+
+| Limit | Value | Source |
+|---|---|---|
+| File size | 256 MiB per file | `MAX_FILE_SIZE` |
+| Files per transfer | 32 | `MAX_FILES_PER_TRANSFER` |
+| Text | 1 MiB of UTF-8 | `MAX_TEXT_BYTES` |
+| Peers per room | 2 | `RoomDO` capacity check |
+| Room code | 6 characters, Crockford base32 | `shared/room-code.ts` |
 
 ## Development
 

@@ -4,19 +4,38 @@
  * Rules for this project:
  *  - Motion carries meaning (a view entering, a row expanding, a bar filling).
  *  - No infinite decorative loops, no blur filters, no scale-overs.
- *  - One easing curve, three durations, mapped to the --duration-* tokens.
+ *  - Two easing curves, three durations, derived from the CSS tokens.
  *  - `prefers-reduced-motion` is honoured globally by <MotionConfig> in App.tsx,
  *    so individual components do not need to branch on it.
  */
 
 import type { Transition } from 'motion/react';
 
-/** The single easing curve. */
-const EASE_OUT: [number, number, number, number] = [0.16, 1, 0.3, 1];
+import tokenCss from '../styles/tokens.css?raw';
 
-const DURATION_MICRO = 0.12;
-const DURATION_STANDARD = 0.2;
-const DURATION_ENTER = 0.32;
+function token(name: string): string {
+  const value = tokenCss.match(new RegExp(`--${name}:\\s*([^;]+);`))?.[1];
+  if (!value) throw new Error(`Missing motion token: ${name}`);
+  return value.trim();
+}
+function duration(name: string): number {
+  const value = token(`duration-${name}`);
+  if (!/^\d+(?:\.\d+)?ms$/.test(value)) throw new Error(`Invalid duration: ${name}`);
+  return Number.parseFloat(value) / 1000;
+}
+function easing(name: string): [number, number, number, number] {
+  const parts = token(`ease-${name}`).match(/^cubic-bezier\(([^)]+)\)$/)?.[1]?.split(',').map(Number);
+  const [a, b, c, d] = parts ?? [];
+  if (parts?.length !== 4 || a === undefined || b === undefined || c === undefined || d === undefined ||
+    ![a, b, c, d].every(Number.isFinite)) throw new Error(`Invalid easing: ${name}`);
+  return [a, b, c, d];
+}
+
+export const EASE_OUT = easing('out');
+export const EASE_STANDARD = easing('standard');
+export const DURATION_MICRO = duration('micro');
+export const DURATION_STANDARD = duration('standard');
+export const DURATION_ENTER = duration('enter');
 
 /** Status-view entry/exit. Used by every routed feature view. */
 export const viewVariants = {

@@ -1,7 +1,7 @@
 /** Ordered, bounded file/text transfers with per-attempt framing and acknowledgements. */
 import type { FileDescriptor } from '../types';
 import { Crc32, MAX_FILES_PER_TRANSFER, MAX_TEXT_BYTES, MAX_TRANSFER_BYTES, parseTransferMessage } from './protocol';
-import { HEADER_BYTES, frameChunk, newTransferId, parseControl, readChunk, type Control } from './transfer-protocol';
+import { HEADER_BYTES, MAX_CHUNK_BYTES, frameChunk, newTransferId, parseControl, readChunk, type Control } from './transfer-protocol';
 import { abortError } from './async';
 
 export type TransferEvents = {
@@ -243,7 +243,7 @@ export class TransferSession {
       await this.waitUntilResumed(attempt.abort.signal);
       this.control({ v: 2, kind: 'start', id: attempt.id, index: attempt.index, media: attempt.media, size: attempt.size });
       attempt.stage = 'transferring';
-      const payloadSize = Math.min(16 * 1024, this.maxFrame() - HEADER_BYTES);
+      const payloadSize = Math.min(MAX_CHUNK_BYTES, this.maxFrame() - HEADER_BYTES);
       if (payloadSize < 1) throw new Error('Peer message limit too small');
       while (attempt.bytes < blob.size) {
         await this.waitUntilResumed(attempt.abort.signal);

@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { MotionConfig } from 'motion/react';
 import { useRoute } from './hooks';
+import { useRouteAccessibility } from './hooks/useRouteAccessibility';
 import { LandingPage } from './components/landing';
 
 /**
@@ -33,6 +34,7 @@ function PageLoader() {
  */
 export function App() {
   const route = useRoute();
+  useRouteAccessibility(route);
 
   return (
     <MotionConfig reducedMotion="user">

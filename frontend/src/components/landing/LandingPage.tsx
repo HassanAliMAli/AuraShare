@@ -19,7 +19,7 @@ export function LandingPage() {
 
       <LandingNav />
 
-      <main id="main-content" className="relative">
+      <main id="main-content" tabIndex={-1} className="relative focus:outline-none">
         <Hero />
         <HowItWorks />
         <Comparison />

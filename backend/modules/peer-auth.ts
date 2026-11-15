@@ -43,7 +43,17 @@ export class PeerAuth {
     socket.send(JSON.stringify({ type: 'admitted', version: 2, token, expiresAt: peer.expiresAt }));
   }
 
-  revoke(socket: WebSocket): void { socket.serializeAttachment(null); }
+  isRevoked(socket: WebSocket): boolean {
+    const data: unknown = socket.deserializeAttachment();
+    return !!data && typeof data === 'object' && 'revoked' in data && data.revoked === true;
+  }
+
+  /** A persistent tombstone deduplicates error/close callbacks, including legacy peers. */
+  revoke(socket: WebSocket): boolean {
+    if (this.isRevoked(socket)) return false;
+    socket.serializeAttachment({ revoked: true });
+    return true;
+  }
 
   async issue(request: Request): Promise<Response> {
     const token = request.headers.get('Authorization')?.replace(/^Bearer /, '') ?? '';

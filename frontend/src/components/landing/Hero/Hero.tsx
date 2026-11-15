@@ -1,10 +1,10 @@
+import { TransmissionCodePanel } from '../../ui/TransmissionCodePanel';
 import { motion } from 'motion/react';
 import { HERO } from '../../../lib/landingCopy';
 import { navigate } from '../../../lib/router';
 import { fadeUpVariants } from '../../../lib/motion';
 import { Button } from '../../ui/Button';
 import { Eyebrow } from '../../ui/Eyebrow';
-import { Panel } from '../../ui/Panel';
 import { PathDiagram } from '../../ui/PathDiagram';
 
 /** Hero: the positioning statement, one action, and the two-lane diagram. */
@@ -61,20 +61,7 @@ export function Hero() {
           animate="visible"
           className="md:col-span-5"
         >
-          <Panel className="p-6">
-            <div className="flex items-baseline justify-between">
-              <span className="font-mono text-xs uppercase tracking-[0.18em] text-text-3">
-                Transmission code
-              </span>
-              <span className="font-mono text-xs text-text-3">6 characters</span>
-            </div>
-            <p className="mt-5 font-mono text-3xl font-medium tracking-[0.18em] text-accent md:text-4xl">
-              A1B2C3
-            </p>
-            <p className="mt-5 border-t border-border pt-4 text-sm leading-relaxed text-text-2">
-              Enter this code on the other device to open the link.
-            </p>
-          </Panel>
+          <TransmissionCodePanel code="A1B2C3" sample />
 
           <div className="mt-6">
             <PathDiagram />

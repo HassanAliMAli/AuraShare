@@ -4,9 +4,10 @@
  * One RoomDO instance per room code acts as a dumb WebSocket relay between
  * two peers, exchanging SDP offer/answer + trickle ICE candidates in real
  * time.
- * No session state is persisted: the DO holds the time its code was minted
- * and nothing else, hibernates between messages (free-tier friendly), and
- * releases that storage the moment the room is over.
+ * Storage holds the code mint time. Hibernatable socket attachments retain
+ * per-peer authorization, TURN credentials and issuance quota, revoked when
+ * the socket leaves. The DO hibernates between messages and releases its
+ * storage when the room ends.
  *
  * This file is only the entry point. The behaviour lives in `modules/`:
  *

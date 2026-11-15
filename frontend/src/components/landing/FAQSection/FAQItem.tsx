@@ -37,6 +37,8 @@ export function FAQItem({ item, open, onToggle }: FAQItemProps) {
       <div
         id={`faq-panel-${item.id}`}
         role="region"
+        inert={!open}
+        aria-hidden={!open}
         aria-labelledby={`faq-button-${item.id}`}
         className={cn(
           'grid transition-[grid-template-rows] duration-(--duration-standard) ease-(--ease-standard)',

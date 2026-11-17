@@ -100,6 +100,15 @@ Connected data channels send signaling heartbeats every 60 seconds; unpaired
 heartbeats cannot extend code validity. Alarms are updated only near expiry.
 Last-peer departure and expiry release storage and authorization.
 
+## Join links and QR
+
+The waiting screen renders the code as a QR image. It encodes
+`https://<origin>/app?code=<CODE>` locally as an SVG data URI; no image service
+is contacted. Opening the link pre-fills the receiver's code field but does not
+connect on its own — the user still submits the form, so a link cannot silently
+join a session. The query is removed from the address bar with
+`history.replaceState` after the app reads it.
+
 ## Data-channel v2
 
 Both sides first exchange `{"v":2,"kind":"hello","maxChunk":65536}`. `maxChunk`

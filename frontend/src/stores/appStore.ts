@@ -29,6 +29,8 @@ export type AppState = {
   failedFileIndex: number | null;
   transferError: string | null;
   connectionWarning: string | null;
+  /** A finished session ended normally — shown instead of discarding results. */
+  sessionNotice: string | null;
   textAcknowledged: boolean;
 };
 
@@ -54,6 +56,7 @@ export const initialState: AppState = {
   failedFileIndex: null,
   transferError: null,
   connectionWarning: null,
+  sessionNotice: null,
   textAcknowledged: false,
 };
 
@@ -81,12 +84,14 @@ export type AppAction =
   | { type: 'TEXT_ACKNOWLEDGED' }
   | { type: 'TEXT_RETRY' }
   | { type: 'CONNECTION_WARNING'; message: string | null }
+  | { type: 'SESSION_NOTICE'; message: string }
   | { type: 'RESET' };
 
 export function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
     case 'MEMORY_WAIT': return { ...state, waitingForMemory: action.waiting };
     case 'CONNECTION_WARNING': return { ...state, connectionWarning: action.message };
+    case 'SESSION_NOTICE': return { ...state, sessionNotice: action.message, connectionWarning: null };
     case 'TEXT_ACKNOWLEDGED': return { ...state, textAcknowledged: true, transferError: null };
     case 'TEXT_RETRY': return { ...state, textAcknowledged: false, transferError: null };
     case 'TRANSFER_FAILED':
@@ -167,7 +172,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case 'RECEIVE_TEXT':
       return { ...state, receivedText: action.text, status: 'success' };
     case 'SET_ERROR':
-      return { ...state, waitingForMemory: false, errorMessage: action.message, status: 'error' };
+      return { ...state, waitingForMemory: false, errorMessage: action.message, status: 'error', sessionNotice: null };
     case 'SET_JOIN_CODE_ERROR':
       return { ...state, joinCodeError: action.message };
     case 'RESET':

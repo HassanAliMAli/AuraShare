@@ -39,6 +39,9 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
 
   const iceCode = path.match(new RegExp(`^/api/room/(${ROOM_CODE_SOURCE})/ice-servers$`))?.[1];
   if (iceCode && request.method === 'POST') {
+    if (foreignOrigin(request, env, url)) {
+      return apiError('forbidden', 'Origin is not allowed', 403);
+    }
     if (!/^Bearer [a-f0-9]{64}$/.test(request.headers.get('Authorization') ?? '')) {
       return apiError('unauthorized', 'A room session token is required', 401);
     }
@@ -60,6 +63,13 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
   }
 
   if (path === '/api/room' && request.method === 'POST') {
+    // A cross-site form or fetch can mint rooms and spend the Durable Object
+    // budget without ever reading the response. Reject it before the limiter
+    // and before any room is reserved. Non-browser clients send no Origin and
+    // remain served; Origin is a browser control, not authentication.
+    if (foreignOrigin(request, env, url)) {
+      return apiError('forbidden', 'Origin is not allowed', 403);
+    }
     const limited = await rateLimited(request, env);
     if (limited) return limited;
     for (let attempt = 0; attempt < 5; attempt++) {
@@ -86,6 +96,19 @@ export async function handleRequest(request: Request, env: Env): Promise<Respons
   }
 
   return apiError('not_found', 'Not found', 404);
+}
+
+/**
+ * Whether a browser request comes from another origin.
+ *
+ * The WebSocket route requires an exact Origin. The two POST routes accept a
+ * missing Origin so a script or `curl` still works, but a present one must
+ * match. That is enough to stop a drive-by page from minting rooms or asking
+ * for credentials with a token it cannot read.
+ */
+function foreignOrigin(request: Request, env: Env, url: URL): boolean {
+  const origin = request.headers.get('Origin');
+  return origin !== null && origin !== (env.APP_ORIGIN ?? url.origin);
 }
 
 /**

@@ -39,7 +39,7 @@ There is no test suite. Check the deployed Worker directly:
 # public STUN bootstrap
 curl -sS https://aurashare.hassanali.site/api/ice-servers
 
-# mint a room
+# mint a room (curl sends no Origin, so the browser Origin check does not apply)
 curl -sS -X POST https://aurashare.hassanali.site/api/room
 
 # app screen: open https://aurashare.hassanali.site/app in a browser;
@@ -118,9 +118,12 @@ It is written by hand, so it drifts from the app silently — a directive
 that is too tight does not fail the build, it fails in the browser. Two
 allowances need a reason:
 
-- **`font-src 'self' data:`** — the display face is inlined into the
-  stylesheet as a `data:` URI. Without `data:` the browser refuses it and
-  the live site quietly falls back to a typeface that is not the design.
+- **`font-src 'self' data:`** — Vite inlines assets below its 4 KB limit.
+  Today that is one small JetBrains Mono subset, which arrives in the
+  stylesheet as a `data:` URI; every other face is a self-hosted `.woff2`
+  file under `/assets/`. Without `data:` the inlined subset is refused.
+  Re-check this allowance after changing the font imports; the build output
+  (not this document) is the source of truth.
 - **`script-src 'self' https://static.cloudflareinsights.com`** — the
   Cloudflare Web Analytics beacon the edge injects into every HTML
   response. The **host** is allowed, not the script's path: the edge
@@ -141,10 +144,17 @@ Two things are deliberately **not** allowed:
   allowing it would mean `'unsafe-inline'`. It stays blocked, and the
   console shows one CSP error for it on every page load.
 
-There is no test guarding this. After a deploy, inspect the live header:
+HSTS is configured on the **zone**, not by this policy, and the edge value
+wins over `_headers`. The live edge currently sends
+`max-age=15552000; includeSubDomains`; the repository mirrors that value so
+the two cannot drift. `preload` is not live and is not claimed: it requires a
+one-year `max-age` and an explicit submission.
+
+There is no test guarding any of this. After a deploy, inspect the live headers:
 
 ```bash
-curl -sSI https://aurashare.hassanali.site | grep -i content-security-policy
+curl -sSI https://aurashare.hassanali.site \
+  | grep -iE 'content-security-policy|strict-transport-security'
 ```
 
 ## TURN credentials
@@ -161,12 +171,16 @@ STUN-only warning. See [the API contract](api.md) for limits and renewal.
 
 The deployment requires both `ROOM_RATE_LIMITER` and `ICE_RATE_LIMITER` from
 `wrangler.toml`; missing credential-rate bindings fail closed. Browser sockets
-must have the correct Origin. Local Vite preserves Host/Origin through the
-proxy. Set optional `APP_ORIGIN` only when the externally visible origin differs
-from the Worker request origin. Peer tokens must never appear in URLs or logs.
+must have the correct Origin, and the two POST routes reject a present Origin
+that does not match. A request without an Origin (a script or `curl`) is still
+served: Origin is a browser control, not authentication. Local Vite preserves
+Host/Origin through the proxy. Set optional `APP_ORIGIN` only when the
+externally visible origin differs from the Worker request origin. Peer tokens
+must never appear in URLs or logs.
 
-These changes are implemented locally; deployment and live behavior have not
-been checked during this work. Existing TURN secrets are not changed.
+The public route is STUN-only by design, so it cannot prove TURN issuance.
+An admitted two-device session is the only place that path is exercised;
+existing TURN secrets are not changed by a deploy.
 
 ### Rotating the key
 

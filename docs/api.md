@@ -12,9 +12,9 @@ Errors use `{ "error": { "code": "…", "message": "…" } }`.
 | Endpoint | Behavior |
 |---|---|
 | `GET /api/ice-servers` | Public STUN-only bootstrap: `{iceServers, expiresAt:null, degraded:true}`. Never contains TURN credentials, even with TURN secrets configured. |
-| `POST /api/room` | Mints a six-character Crockford code. Existing codes are rejected internally; retry at most five times, then return `503 room_unavailable`. |
+| `POST /api/room` | Mints a six-character Crockford code. A browser request whose `Origin` does not match the request origin or `APP_ORIGIN` is refused with `403 forbidden` before the limiter and before any room is reserved. Existing codes are rejected internally; retry at most five times, then return `503 room_unavailable`. |
 | `GET /api/room/{code}/ws?v=2` | WebSocket upgrade. Browser Origin must match the request origin or configured `APP_ORIGIN`. Maximum two peers; missing/expired reservations and full rooms are rejected before acceptance. |
-| `POST /api/room/{code}/ice-servers` | Requires `Authorization: Bearer <peer-token>`, a live admitted socket, and issuance rate/quota checks. |
+| `POST /api/room/{code}/ice-servers` | Requires `Authorization: Bearer <peer-token>`, a live admitted socket, and issuance rate/quota checks. A present browser `Origin` must match. |
 
 The v2 socket receives a private server frame:
 

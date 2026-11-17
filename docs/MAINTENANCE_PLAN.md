@@ -490,16 +490,23 @@ are the same one: [GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-
   bundle ships.
 
 The CI gate therefore blocks on production dependencies and reports the full
-tree without blocking:
+tree without blocking on push and pull requests:
 
 ```yaml
 - run: npm audit --omit=dev --audit-level=high   # blocking
-- run: npm audit --audit-level=high              # continue-on-error
+- run: npm audit --audit-level=high              # advisory on push/PR
+  continue-on-error: ${{ github.event_name != 'schedule' }}
 ```
 
 This is a tracked exception, not a removed check: the full audit still runs and
-its output stays in the job log. **Remove the exception — make the full audit
+its output stays in the job log. The weekly scheduled run (Mondays, 06:00 UTC)
+does **not** tolerate the failure, so an unfixed advisory raises a red run
+instead of passing quietly. **Remove the exception — make the full audit
 blocking again — as soon as `picomatch > 4.0.7` is released.** Re-check this
 entry at each dependency review; if `vite` or `typescript-eslint` starts
 depending on a patched `picomatch`, the second step will pass and the exception
 can be deleted.
+
+The workflow pins `actions/checkout` and `actions/setup-node` to commit SHAs
+with `permissions: contents: read`. Bump the SHA and its version comment
+together; do not replace a pin with a moving tag.

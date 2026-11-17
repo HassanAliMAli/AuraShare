@@ -1,4 +1,5 @@
 import { TransmissionCodePanel } from '../ui/TransmissionCodePanel';
+import { RoomQr } from '../ui/RoomQr';
 import { motion } from 'motion/react';
 import { Check, Clock } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
@@ -86,6 +87,7 @@ export function ReceiveCodeForm() {
 /** Sender waiting screen: shows the code + sent-file acknowledgement list. */
 export function SharingView() {
   const { state, actions } = useAppStore();
+  const waitingForPeer = !state.receiverReady && !state.textAcknowledged;
 
   return (
     <motion.div
@@ -100,11 +102,13 @@ export function SharingView() {
           code={state.roomId}
           alignment="center"
           expiresAt={
-            state.roomCreatedAt !== null && !state.receiverReady && !state.textAcknowledged
+            state.roomCreatedAt !== null && waitingForPeer
               ? state.roomCreatedAt + UNPAIRED_CODE_TTL_MS
               : null
           }
-        />
+        >
+          {state.roomId && waitingForPeer && <RoomQr code={state.roomId} />}
+        </TransmissionCodePanel>
 
         <p className="mt-5 text-center font-mono text-xs uppercase tracking-[0.14em] text-text-3">
           {state.textAcknowledged ? 'Text delivered' : state.receiverReady ? 'Receiver connected' : 'Waiting for the other device'}

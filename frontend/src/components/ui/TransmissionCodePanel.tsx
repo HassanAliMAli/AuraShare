@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Check, Copy } from 'lucide-react';
 import { Panel } from './Panel';
 import { cn } from '../../lib/utils';
@@ -10,6 +10,8 @@ type TransmissionCodePanelProps = {
   sample?: boolean;
   /** Epoch ms when the waiting code stops working. Omit to hide the countdown. */
   expiresAt?: number | null;
+  /** Extra content inside the card, e.g. the room QR. */
+  children?: ReactNode;
 };
 
 function formatRemaining(ms: number): string {
@@ -25,6 +27,7 @@ export function TransmissionCodePanel({
   alignment = 'left',
   sample = false,
   expiresAt = null,
+  children,
 }: TransmissionCodePanelProps) {
   const [copied, setCopied] = useState<'idle' | 'copied' | 'failed'>('idle');
   const [now, setNow] = useState(() => Date.now());
@@ -99,6 +102,7 @@ export function TransmissionCodePanel({
         Could not reach the clipboard. Select the code and copy it manually.
       </p>
     )}
+    {children}
     <p className="mt-5 border-t border-border pt-4 text-sm leading-relaxed text-text-2">{caption}</p>
   </Panel>;
 }

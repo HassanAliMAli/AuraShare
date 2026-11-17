@@ -12,11 +12,27 @@ import type { AppActions } from './appStore';
 const CONNECT_TIMEOUT_MS = 30_000;
 
 /**
+ * Read a join link once: `/app?code=ABCDEF` opens the receive form with the
+ * code filled in. The value is a one-time hand-off — the query is removed
+ * from history in an effect so it does not linger in a shared URL.
+ */
+function joinCodeFromUrl(): string | null {
+  if (typeof window === 'undefined') return null;
+  const raw = new URLSearchParams(window.location.search).get('code');
+  if (raw === null) return null;
+  const code = normalizeRoomCode(raw);
+  return isRoomCode(code) ? code : null;
+}
+
+/**
  * Owns the reducer + P2P manager lifecycle and exposes state + actions via
  * context. Shared callbacks handle the sender and receiver lifecycle.
  */
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(appReducer, initialState);
+  const [state, dispatch] = useReducer(appReducer, initialState, (base) => {
+    const code = joinCodeFromUrl();
+    return code ? { ...base, joinCode: code, isReceiving: true } : base;
+  });
   const requestWaitRef = useRef<AbortController | null>(null);
   const managerRef = useRef<P2PManager | null>(null);
   const pendingFilesRef = useRef<File[] | null>(null);
@@ -57,6 +73,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (requestWaitRef.current === wait) requestWaitRef.current = null;
     };
   }, [state.downloadingFileIndex, state.receivedFiles]);
+
+  // A join link is a hand-off, not state: drop the code from the address bar.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has('code')) return;
+    url.searchParams.delete('code');
+    window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+  }, []);
 
   // Tear down the peer connection and any unsaved received files on unmount.
   useEffect(() => {

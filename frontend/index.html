@@ -12,18 +12,54 @@
     <meta name="description" content="Peer-to-peer file sharing. No account, no ads, no subscription — open AuraShare on two devices and share files peer to peer, end-to-end encrypted." />
 
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="AuraShare" />
     <meta property="og:title" content="AuraShare — Send files between your devices. Instantly." />
     <meta property="og:description" content="Peer-to-peer file sharing. No account, no ads, no subscription." />
-    <meta property="og:image" content="https://aurashare.hassanali.site/logo.svg" />
+    <meta property="og:image" content="https://aurashare.hassanali.site/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="AuraShare — send files between your devices." />
     <meta property="og:url" content="https://aurashare.hassanali.site" />
 
-    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="AuraShare — Send files between your devices. Instantly." />
     <meta name="twitter:description" content="Peer-to-peer file sharing. No account, no ads, no subscription." />
-    <meta name="twitter:image" content="https://aurashare.hassanali.site/logo.svg" />
+    <meta name="twitter:image" content="https://aurashare.hassanali.site/og-image.png" />
+    <meta name="twitter:image:alt" content="AuraShare — send files between your devices." />
+
+    <!--
+      Static first paint. React replaces this node on mount; crawlers and the
+      first paint get a real heading and call to action before the bundle
+      arrives. Keep it in sync with HERO in landingCopy.ts.
+    -->
+    <style>
+      .boot { box-sizing: border-box; min-height: 100dvh; display: grid; place-items: center; padding: 2rem; background: #0e0e0c; color: #f0eee7; font-family: 'IBM Plex Sans Variable', system-ui, sans-serif; }
+      .boot main { width: 100%; max-width: 42rem; text-align: center; }
+      .boot img { width: 2.5rem; height: 2.5rem; }
+      .boot .brand { margin-top: .75rem; font-family: 'Archivo Variable', system-ui, sans-serif; font-size: 1.125rem; font-weight: 600; letter-spacing: -.02em; }
+      .boot h1 { margin: 1.75rem 0 0; font-family: 'Archivo Variable', system-ui, sans-serif; font-size: clamp(2rem, 7vw, 3.5rem); line-height: 1.08; font-weight: 600; letter-spacing: -.03em; }
+      .boot p { margin: 1.25rem auto 0; max-width: 34rem; color: #a8a49a; font-size: 1rem; line-height: 1.6; }
+      .boot a { display: inline-flex; min-height: 3rem; align-items: center; justify-content: center; margin-top: 1.75rem; padding: 0 1.5rem; border: 1px solid #e8a33d; border-radius: .25rem; background: #e8a33d; color: #0e0e0c; font-weight: 600; text-decoration: none; }
+      .boot a:focus-visible { outline: 2px solid #f0eee7; outline-offset: 3px; }
+      .boot-noscript { margin: 1rem; padding: 1rem; border: 1px solid #3d3d37; color: #a8a49a; font-family: system-ui, sans-serif; }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="boot">
+        <main>
+          <img src="/logo.svg" alt="" width="40" height="40" />
+          <div class="brand">AuraShare</div>
+          <h1>Send files between your devices.</h1>
+          <p>Open AuraShare on two devices, enter the six-character code, and send files end-to-end encrypted — directly when the network allows it, through TURN when it does not.</p>
+          <a href="/app">Start sharing</a>
+        </main>
+      </div>
+    </div>
+    <noscript>
+      <p class="boot-noscript">AuraShare needs JavaScript enabled to create the peer-to-peer connection. The landing page is still readable, but transfers cannot run.</p>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

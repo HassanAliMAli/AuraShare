@@ -7,6 +7,8 @@
   Cache-Control: public, max-age=0, must-revalidate
 /logo.svg
   Cache-Control: public, max-age=86400
+/og-image.png
+  Cache-Control: public, max-age=86400
 
 # Root document — prevent stale HTML on deploys
 /
@@ -24,4 +26,4 @@
   Permissions-Policy: camera=(), microphone=(), geolocation=()
   Strict-Transport-Security: max-age=15552000; includeSubDomains
   X-Frame-Options: DENY
-  Content-Security-Policy: default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; connect-src 'self' wss://aurashare.hassanali.site; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data:; font-src 'self' data:
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; connect-src 'self' wss://aurashare.hassanali.site; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data:; font-src 'self'

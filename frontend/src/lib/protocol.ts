@@ -208,29 +208,66 @@ export function isRoomResponse(value: unknown): value is { roomId: string } {
   return isRecord(value) && isRoomCode(value.roomId);
 }
 
-const CRC32_TABLE = (() => {
-  const table = new Uint32Array(256);
+/**
+ * Eight CRC-32 tables for a slicing-by-8 loop.
+ *
+ * Table 0 is the classic byte-at-a-time table; each later table is the
+ * previous one advanced through another byte. Eight bytes retire per
+ * iteration instead of one, which keeps a 256 MiB file from stalling the
+ * main thread while the checksum runs.
+ */
+const CRC32_TABLES = (() => {
+  const tables = Array.from({ length: 8 }, () => new Uint32Array(256));
+  const first = tables[0]!;
   for (let i = 0; i < 256; i += 1) {
     let c = i;
     for (let bit = 0; bit < 8; bit += 1) {
       c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
     }
-    table[i] = c >>> 0;
+    first[i] = c >>> 0;
   }
-  return table;
+  for (let slice = 1; slice < 8; slice += 1) {
+    const previous = tables[slice - 1]!;
+    const current = tables[slice]!;
+    for (let i = 0; i < 256; i += 1) {
+      const c = previous[i]!;
+      current[i] = (first[c & 0xff]! ^ (c >>> 8)) >>> 0;
+    }
+  }
+  return tables;
 })();
 
 /**
  * Streaming CRC-32 — cheap integrity check over the transferred bytes.
  * Both peers compute it while the chunks flow, so it costs no extra I/O.
+ *
+ * Slicing-by-8 is still JavaScript on the main thread, but it is several
+ * times faster than the byte loop, and the checksum is spread across the
+ * transfer rather than computed in one burst at the end.
  */
 export class Crc32 {
   private state = 0xffffffff;
 
   update(bytes: Uint8Array): void {
     let crc = this.state;
-    for (const byte of bytes) {
-      crc = (CRC32_TABLE[(crc ^ byte) & 0xff] ?? 0) ^ (crc >>> 8);
+    let i = 0;
+    const sliceEnd = bytes.length - 7;
+    for (; i < sliceEnd; i += 8) {
+      const low = (crc ^ (bytes[i]! | (bytes[i + 1]! << 8) | (bytes[i + 2]! << 16) | (bytes[i + 3]! << 24))) >>> 0;
+      const high = (bytes[i + 4]! | (bytes[i + 5]! << 8) | (bytes[i + 6]! << 16) | (bytes[i + 7]! << 24)) >>> 0;
+      crc =
+        CRC32_TABLES[7]![low & 0xff]! ^
+        CRC32_TABLES[6]![(low >>> 8) & 0xff]! ^
+        CRC32_TABLES[5]![(low >>> 16) & 0xff]! ^
+        CRC32_TABLES[4]![low >>> 24]! ^
+        CRC32_TABLES[3]![high & 0xff]! ^
+        CRC32_TABLES[2]![(high >>> 8) & 0xff]! ^
+        CRC32_TABLES[1]![(high >>> 16) & 0xff]! ^
+        CRC32_TABLES[0]![high >>> 24]!;
+    }
+    const table = CRC32_TABLES[0]!;
+    for (; i < bytes.length; i += 1) {
+      crc = table[(crc ^ bytes[i]!) & 0xff]! ^ (crc >>> 8);
     }
     this.state = crc >>> 0;
   }

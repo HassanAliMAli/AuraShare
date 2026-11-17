@@ -102,9 +102,12 @@ Last-peer departure and expiry release storage and authorization.
 
 ## Data-channel v2
 
-Both sides first exchange `{"v":2,"kind":"hello"}`. A 10-second version
-handshake deadline prevents old peers from waiting indefinitely. Control frames
-must fit the negotiated SCTP message size and the local 64 KiB frame ceiling.
+Both sides first exchange `{"v":2,"kind":"hello","maxChunk":65536}`. `maxChunk`
+is the largest binary payload the sender accepts; a peer that omits it is an
+older client and the session stays at the legacy 16 KiB payload. A 10-second
+version handshake deadline prevents old peers from waiting indefinitely.
+Control frames must fit the negotiated SCTP message size and the local 64 KiB
+frame ceiling.
 
 - `descriptors`: at most 32 files, sequential indices, sanitized names, at most
   256 MiB each. Receiver requests one selected file at a time. Sender selection
@@ -115,9 +118,10 @@ must fit the negotiated SCTP message size and the local 64 KiB frame ceiling.
 - `request`: fresh 128-bit attempt `id` and descriptor `index`.
 - `start`: same `id`, `index`, `media` (`file` or `text`), and exact byte `size`.
 - Binary: 16-byte attempt ID + uint32 big-endian sequence + payload bytes.
-  Payloads are at most 16 KiB (excluding the 20-byte header) and smaller when
-  negotiated limits require it. Oversized or empty binary payloads are invalid
-  frames and terminate the transfer session.
+  Payloads are at most 64 KiB (excluding the 20-byte header) when both peers
+  advertise the larger size, and 16 KiB when either side is an older client.
+  The SCTP message limit can lower it further. Oversized or empty binary
+  payloads are invalid frames and terminate the transfer session.
 - `complete`: same `id`, CRC-32, and chunk count. Receiver verifies attempt,
   sequence, exact size, checksum, and UTF-8 for text before acknowledging.
 - `ack`: same `id`; sender completion requires this acknowledgement.

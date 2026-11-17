@@ -12,6 +12,30 @@ import {
 } from './room-protocol';
 
 /**
+ * Deliver one frame to a socket that may already be gone.
+ *
+ * A peer that dropped without a close event still appears in
+ * `getWebSockets()`, and sending to it throws. Nothing that happens to one
+ * dead socket may abort work for the room — least of all cleanup.
+ */
+function sendFrame(socket: WebSocket, frame: string | ArrayBuffer): void {
+  try {
+    socket.send(frame);
+  } catch {
+    console.error(JSON.stringify({ event: 'frame_delivery_failed' }));
+  }
+}
+
+/** Close a socket the runtime may have closed first. */
+function closeSocket(socket: WebSocket, code: number, reason: string): void {
+  try {
+    socket.close(code, reason);
+  } catch {
+    // The runtime already closed it; there is nothing left to release.
+  }
+}
+
+/**
  * Durable Object: one per room. Relays WebSocket messages between the two
  * peers and broadcasts `peer-present` when the second peer connects.
  */
@@ -59,7 +83,9 @@ export class RoomDO {
     // Check capacity BEFORE accepting: a third peer must be rejected at the
     // handshake. Closing a server socket synchronously here would leave the
     // client with a dead-but-open connection (no close frame delivered).
-    const existing = this.state.getWebSockets();
+    // A socket that has been revoked is logically gone even if its close
+    // frame has not landed yet, so it must not hold a place in the room.
+    const existing = this.liveSockets();
     if (existing.length < 2 && Date.now() >= mintedAt + CODE_VALIDITY_MS) {
       return apiError('room_not_found', 'Code expired', 404);
     }
@@ -82,7 +108,7 @@ export class RoomDO {
       // give the room the longer lease: a session is worth keeping alive,
       // a code that nobody joined is not.
       for (const socket of existing) {
-        socket.send(JSON.stringify({ type: 'peer-present' }));
+        sendFrame(socket, JSON.stringify({ type: 'peer-present' }));
       }
       await this.arm(Date.now() + ROOM_IDLE_TTL_MS);
     } else {
@@ -114,12 +140,12 @@ export class RoomDO {
       return;
     }
     if (!valid) return;
-    if (this.state.getWebSockets().filter((socket) => !this.auth.isRevoked(socket)).length >= 2) {
+    if (this.liveSockets().length >= 2) {
       await this.keepAlive(ROOM_IDLE_TTL_MS);
     }
     if (heartbeat) return;
-    for (const socket of this.state.getWebSockets()) {
-      if (socket !== ws && !this.auth.isRevoked(socket) && socket.readyState === 1) socket.send(message);
+    for (const socket of this.liveSockets()) {
+      if (socket !== ws && socket.readyState === 1) sendFrame(socket, message);
     }
   }
 
@@ -136,22 +162,12 @@ export class RoomDO {
   private async disconnect(ws: WebSocket, code: number, reason: string): Promise<void> {
     if (!this.auth.revoke(ws)) return;
     try {
-      for (const socket of this.state.getWebSockets()) {
-        if (socket === ws || this.auth.isRevoked(socket)) continue;
-        try {
-          socket.send(JSON.stringify({ type: 'peer-left' }));
-        } catch {
-          // Another socket may already be closing; still release this peer.
-          console.error(JSON.stringify({ event: 'peer_left_delivery_failed' }));
-        }
+      for (const socket of this.liveSockets()) {
+        sendFrame(socket, JSON.stringify({ type: 'peer-left' }));
       }
     } finally {
-      try {
-        ws.close(code, reason);
-      } catch {
-        // The runtime may have closed the socket before the callback.
-      }
-      await this.releaseIfEmpty(ws);
+      closeSocket(ws, code, reason);
+      await this.releaseIfEmpty();
     }
   }
 
@@ -159,12 +175,19 @@ export class RoomDO {
     // The lease ran out. Tell the peers why before closing, so the one
     // still waiting learns that nobody joined instead of seeing a socket
     // die for no reason.
-    for (const socket of this.state.getWebSockets()) {
-      this.auth.revoke(socket);
-      socket.send(JSON.stringify({ type: 'room-expired' }));
-      socket.close(1000, 'room expired');
+    //
+    // Revoking comes first and closing is best-effort: a socket that is
+    // already dead must not stop the remaining peers from being told, and
+    // the release below must run no matter how many of them are gone.
+    try {
+      for (const socket of this.liveSockets()) {
+        this.auth.revoke(socket);
+        sendFrame(socket, JSON.stringify({ type: 'room-expired' }));
+        closeSocket(socket, 1000, 'room expired');
+      }
+    } finally {
+      await this.release();
     }
-    await this.release();
   }
 
   // ─── Internals ───────────────────────────────────────────────────────────
@@ -232,10 +255,14 @@ export class RoomDO {
     return this.deadline;
   }
 
+  /** Sockets that still count as peers: a revoked one is on its way out. */
+  private liveSockets(): WebSocket[] {
+    return this.state.getWebSockets().filter((socket) => !this.auth.isRevoked(socket));
+  }
+
   /** Release the room's storage once the last peer has left. */
-  private async releaseIfEmpty(closing?: WebSocket): Promise<void> {
-    const remaining = this.state.getWebSockets().filter((socket) => socket !== closing && !this.auth.isRevoked(socket));
-    if (remaining.length > 0) return;
+  private async releaseIfEmpty(): Promise<void> {
+    if (this.liveSockets().length > 0) return;
     await this.release();
   }
 

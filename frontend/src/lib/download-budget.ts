@@ -5,6 +5,13 @@ import { MAX_FILE_SIZE, sanitizeFilename } from './validation';
 export const DOWNLOAD_MEMORY_BUDGET = 2 * MAX_FILE_SIZE;
 const OBJECT_URL_TTL_MS = 60_000;
 
+/** A received file held in memory until the user asks to save it. */
+export type PreparedDownload = {
+  url: string;
+  name: string;
+  size: number;
+};
+
 /** Page-wide download accounting survives session resets and route unmounts. */
 export class DownloadBudget {
   private readonly urls = new Map<string, number>();
@@ -28,24 +35,46 @@ export class DownloadBudget {
     });
   }
 
-  save(file: File): void {
-    if (this.retainedBytes + file.size > DOWNLOAD_MEMORY_BUDGET) throw new Error('Download memory budget exceeded');
+  /**
+   * Hold a received file without starting a download.
+   *
+   * A programmatic `a.click()` outside a user gesture is routinely ignored or
+   * silently blocked, which used to leave the receiver believing a file had
+   * been saved when nothing reached the disk. Callers must keep this handle
+   * and spend it from a real click.
+   */
+  prepare(file: File): PreparedDownload {
+    if (this.retainedBytes + file.size > DOWNLOAD_MEMORY_BUDGET) {
+      throw new Error('Download memory budget exceeded');
+    }
     const url = URL.createObjectURL(file);
     this.urls.set(url, file.size);
     this.retainedBytes += file.size;
+    return { url, name: sanitizeFilename(file.name), size: file.size };
+  }
+
+  /** Start a prepared save. Call from the user's click/keyboard handler. */
+  save(download: PreparedDownload): void {
+    const size = this.urls.get(download.url);
+    if (size === undefined) throw new Error('Download is no longer available');
     let link: HTMLAnchorElement | null = null;
     try {
       link = document.createElement('a');
-      link.href = url;
-      link.download = sanitizeFilename(file.name);
+      link.href = download.url;
+      link.download = download.name;
       document.body.appendChild(link);
       link.click();
     } catch (error) {
-      this.release(url);
+      this.release(download.url);
       throw error;
     } finally { link?.remove(); }
     // Independent of React/session lifetime: do not interrupt an initiated save.
-    setTimeout(() => this.release(url), OBJECT_URL_TTL_MS);
+    setTimeout(() => this.release(download.url), OBJECT_URL_TTL_MS);
+  }
+
+  /** Drop an unsaved file when its session ends. */
+  discard(download: PreparedDownload): void {
+    this.release(download.url);
   }
 
   private release(url: string): void {

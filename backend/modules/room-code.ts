@@ -10,8 +10,6 @@
 /** Crockford base32 — excludes I, L, O, U to avoid ambiguity. */
 import { ROOM_CODE_ALPHABET, ROOM_CODE_LENGTH, ROOM_CODE_SOURCE } from '../../shared/room-code';
 
-export { ROOM_CODE_ALPHABET as CROCKFORD_ALPHABET } from '../../shared/room-code';
-
 /**
  * The only room codes this Worker can ever serve.
  *

@@ -20,9 +20,11 @@ export function ShareInputView() {
         <div key={mode} role="tabpanel" id={`share-panel-${mode}`}
           aria-labelledby={`share-tab-${mode}`} hidden={state.shareMode !== mode}
           className="w-full max-w-xl">
-          {state.shareMode === mode && (mode === 'files'
+          {/* Both panels stay mounted so switching tabs keeps the draft and
+              the file selection instead of throwing them away. */}
+          {mode === 'files'
             ? <AuraDropzone onFileDrop={(f) => actions.startShare(f, undefined)} />
-            : <AuraTextarea onTextShare={(t) => actions.startShare(undefined, t)} />)}
+            : <AuraTextarea onTextShare={(t) => actions.startShare(undefined, t)} />}
         </div>
       ))}
     </motion.div>

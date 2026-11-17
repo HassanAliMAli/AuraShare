@@ -32,10 +32,9 @@ function easing(name: string): [number, number, number, number] {
 }
 
 export const EASE_OUT = easing('out');
-export const EASE_STANDARD = easing('standard');
-export const DURATION_MICRO = duration('micro');
+const DURATION_MICRO = duration('micro');
 export const DURATION_STANDARD = duration('standard');
-export const DURATION_ENTER = duration('enter');
+const DURATION_ENTER = duration('enter');
 
 /** Status-view entry/exit. Used by every routed feature view. */
 export const viewVariants = {

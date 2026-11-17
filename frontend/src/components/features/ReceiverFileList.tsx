@@ -42,17 +42,25 @@ export function ReceiverFileList() {
               {state.receivedFiles.map((file, i) => (
                 <div key={i} className="border-b border-border px-4 py-3 last:border-b-0">
                   <div className="flex items-center gap-3 overflow-hidden">
-                    <input
-                      type="checkbox"
-                      checked={state.selectedFiles.has(i)}
-                      onChange={(e) => {
-                        if (state.downloadedFiles.has(i)) return;
-                        actions.toggleFileSelected(i, e.target.checked);
-                      }}
-                      disabled={state.downloadedFiles.has(i) || state.downloadingFileIndex !== null}
-                      aria-label={`Select ${file.name}`}
-                      className="h-4 w-4 shrink-0 accent-(--color-accent)"
-                    />
+                    {/* WCAG 2.5.8 asks for a 24px target; the box stays 16px,
+                        the label around it supplies the rest. */}
+                    <label className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center">
+                      <input
+                        type="checkbox"
+                        checked={state.selectedFiles.has(i)}
+                        onChange={(e) => {
+                          if (state.downloadedFiles.has(i) || state.readyFiles.has(i)) return;
+                          actions.toggleFileSelected(i, e.target.checked);
+                        }}
+                        disabled={
+                          state.downloadedFiles.has(i) ||
+                          state.readyFiles.has(i) ||
+                          state.downloadingFileIndex !== null
+                        }
+                        aria-label={`Select ${file.name}`}
+                        className="h-4 w-4 accent-(--color-accent)"
+                      />
+                    </label>
                     <FileIcon
                       name={file.name}
                       type={file.type}
@@ -63,7 +71,19 @@ export function ReceiverFileList() {
                       <div className="font-mono text-xs text-text-3">{formatBytes(file.size)}</div>
                     </div>
                     {state.downloadedFiles.has(i) ? (
-                      <Check className="h-4 w-4 shrink-0 text-success" aria-hidden="true" />
+                      <span className="flex shrink-0 items-center gap-1.5 text-xs text-success">
+                        <Check className="h-4 w-4" aria-hidden="true" />
+                        Saved
+                      </span>
+                    ) : state.readyFiles.has(i) ? (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => actions.saveFile(i)}
+                        aria-label={`Save ${file.name}`}
+                      >
+                        Save
+                      </Button>
                     ) : state.downloadingFileIndex === i ? (
                       <motion.div
                         className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-border-strong border-t-accent"
@@ -100,7 +120,7 @@ export function ReceiverFileList() {
 
         {state.waitingForMemory && (
           <p role="status" className="mt-4 text-sm text-text-2">
-            Preparing the next file. Waiting for previous downloads to release memory.
+            Waiting for memory. Save a received file to free the space it holds.
           </p>
         )}
         {state.transferError && (
@@ -117,15 +137,26 @@ export function ReceiverFileList() {
         {state.downloadingFileIndex !== null && (
           <Button variant="muted" className="mt-4" onClick={actions.cancelTransfer}>Cancel current file</Button>
         )}
-        <div className="mt-5 flex gap-3">
+        {state.readyFiles.size > 0 && (
+          <p role="status" className="mt-4 text-sm text-text-2">
+            Received files stay in memory until you save them.
+            {state.readyFiles.size > 1 && ' Your browser may ask to allow multiple downloads.'}
+          </p>
+        )}
+        <div className="mt-5 flex flex-wrap gap-3">
+          {state.readyFiles.size > 0 && (
+            <Button variant="primary" onClick={actions.saveAll} className="flex-1">
+              Save all ({state.readyFiles.size})
+            </Button>
+          )}
           {state.selectedFiles.size > 0 && (
             <Button
-              variant="primary"
+              variant={state.readyFiles.size > 0 ? 'secondary' : 'primary'}
               onClick={actions.downloadSelected}
               disabled={state.downloadingFileIndex !== null || state.failedFileIndex !== null}
               className="flex-1"
             >
-              Download ({state.selectedFiles.size})
+              Receive ({state.selectedFiles.size})
             </Button>
           )}
           <Button variant="secondary" onClick={actions.reset} className="flex-1">

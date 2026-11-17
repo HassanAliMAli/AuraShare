@@ -136,12 +136,19 @@ The page-wide download budget is 512 MiB of accounted file bytes: retained
 object URLs plus twice the next file size for assembly and File creation.
 The receiver waits before requesting a file if it would exceed this budget,
 shows a preparing status, and permits cancelling that queued file. There is no
-peer response timeout until the request is actually sent. Completed download
-URLs retain their existing 60-second lifetime; expiry resumes eligible queued
-work. Reset/unmount cancels waits but does not prematurely revoke initiated
-downloads. Re-entering the app shares the same page budget. This bounds app-owned
-file storage, not exact browser RSS, garbage-collection timing or browser download
-internals. It does not indicate when a save to disk completes.
+peer response timeout until the request is actually sent.
+
+A received file is held in memory as an object URL and is **not** saved
+automatically: the row shows a Save action, and Save all spends the batch from
+one click. A programmatic click outside a gesture can be dropped by the browser,
+which previously left the receiver believing a file had been saved. Saving
+starts the URL's 60-second release timer; expiry resumes eligible queued work.
+Unsaved files count against the budget until saved or the session ends.
+Reset/unmount discards unsaved files but does not prematurely revoke a save
+that has already started. Re-entering the app shares the same page budget.
+This bounds app-owned file storage, not exact browser RSS, garbage-collection
+timing or browser download internals, and it does not indicate when a save to
+disk completes.
 
 Response/ACK deadline is 30 seconds. Inactivity deadline is 120 seconds, refreshed
 by transfer progress rather than room heartbeats. There is no total duration

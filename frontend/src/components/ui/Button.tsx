@@ -27,6 +27,22 @@ const SIZES: Record<ButtonSize, string> = {
   lg: 'h-12 px-6 text-md',
 };
 
+type StyleProps = { variant?: ButtonVariant; size?: ButtonSize; className?: string };
+
+/** Shared box for both the button and the link that has to look like one. */
+function buttonClasses({ variant = 'secondary', size = 'md', className }: StyleProps): string {
+  return cn(
+    'inline-flex items-center justify-center gap-2 rounded-md font-medium tracking-tight',
+    'transition-colors duration-(--duration-micro)',
+    'disabled:cursor-not-allowed disabled:opacity-40',
+    SIZES[size],
+    // The variant comes after the size: a variant that has no box of its
+    // own (the muted one) cancels the size's height and padding.
+    VARIANTS[variant],
+    className,
+  );
+}
+
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
   size?: ButtonSize;
@@ -46,17 +62,27 @@ export function Button({
   return (
     <button
       type={type}
-      className={cn(
-        'inline-flex items-center justify-center gap-2 rounded-md font-medium tracking-tight',
-        'transition-colors duration-(--duration-micro)',
-        'disabled:cursor-not-allowed disabled:opacity-40',
-        SIZES[size],
-        // The variant comes after the size: a variant that has no box of its
-        // own (the muted one) cancels the size's height and padding.
-        VARIANTS[variant],
-        className,
-      )}
+      className={buttonClasses({ variant, size, className })}
       {...props}
     />
   );
+}
+
+interface LinkButtonProps extends React.AnchorHTMLAttributes<HTMLAnchorElement> {
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+}
+
+/**
+ * A real anchor with the button's box. Primary navigation must be a link so
+ * it can be opened in a new tab, copied, and crawled; a button that runs
+ * `navigate()` is none of those things.
+ */
+export function LinkButton({
+  variant = 'secondary',
+  size = 'md',
+  className,
+  ...props
+}: LinkButtonProps) {
+  return <a className={buttonClasses({ variant, size, className })} {...props} />;
 }

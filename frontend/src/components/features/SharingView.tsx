@@ -8,6 +8,9 @@ import { isRoomCode, normalizeRoomCode, ROOM_CODE_HINT } from '../../lib/roomCod
 import { Button } from '../ui/Button';
 import { Panel } from '../ui/Panel';
 
+/** Matches CODE_VALIDITY_MS in backend/modules/room-protocol.ts. */
+const UNPAIRED_CODE_TTL_MS = 10 * 60_000;
+
 /** Receiver's code-entry form (idle + isReceiving). */
 export function ReceiveCodeForm() {
   const { state, actions } = useAppStore();
@@ -47,9 +50,9 @@ export function ReceiveCodeForm() {
             type="text"
             maxLength={6}
             value={state.joinCode}
-            onChange={(e) => actions.setJoinCode(e.target.value.toUpperCase())}
+            onChange={(e) => actions.setJoinCode(normalizeRoomCode(e.target.value))}
             placeholder="A1B2C3"
-            aria-invalid={code.length > 0 && !codeIsValid}
+            aria-invalid={code.length === 6 && !codeIsValid}
             aria-describedby={hint ? 'join-code-hint' : undefined}
             className="w-full rounded-md border border-border-strong bg-canvas px-4 py-4 text-center font-mono text-2xl font-medium uppercase tracking-[0.2em] text-text placeholder:text-text-3 transition-colors focus:border-accent focus:outline-none"
           />
@@ -93,7 +96,15 @@ export function SharingView() {
       className="z-40 flex w-full flex-col items-center px-4"
     >
       <div className="w-full max-w-md">
-        <TransmissionCodePanel code={state.roomId} alignment="center" />
+        <TransmissionCodePanel
+          code={state.roomId}
+          alignment="center"
+          expiresAt={
+            state.roomCreatedAt !== null && !state.receiverReady && !state.textAcknowledged
+              ? state.roomCreatedAt + UNPAIRED_CODE_TTL_MS
+              : null
+          }
+        />
 
         <p className="mt-5 text-center font-mono text-xs uppercase tracking-[0.14em] text-text-3">
           {state.textAcknowledged ? 'Text delivered' : state.receiverReady ? 'Receiver connected' : 'Waiting for the other device'}

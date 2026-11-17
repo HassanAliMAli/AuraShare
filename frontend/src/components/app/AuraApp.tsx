@@ -16,7 +16,7 @@ import {
 
 /** Routes between feature views based on app status. */
 function AppShell() {
-  const { state } = useAppStore();
+  const { state, actions } = useAppStore();
   const showTabs = state.status === 'idle' && !state.isReceiving;
 
   return (
@@ -56,7 +56,11 @@ function AppShell() {
             ) : state.status === 'idle' && state.isReceiving ? (
               <ReceiveCodeForm key="receive-form" />
             ) : state.status === 'connecting' ? (
-              <LoaderView key="connecting" label="Establishing an encrypted connection" />
+              <LoaderView
+                key="connecting"
+                label="Establishing an encrypted connection"
+                onCancel={actions.reset}
+              />
             ) : state.status === 'sharing' ? (
               <SharingView key="sharing" />
             ) : state.status === 'connected' ? (

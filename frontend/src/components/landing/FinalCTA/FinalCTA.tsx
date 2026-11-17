@@ -1,8 +1,7 @@
 import { motion } from 'motion/react';
 import { FINAL_CTA } from '../../../lib/landingCopy';
-import { navigate } from '../../../lib/router';
 import { sectionRevealVariants } from '../../../lib/motion';
-import { Button } from '../../ui/Button';
+import { LinkButton } from '../../ui/Button';
 
 /**
  * Closing call to action. A full-bleed amber band — flat, no gradient, no
@@ -27,14 +26,15 @@ export function FinalCTA() {
               {FINAL_CTA.subtitle}
             </p>
           </div>
-          <Button
+          <LinkButton
+            href="/app"
             variant="secondary"
             size="lg"
-            className="border-accent-ink/30 bg-accent-ink text-accent hover:bg-accent-ink/90 hover:text-accent"
-            onClick={() => navigate('/app')}
+            // The global amber ring would vanish on this amber band.
+            className="border-accent-ink/30 bg-accent-ink text-accent hover:bg-accent-ink/90 hover:text-accent focus-visible:outline-accent-ink"
           >
             {FINAL_CTA.cta}
-          </Button>
+          </LinkButton>
         </div>
       </motion.div>
     </section>

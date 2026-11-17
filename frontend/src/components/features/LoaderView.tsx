@@ -1,13 +1,15 @@
 import { motion } from 'motion/react';
 import { viewVariants } from '../../lib/motion';
+import { Button } from '../ui/Button';
 
 interface LoaderViewProps {
   label: string;
-  hint?: string;
+  onCancel?: () => void;
+  cancelLabel?: string;
 }
 
 /** Loader for transient states (connecting, downloading). */
-export function LoaderView({ label, hint }: LoaderViewProps) {
+export function LoaderView({ label, onCancel, cancelLabel = 'Cancel' }: LoaderViewProps) {
   return (
     <motion.div
       variants={viewVariants}
@@ -24,10 +26,12 @@ export function LoaderView({ label, hint }: LoaderViewProps) {
         <div className="mt-5 font-mono text-xs uppercase tracking-[0.18em] text-text-2">
           {label}
         </div>
-        {hint && (
-          <div className="mt-2 font-mono text-xs text-text-3">{hint}</div>
-        )}
       </div>
+      {onCancel && (
+        <Button variant="muted" onClick={onCancel} className="mt-6">
+          {cancelLabel}
+        </Button>
+      )}
     </motion.div>
   );
 }

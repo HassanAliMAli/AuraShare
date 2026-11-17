@@ -33,7 +33,16 @@ jobs:
       - name: Build
         run: npm run build
 
-      # Fails the job on a high or critical advisory. Moderate ones are
-      # reported but do not block.
-      - name: Audit
+      # Production dependencies block the merge: these are the packages that
+      # ship inside the Worker and the browser bundle.
+      - name: Audit (production dependencies)
+        run: npm audit --omit=dev --audit-level=high
+
+      # The full tree carries one high advisory in picomatch@4.0.7, reachable
+      # only through build tooling (Vite, tinyglobby, typescript-eslint) and
+      # with no patched release yet. See docs/MAINTENANCE_PLAN.md. This step
+      # keeps the advisory visible in every run without blocking merges; turn
+      # it back into a blocking gate as soon as a fixed release ships.
+      - name: Audit (full tree, advisory)
+        continue-on-error: true
         run: npm audit --audit-level=high

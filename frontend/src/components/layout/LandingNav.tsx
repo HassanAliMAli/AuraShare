@@ -1,9 +1,8 @@
 import { Brand } from '../ui/Brand';
 import { motion } from 'motion/react';
 import { NAV_LINKS, HERO } from '../../lib/landingCopy';
-import { navigate } from '../../lib/router';
 import { fadeLeftVariants, fadeRightVariants } from '../../lib/motion';
-import { Button } from '../ui/Button';
+import { LinkButton } from '../ui/Button';
 
 /** Landing top navigation: brand, anchor links, and the Start Sharing action. */
 export function LandingNav() {
@@ -30,9 +29,9 @@ export function LandingNav() {
               </li>
             ))}
           </ul>
-          <Button variant="secondary" size="sm" onClick={() => navigate('/app')}>
+          <LinkButton href="/app" variant="secondary" size="sm">
             {HERO.ctaPrimary}
-          </Button>
+          </LinkButton>
         </motion.div>
       </nav>
     </header>

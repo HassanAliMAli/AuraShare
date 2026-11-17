@@ -57,10 +57,18 @@ export class P2PManager {
     });
     document.addEventListener('visibilitychange', this.onVisible);
   }
-  async initialize(): Promise<string> {
+  /**
+   * Mint a room and bootstrap its connection.
+   *
+   * `onRoom` fires as soon as the code exists, before the signalling socket
+   * and TURN credentials are ready. The sender can then show the code while
+   * the rest of the setup runs instead of staring at a spinner.
+   */
+  async initialize(onRoom?: (code: string) => void): Promise<string> {
     this.role = 'sender';
     try {
       const code = await mintRoom(this.lifetime.signal);
+      onRoom?.(code);
       this.active(); await this.bootstrap(code); return code;
     } catch (error) { this.close(); throw error; }
   }

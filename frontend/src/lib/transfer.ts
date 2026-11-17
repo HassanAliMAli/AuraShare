@@ -7,7 +7,6 @@ import { ReceiveBuffer } from './receive-buffer';
 
 export type TransferEvents = {
   onProgress: (progress: number) => void;
-  onTransferComplete: () => void;
   onReady?: () => void;
   onFileComplete?: (index: number, file: File) => void;
   onFileAcknowledged?: (index: number) => void;
@@ -165,7 +164,7 @@ export class TransferSession {
         this.events.onProgress(100);
         if (file) this.events.onFileComplete?.(attempt.index, file);
         if (text !== null) this.events.onTextReceived?.(text);
-        this.events.onTransferComplete(); return;
+        return;
       }
       case 'ack': {
         const attempt = this.outgoing;
@@ -173,7 +172,7 @@ export class TransferSession {
         this.release(attempt); this.events.onProgress(100);
         if (attempt.media === 'file') this.events.onFileAcknowledged?.(attempt.index);
         else this.events.onTextAcknowledged?.();
-        this.events.onTransferComplete(); return;
+        return;
       }
       case 'failed': case 'cancel': {
         const attempt = this.incoming?.id === message.id ? this.incoming : this.outgoing?.id === message.id ? this.outgoing : null;

@@ -4,6 +4,7 @@ import { P2PManager } from '../lib/webrtc';
 import { MAX_TEXT_BYTES } from '../lib/protocol';
 import { validateFileList } from '../lib/validation';
 import { downloadBudget } from '../lib/download-budget';
+import type { PreparedDownload } from '../lib/download-budget';
 import { isRoomCode, normalizeRoomCode, ROOM_CODE_HINT } from '../lib/roomCode';
 import { AppContext, appReducer, initialState } from './appStore';
 import type { AppActions } from './appStore';
@@ -22,6 +23,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const pendingTextRef = useRef<string | null>(null);
   const connectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastRequestedIndexRef = useRef<number | null>(null);
+  const preparedDownloadsRef = useRef(new Map<number, PreparedDownload>());
 
   // Single source of truth for the download queue: when `downloadingFileIndex`
   // changes to a non-null value, request that file from the peer. Deduped
@@ -56,13 +58,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
   }, [state.downloadingFileIndex, state.receivedFiles]);
 
-  // Tear down the peer connection on unmount.
+  // Tear down the peer connection and any unsaved received files on unmount.
   useEffect(() => {
+    const prepared = preparedDownloadsRef.current;
     return () => {
       if (connectTimeoutRef.current) clearTimeout(connectTimeoutRef.current);
       requestWaitRef.current?.abort();
       managerRef.current?.close();
       managerRef.current = null;
+      for (const download of prepared.values()) downloadBudget.discard(download);
+      prepared.clear();
     };
   }, []);
 
@@ -81,6 +86,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
     pendingFilesRef.current = null;
     pendingTextRef.current = null;
     lastRequestedIndexRef.current = null;
+    // Ending the session gives up anything the user never saved.
+    for (const download of preparedDownloadsRef.current.values()) downloadBudget.discard(download);
+    preparedDownloadsRef.current.clear();
+  }
+
+  /**
+   * Spend a prepared download from the user's gesture.
+   *
+   * The URL is dropped from the map after the click so a second save cannot
+   * silently reuse a URL that is already on its release timer.
+   */
+  function saveDownload(index: number): void {
+    const prepared = preparedDownloadsRef.current.get(index);
+    if (!prepared) {
+      dispatch({
+        type: 'TRANSFER_FAILED',
+        index,
+        message: 'This file is no longer held in memory. Select and receive it again.',
+      });
+      return;
+    }
+    try {
+      downloadBudget.save(prepared);
+      preparedDownloadsRef.current.delete(index);
+      dispatch({ type: 'FILE_SAVED', index });
+    } catch {
+      preparedDownloadsRef.current.delete(index);
+      dispatch({
+        type: 'TRANSFER_FAILED',
+        index,
+        message: 'Could not start the save. Select and receive the file again.',
+      });
+    }
   }
 
   /** Share the lifecycle handlers; ignore callbacks from a replaced session. */
@@ -161,10 +199,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (!current() || role !== 'receiver') return;
         delivered.files.add(index);
         try {
-          downloadBudget.save(file);
+          // Hold the bytes, but do not click: a save must come from the
+          // receiver's own gesture or the browser may drop it silently.
+          const previous = preparedDownloadsRef.current.get(index);
+          if (previous) downloadBudget.discard(previous);
+          preparedDownloadsRef.current.set(index, downloadBudget.prepare(file));
           dispatch({ type: 'FILE_COMPLETE', index });
         } catch {
-          dispatch({ type: 'TRANSFER_FAILED', index, message: 'Could not start the download. Retry this file.' });
+          dispatch({
+            type: 'TRANSFER_FAILED',
+            index,
+            message: 'Could not hold this file in memory. Save the received files, then retry this one.',
+          });
         }
       },
       onTextReceived: (text) => {
@@ -183,7 +229,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       onConnectionWarning: (message) => {
         if (current()) dispatch({ type: 'CONNECTION_WARNING', message });
       },
-      onTransferComplete: () => {},
       onError: fail,
     });
     managerRef.current = mgr;
@@ -208,8 +253,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       pendingFilesRef.current = files ?? null;
       pendingTextRef.current = text ?? null;
       const mgr = createManager('sender');
-      mgr.initialize().then((code) => {
-        if (managerRef.current === mgr) dispatch({ type: 'SET_ROOM', roomId: code });
+      void mgr.initialize((code) => {
+        // The code exists before the socket and credentials do; show it now.
+        if (managerRef.current === mgr) {
+          dispatch({ type: 'SET_ROOM', roomId: code, createdAt: Date.now() });
+        }
       }).catch(() => {
         if (managerRef.current !== mgr) return;
         managerRef.current = null;
@@ -264,9 +312,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     downloadSelected: () => {
       if (state.downloadingFileIndex !== null || state.failedFileIndex !== null) return;
-      const indices = Array.from(state.selectedFiles).filter((index) => !state.downloadedFiles.has(index));
+      const indices = Array.from(state.selectedFiles)
+        .filter((index) => !state.downloadedFiles.has(index) && !state.readyFiles.has(index));
       if (indices.length === 0) return;
       dispatch({ type: 'DOWNLOAD_START', indices });
+    },
+
+    saveFile: (index) => saveDownload(index),
+    saveAll: () => {
+      for (const index of Array.from(state.readyFiles).sort((a, b) => a - b)) {
+        saveDownload(index);
+      }
     },
 
     retryTransfer: () => { lastRequestedIndexRef.current = null; dispatch({ type: 'RETRY_TRANSFER' }); },

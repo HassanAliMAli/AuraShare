@@ -1,9 +1,8 @@
 import { TransmissionCodePanel } from '../../ui/TransmissionCodePanel';
 import { motion } from 'motion/react';
 import { HERO } from '../../../lib/landingCopy';
-import { navigate } from '../../../lib/router';
 import { fadeUpVariants } from '../../../lib/motion';
-import { Button } from '../../ui/Button';
+import { LinkButton } from '../../ui/Button';
 import { Eyebrow } from '../../ui/Eyebrow';
 import { PathDiagram } from '../../ui/PathDiagram';
 
@@ -30,9 +29,9 @@ export function Hero() {
           </p>
 
           <div className="mt-8 flex flex-wrap items-center gap-3">
-            <Button variant="primary" size="lg" onClick={() => navigate('/app')}>
+            <LinkButton href="/app" variant="primary" size="lg">
               {HERO.ctaPrimary}
-            </Button>
+            </LinkButton>
             <a
               href="#how-it-works"
               className="inline-flex h-12 items-center rounded-md border border-border-strong px-6 text-md font-medium tracking-tight text-text transition-colors duration-(--duration-micro) hover:border-accent hover:text-accent"

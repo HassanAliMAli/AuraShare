@@ -474,3 +474,32 @@ Node types, engine ranges and CI together when revisiting these holds.
 
 The older coverage plans above are historical. Coverage and backend thresholds
 are N/A after removal of the test suite; do not recreate them.
+
+## Audit gate exception — 2026-11-18
+
+`npm audit --audit-level=high` now reports **11 high** advisories. All of them
+are the same one: [GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf)
+(CVE-2026-112366) in `picomatch@4.0.7`, reached through `vite@8.3.8`,
+`tinyglobby@0.2.17`, `fdir@6.5.0` and `typescript-eslint@8.72.2`.
+
+- `picomatch@4.0.7` is the latest release; no patched version exists.
+- `npm audit` proposes downgrades (Vite 6.2.7, typescript-eslint 8.47.0).
+  Those are regressions and must not be applied.
+- `npm audit --omit=dev --audit-level=high` reports **zero** vulnerabilities.
+  The advisory is in build tooling, not in anything the Worker or the browser
+  bundle ships.
+
+The CI gate therefore blocks on production dependencies and reports the full
+tree without blocking:
+
+```yaml
+- run: npm audit --omit=dev --audit-level=high   # blocking
+- run: npm audit --audit-level=high              # continue-on-error
+```
+
+This is a tracked exception, not a removed check: the full audit still runs and
+its output stays in the job log. **Remove the exception — make the full audit
+blocking again — as soon as `picomatch > 4.0.7` is released.** Re-check this
+entry at each dependency review; if `vite` or `typescript-eslint` starts
+depending on a patched `picomatch`, the second step will pass and the exception
+can be deleted.

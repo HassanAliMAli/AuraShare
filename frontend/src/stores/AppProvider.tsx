@@ -86,14 +86,36 @@ export function AppProvider({ children }: { children: ReactNode }) {
   /** Share the lifecycle handlers; ignore callbacks from a replaced session. */
   function createManager(role: 'sender' | 'receiver'): P2PManager {
     const current = () => managerRef.current === mgr;
-    const fail = (message: string) => {
-      if (!current()) return;
+    // Delivery accounting for this one session. The reducer copy cannot be
+    // read from these callbacks — they are created once, so it would be stale.
+    const delivered = { text: false, expectedFiles: 0, files: new Set<number>() };
+    const settled = () =>
+      delivered.text ||
+      (delivered.expectedFiles > 0 && delivered.files.size >= delivered.expectedFiles);
+    const end = () => {
       clearConnectTimeout();
       requestWaitRef.current?.abort();
       requestWaitRef.current = null;
       managerRef.current = null;
       mgr.close();
+    };
+    const fail = (message: string) => {
+      if (!current()) return;
+      end();
       dispatch({ type: 'SET_ERROR', message });
+    };
+    /**
+     * A session that delivered its content and then ended is not a failure.
+     * The peer leaving must not replace what the user has already received
+     * with an error screen.
+     */
+    const leave = (message: string) => {
+      if (!current()) return;
+      const wasSettled = settled();
+      end();
+      dispatch(wasSettled
+        ? { type: 'SESSION_NOTICE', message: 'Session ended — the other device left' }
+        : { type: 'SET_ERROR', message });
     };
     const mgr = new P2PManager({
       onProgress: (progress) => {
@@ -106,6 +128,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (!current() || role !== 'sender') return;
         dispatch({ type: 'SET_RECEIVER_READY' });
         const files = pendingFilesRef.current ?? [];
+        delivered.expectedFiles = files.length;
         dispatch({
           type: 'SET_SENT_FILES',
           files: files.map((file) => ({ name: file.name, size: file.size, type: file.type })),
@@ -113,22 +136,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
         mgr.sendMeta(files);
         if (pendingTextRef.current) mgr.sendText(pendingTextRef.current);
       },
-      onDisconnected: () => fail('The other device disconnected'),
-      onRoomEnded: (reason) => fail(
-        reason !== 'no-peer'
-          ? 'The session ended'
-          : role === 'sender'
+      onDisconnected: () => leave('The other device disconnected'),
+      onRoomEnded: (reason) => {
+        // Nobody ever joined: this is a real failure, not a finished session.
+        if (reason === 'no-peer') {
+          fail(role === 'sender'
             ? 'No one joined — the session ended'
-            : 'The sending device never joined — the session ended',
-      ),
+            : 'The sending device never joined — the session ended');
+          return;
+        }
+        leave('The session ended');
+      },
       onFileAcknowledged: (index) => {
-        if (current()) dispatch({ type: 'FILE_ACKNOWLEDGED', index });
+        if (!current()) return;
+        delivered.files.add(index);
+        dispatch({ type: 'FILE_ACKNOWLEDGED', index });
       },
       onFileDescriptorsReceived: (files) => {
-        if (current() && role === 'receiver') dispatch({ type: 'RECEIVE_DESCRIPTORS', files });
+        if (!current() || role !== 'receiver') return;
+        delivered.expectedFiles = files.length;
+        dispatch({ type: 'RECEIVE_DESCRIPTORS', files });
       },
       onFileComplete: (index, file) => {
         if (!current() || role !== 'receiver') return;
+        delivered.files.add(index);
         try {
           downloadBudget.save(file);
           dispatch({ type: 'FILE_COMPLETE', index });
@@ -137,13 +168,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       },
       onTextReceived: (text) => {
-        if (current() && role === 'receiver') dispatch({ type: 'RECEIVE_TEXT', text });
+        if (!current() || role !== 'receiver') return;
+        delivered.text = true;
+        dispatch({ type: 'RECEIVE_TEXT', text });
       },
       onTransferFailed: (index, message) => {
         if (current()) dispatch({ type: 'TRANSFER_FAILED', index, message });
       },
       onTextAcknowledged: () => {
-        if (current()) dispatch({ type: 'TEXT_ACKNOWLEDGED' });
+        if (!current()) return;
+        delivered.text = true;
+        dispatch({ type: 'TEXT_ACKNOWLEDGED' });
       },
       onConnectionWarning: (message) => {
         if (current()) dispatch({ type: 'CONNECTION_WARNING', message });

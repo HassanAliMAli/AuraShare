@@ -111,19 +111,18 @@ response by the Workers assets layer:
 default-src 'self'; script-src 'self' https://static.cloudflareinsights.com;
 style-src 'self' 'unsafe-inline'; connect-src 'self' wss://aurashare.hassanali.site;
 object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self';
-img-src 'self' data:; font-src 'self' data:
+img-src 'self' data:; font-src 'self'
 ```
 
 It is written by hand, so it drifts from the app silently — a directive
 that is too tight does not fail the build, it fails in the browser. Two
 allowances need a reason:
 
-- **`font-src 'self' data:`** — Vite inlines assets below its 4 KB limit.
-  Today that is one small JetBrains Mono subset, which arrives in the
-  stylesheet as a `data:` URI; every other face is a self-hosted `.woff2`
-  file under `/assets/`. Without `data:` the inlined subset is refused.
-  Re-check this allowance after changing the font imports; the build output
-  (not this document) is the source of truth.
+- **`font-src 'self'`** — the Latin Archivo, IBM Plex Sans and JetBrains
+  Mono faces are self-hosted `.woff2` files under `/assets/`; no font is
+  inlined. If a future font asset drops below Vite's 4 KB inline limit it
+  would arrive as a `data:` URI and this directive would have to add
+  `data:` again. Check the build output, not this document.
 - **`script-src 'self' https://static.cloudflareinsights.com`** — the
   Cloudflare Web Analytics beacon the edge injects into every HTML
   response. The **host** is allowed, not the script's path: the edge

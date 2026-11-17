@@ -2,10 +2,13 @@
 import type { FileDescriptor } from '../types';
 import { MAX_FILES_PER_TRANSFER, MAX_TEXT_BYTES, MAX_TRANSFER_BYTES, parseFileDescriptors } from './protocol';
 export const HEADER_BYTES = 20; // 128-bit attempt ID and uint32 sequence number
-export const MAX_CHUNK_BYTES = 16 * 1024; // payload only; excludes HEADER_BYTES
+/** Chunk size a peer that does not advertise `maxChunk` is assumed to accept. */
+export const LEGACY_CHUNK_BYTES = 16 * 1024;
+/** Largest payload this client will send or accept, excluding HEADER_BYTES. */
+export const MAX_CHUNK_BYTES = 64 * 1024;
 export const VERSION = 2;
 export type Control =
-  | { v: 2; kind: 'hello' }
+  | { v: 2; kind: 'hello'; maxChunk?: number }
   | { v: 2; kind: 'descriptors'; files: FileDescriptor[] }
   | { v: 2; kind: 'request'; id: string; index: number }
   | { v: 2; kind: 'start'; id: string; index: number; media: 'file' | 'text'; size: number }
@@ -19,7 +22,16 @@ export function parseControl(value: unknown): Control | null {
   if (!value || typeof value !== 'object') return null;
   const raw = value as Record<string, unknown>;
   if (raw.v !== VERSION) return null;
-  if (raw.kind === 'hello') return { v: 2, kind: 'hello' };
+  if (raw.kind === 'hello') {
+    // A peer that predates chunk negotiation sends no maxChunk; the sender
+    // then keeps the legacy 16 KiB payload. Anything outside the supported
+    // range is treated the same way rather than trusted.
+    const maxChunk = raw.maxChunk;
+    return typeof maxChunk === 'number' && Number.isInteger(maxChunk) &&
+      maxChunk >= LEGACY_CHUNK_BYTES && maxChunk <= MAX_CHUNK_BYTES
+      ? { v: 2, kind: 'hello', maxChunk }
+      : { v: 2, kind: 'hello' };
+  }
   if (raw.kind === 'descriptors') {
     const files = parseFileDescriptors(raw.files);
     return files && files.every((file, i) => file.index === i && Number.isSafeInteger(file.size))

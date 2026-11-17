@@ -1,7 +1,7 @@
 /** Ordered, bounded file/text transfers with per-attempt framing and acknowledgements. */
 import type { FileDescriptor } from '../types';
 import { Crc32, MAX_FILES_PER_TRANSFER, MAX_TEXT_BYTES, MAX_TRANSFER_BYTES, parseTransferMessage } from './protocol';
-import { HEADER_BYTES, MAX_CHUNK_BYTES, frameChunk, newTransferId, parseControl, readChunk, type Control } from './transfer-protocol';
+import { HEADER_BYTES, LEGACY_CHUNK_BYTES, MAX_CHUNK_BYTES, frameChunk, newTransferId, parseControl, readChunk, type Control } from './transfer-protocol';
 import { abortError } from './async';
 import { ReceiveBuffer } from './receive-buffer';
 
@@ -40,6 +40,8 @@ export class TransferSession {
   private ready = false;
   private disposed = false;
   private paused = false;
+  /** Largest payload the peer said it accepts; legacy peers keep 16 KiB. */
+  private peerChunk = LEGACY_CHUNK_BYTES;
   private readonly resumeWaiters = new Set<() => void>();
   private lastIncomingId: string | null = null;
 
@@ -52,7 +54,7 @@ export class TransferSession {
     if (this.started || this.disposed) return;
     this.started = true;
     this.handshakeTimer = setTimeout(() => this.fatal('Update or reload AuraShare on both devices'), 10_000);
-    try { this.control({ v: 2, kind: 'hello' }); } catch { this.fatal('Could not start the transfer protocol'); }
+    try { this.control({ v: 2, kind: 'hello', maxChunk: MAX_CHUNK_BYTES }); } catch { this.fatal('Could not start the transfer protocol'); }
   }
   private maxFrame(): number {
     const max = this.options.maxMessageSize?.() ?? 65536;
@@ -104,6 +106,7 @@ export class TransferSession {
         return;
       }
       if (message.kind === 'hello') {
+        if (message.maxChunk !== undefined) this.peerChunk = message.maxChunk;
         if (!this.started) this.start();
         if (!this.ready) {
           this.ready = true;
@@ -247,7 +250,7 @@ export class TransferSession {
       await this.waitUntilResumed(attempt.abort.signal);
       this.control({ v: 2, kind: 'start', id: attempt.id, index: attempt.index, media: attempt.media, size: attempt.size });
       attempt.stage = 'transferring';
-      const payloadSize = Math.min(MAX_CHUNK_BYTES, this.maxFrame() - HEADER_BYTES);
+      const payloadSize = Math.min(MAX_CHUNK_BYTES, this.peerChunk, this.maxFrame() - HEADER_BYTES);
       if (payloadSize < 1) throw new Error('Peer message limit too small');
       while (attempt.bytes < blob.size) {
         await this.waitUntilResumed(attempt.abort.signal);

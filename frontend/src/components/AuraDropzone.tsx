@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { UploadCloud } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Button } from './ui/Button';
-import { MAX_FILES_PER_TRANSFER, MAX_FILE_SIZE_LABEL, validateFileList } from '../lib/validation';
+import { MAX_FILES_PER_TRANSFER, MAX_DIRECT_FILE_SIZE_LABEL, validateFileList } from '../lib/validation';
 
 interface AuraDropzoneProps {
   onFileDrop: (files: File[]) => void;
@@ -86,7 +86,7 @@ export function AuraDropzone({ onFileDrop, className }: AuraDropzoneProps) {
             {isDragOver ? 'Release to send' : 'Drop files here'}
           </h3>
           <p className="mt-1.5 text-sm text-text-2">
-            or click to browse — up to {MAX_FILES_PER_TRANSFER} files, {MAX_FILE_SIZE_LABEL} each
+            or click to browse — up to {MAX_FILES_PER_TRANSFER} files, {MAX_DIRECT_FILE_SIZE_LABEL} with direct save (256 MiB otherwise)
           </p>
         </div>
       </div>

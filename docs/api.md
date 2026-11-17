@@ -111,29 +111,53 @@ join a session. The query is removed from the address bar with
 
 ## Data-channel v2
 
-Both sides first exchange `{"v":2,"kind":"hello","maxChunk":65536}`. `maxChunk`
+Both sides first exchange `{"v":2,"kind":"hello","maxChunk":65536,"resume":true,"direct":true,"receiveDirect":true}`. `maxChunk`
 is the largest binary payload the sender accepts; a peer that omits it is an
 older client and the session stays at the legacy 16 KiB payload. A 10-second
 version handshake deadline prevents old peers from waiting indefinitely.
 Control frames must fit the negotiated SCTP message size and the local 64 KiB
-frame ceiling.
+frame ceiling. `direct` advertises protocol support. `receiveDirect` additionally
+requires a secure context, the save picker, and writable file handles. Missing
+flags are false. Both peers must advertise `direct`, and the receiver must
+advertise `receiveDirect`, before using a direct-only size or frame.
 
 - `descriptors`: at most 32 files, sequential indices, sanitized names, at most
-  256 MiB each. Receiver requests one selected file at a time. Sender selection
+  256 MiB for memory receive and 2 GiB with negotiated direct save. Receiver
+  requests one selected file at a time. Sender selection
   rejects more than 32 files before room creation. Names and MIME strings must fit 255 characters;
   existing empty-file, size and MIME restrictions apply. Mixed valid/invalid
   selections show rejection reasons and require explicit confirmation to share
   the valid subset.
-- `request`: fresh 128-bit attempt `id` and descriptor `index`.
-- `start`: same `id`, `index`, `media` (`file` or `text`), and exact byte `size`.
+- `request`: fresh 128-bit attempt `id` and descriptor `index`. When both peers
+  advertise resume support, a retry may include a positive byte `offset` and
+  the receiver’s CRC-32 of the retained prefix. An updated sender recomputes
+  that checksum from its file before resuming. A rejected in-memory prefix
+  is released so the next attempt starts at zero. Sequence numbers restart at zero.
+- `direct-request`: fresh attempt `id`, descriptor `index`, and byte `offset`.
+  New saves send zero. A resume sends a positive 1 MiB-aligned offset and a
+  64-character lowercase hex `digest` of the checkpoint plus the original
+  whole-file `fingerprint`. The sender verifies both and rejects a mismatch
+  with `failed` before sending `start`.
+- `start`: same `id`, `index`, `media` (`file` or `text`), and exact byte
+  `size`. Direct sends also carry the whole-file `fingerprint`.
 - Binary: 16-byte attempt ID + uint32 big-endian sequence + payload bytes.
   Payloads are at most 64 KiB (excluding the 20-byte header) when both peers
   advertise the larger size, and 16 KiB when either side is an older client.
   The SCTP message limit can lower it further. Oversized or empty binary
   payloads are invalid frames and terminate the transfer session.
+  Direct frames add a big-endian uint32 rolling CRC-32 at byte 20 before the
+  payload. It covers the restored prefix, if any, and data through this frame.
+  The receiver checks sequence, remaining size, and CRC before each write.
+- `credit`: direct mode only. `id` and the next expected `sequence`. The
+  sender may send one chunk after `start`; each subsequent chunk and `complete`
+  wait for the preceding credit. The receiver releases credit only after the
+  destination write and any checkpoint for that chunk complete.
 - `complete`: same `id`, CRC-32, and chunk count. Receiver verifies attempt,
   sequence, exact size, checksum, and UTF-8 for text before acknowledging.
-- `ack`: same `id`; sender completion requires this acknowledgement.
+  Direct saves also verify the whole-file fingerprint before closing.
+- `ack`: same `id`. Sender completion requires this acknowledgement. For
+  memory and text it confirms verified receipt. For direct mode it additionally
+  confirms the destination stream closed successfully after verification.
 - `failed` / `cancel`: same `id` and bounded reason. Old-attempt data is ignored.
 
 Text is UTF-8 encoded once and capped at 1 MiB. The editor shows a byte counter,
@@ -152,10 +176,9 @@ shows a preparing status, and permits cancelling that queued file. There is no
 peer response timeout until the request is actually sent.
 
 A received file is held in memory as an object URL and is **not** saved
-automatically: the row shows a Save action, and Save all spends the batch from
-one click. A programmatic click outside a gesture can be dropped by the browser,
-which previously left the receiver believing a file had been saved. Saving
-starts the URL's 60-second release timer; expiry resumes eligible queued work.
+automatically: each row shows a Save action that starts one download from a user gesture. A programmatic click outside a gesture can be dropped by the browser,
+which previously left the receiver believing a file had been saved. Starting a download does not prove the browser saved it to disk. Starting it
+begins the URL's 60-second release timer; expiry resumes eligible queued work.
 Unsaved files count against the budget until saved or the session ends.
 Reset/unmount discards unsaved files but does not prematurely revoke a save
 that has already started. Re-entering the app shares the same page budget.
@@ -163,15 +186,55 @@ This bounds app-owned file storage, not exact browser RSS, garbage-collection
 timing or browser download internals, and it does not indicate when a save to
 disk completes.
 
-Response/ACK deadline is 30 seconds. Inactivity deadline is 120 seconds, refreshed
-by transfer progress rather than room heartbeats. There is no total duration
-limit for a progressing transfer. Cancelling releases timers, buffers, and drain
-waits. Failed files pause the batch and expose Retry/Skip; retries use a fresh
-attempt ID and restart at byte zero. Completed history is preserved. A text
-sender gets delivery status and a retry action on recoverable failure.
+Memory requests and ACKs have a 30-second deadline. Direct request
+preparation and completion ACKs have a 120-second deadline. The transfer
+inactivity deadline is 120 seconds and is refreshed by progress independently
+of room heartbeats. Same-session memory retry can keep an in-memory prefix.
+Skip, closing the session, or invalid data discard that memory. A text sender
+gets delivery status and a retry action on recoverable failure.
 
-An ACK confirms verified receipt of bytes, not that the browser completed a
-save to disk. CRC-32 detects corruption; WebRTC DTLS supplies transport encryption.
+### Direct save and reconnect
+
+Save directly opens the browser picker from the receiver's click. Cancelling
+it sends no request. The receiver writes to the selected destination without
+assembling the file in memory. One protocol payload is applied at a time,
+with a 1 MiB checkpoint block and bounded hashing buffers. The browser controls
+temporary-file implementation and may need space for both its staged destination
+and the local checkpoint. A permission, quota, write, or integrity error
+aborts the destination. A direct file is marked saved only after successful
+stream close. A channel that closes after this commit can still leave the
+sender without its ACK. A retry uses a new attempt; an already saved output
+can be checked locally or saved again.
+
+Where IndexedDB and Web Locks are available, the receiver retains at most one
+partial file per origin and browser profile, up to 2 GiB, with access serialized
+across tabs. Each full 1 MiB block and its metadata are committed in the same
+transaction. Metadata contains a random local transfer identifier, descriptor,
+offset, CRC-32, SHA-256 chain state, whole-file fingerprint, and expiration. Room codes, peer tokens,
+and TURN credentials are excluded. A checkpoint expires 24 hours after its
+last committed block. Expired records are removed when the app next opens or
+checks the checkpoint, including while the app is open when its expiry timer
+can run. Browser eviction or clearing site data can remove a record earlier.
+Direct saves without checkpoint storage and memory receives have no
+cross-session recovery. Cancellation or interruption can leave the last
+committed checkpoint available. A failed final integrity check clears the
+checkpoint, and a successful save removes it after committing the destination.
+
+To resume, the sender selects the original file in a new share. The receiver
+joins using the new code, chooses Resume on the matching descriptor, and picks
+a destination again. The old partial output is staged in browser storage. The
+receiver replays full blocks into the new destination, independently checking
+its checksum and hash chain. The chain begins with 32 zero bytes and each
+state is SHA-256 of the previous 32-byte state followed by the next block.
+The final block may be shorter than 1 MiB. Before sending any direct file
+data, the sender scans the selected file in bounded blocks to obtain the
+whole-file fingerprint. For a resume the sender also checks the intermediate
+chain state at the requested offset. After both checks pass, streaming
+continues at the verified offset, with chunk sequence zero and the restored
+CRC-32. Start over replaces the checkpoint
+and requests from zero. Discard partial deletes its browser data. Saving
+without a checkpoint is available if the browser cannot maintain one or a
+different partial occupies the slot. WebRTC DTLS supplies transport encryption.
 
 On socket close or error, authorization and cached TURN credentials are revoked.
 The remaining peer receives `peer-left` once; repeated error/close callbacks for

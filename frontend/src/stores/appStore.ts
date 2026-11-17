@@ -1,3 +1,4 @@
+import type { PartialFile } from '../lib/direct-save';
 import { createContext, useContext } from 'react';
 import type { AppStatus, FileDescriptor, ShareMode } from '../types';
 
@@ -9,6 +10,13 @@ export type AppState = {
   status: AppStatus;
   transferProgress: number;
   waitingForMemory: boolean;
+  directAvailable: boolean;
+  directIndex: number | null;
+  savedFiles: Set<number>;
+  checkpoint: PartialFile | null;
+  checkpointBusy: boolean;
+  directError: string | null;
+  directFailed: boolean;
   joinCode: string;
   isReceiving: boolean;
   shareMode: ShareMode;
@@ -42,6 +50,13 @@ export type AppState = {
 export const initialState: AppState = {
   status: 'idle',
   waitingForMemory: false,
+  directAvailable: false,
+  directIndex: null,
+  savedFiles: new Set(),
+  checkpoint: null,
+  checkpointBusy: false,
+  directError: null,
+  directFailed: false,
   transferProgress: 0,
   joinCode: '',
   isReceiving: false,
@@ -68,6 +83,13 @@ export const initialState: AppState = {
 };
 
 export type AppAction =
+  | { type: 'DIRECT_AVAILABLE'; available: boolean }
+  | { type: 'DIRECT_OPEN'; index: number }
+  | { type: 'DIRECT_CLOSE'; message?: string }
+  | { type: 'DIRECT_SAVED'; index: number; warning?: string }
+  | { type: 'CHECKPOINT'; checkpoint: PartialFile | null }
+  | { type: 'CHECKPOINT_BUSY'; busy: boolean }
+  | { type: 'DIRECT_ERROR'; message: string }
   | { type: 'MEMORY_WAIT'; waiting: boolean }
   | { type: 'SET_STATUS'; status: AppStatus }
   | { type: 'SET_PROGRESS'; progress: number }
@@ -97,6 +119,19 @@ export type AppAction =
 
 export function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
+    case 'DIRECT_AVAILABLE': return { ...state, directAvailable: action.available };
+    case 'DIRECT_OPEN': return { ...state, directIndex: action.index, directError: null,
+      directFailed: false, failedFileIndex: null, transferError: null, transferProgress: 0 };
+    case 'DIRECT_CLOSE': return { ...state, directIndex: null, directError: action.message ?? null };
+    case 'DIRECT_SAVED': {
+      const saved = new Set(state.savedFiles); saved.add(action.index);
+      const selected = new Set(state.selectedFiles); selected.delete(action.index);
+      return { ...state, directIndex: null, transferProgress: 0, savedFiles: saved, selectedFiles: selected,
+        directError: action.warning ?? null };
+    }
+    case 'CHECKPOINT': return { ...state, checkpoint: action.checkpoint };
+    case 'CHECKPOINT_BUSY': return { ...state, checkpointBusy: action.busy };
+    case 'DIRECT_ERROR': return { ...state, directError: action.message };
     case 'MEMORY_WAIT': return { ...state, waitingForMemory: action.waiting };
     case 'CONNECTION_WARNING': return { ...state, connectionWarning: action.message };
     case 'SESSION_NOTICE': return { ...state, sessionNotice: action.message, connectionWarning: null };
@@ -106,20 +141,20 @@ export function appReducer(state: AppState, action: AppAction): AppState {
       const ready = new Set(state.readyFiles);
       if (action.index >= 0) ready.delete(action.index);
       return {
-        ...state, waitingForMemory: false, transferError: action.message, failedFileIndex: action.index >= 0 ? action.index : null,
+        ...state, directFailed: state.directIndex !== null, directIndex: null, waitingForMemory: false, transferError: action.message, failedFileIndex: action.index >= 0 ? action.index : null,
         readyFiles: ready, downloadingFileIndex: null, transferProgress: 0,
         ...(state.isReceiving && action.index < 0 ? { status: 'error' as const, errorMessage: action.message } : {}),
       };
     }
     case 'RETRY_TRANSFER':
-      if (state.failedFileIndex === null || state.downloadingFileIndex !== null) return state;
+      if (state.directFailed || state.failedFileIndex === null || state.downloadingFileIndex !== null) return state;
       return { ...state, downloadingFileIndex: state.failedFileIndex, failedFileIndex: null, transferError: null, transferProgress: 0 };
     case 'SKIP_TRANSFER': {
       if (state.failedFileIndex === null) return state;
       const queue = state.downloadQueue.filter((index) => index !== state.failedFileIndex);
       const selected = new Set(state.selectedFiles); selected.delete(state.failedFileIndex);
       return { ...state, downloadQueue: queue, selectedFiles: selected,
-        downloadingFileIndex: queue[0] ?? null, failedFileIndex: null, transferError: null, transferProgress: 0 };
+        downloadingFileIndex: queue[0] ?? null, directFailed: false, failedFileIndex: null, transferError: null, transferProgress: 0 };
     }
     case 'SET_STATUS':
       return { ...state, status: action.status };
@@ -198,7 +233,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case 'SET_JOIN_CODE_ERROR':
       return { ...state, joinCodeError: action.message };
     case 'RESET':
-      return { ...initialState };
+      return { ...initialState, checkpoint: state.checkpoint };
     default:
       return state;
   }
@@ -216,7 +251,8 @@ export type AppActions = {
   join: (code: string) => void;
   downloadSelected: () => void;
   saveFile: (index: number) => void;
-  saveAll: () => void;
+  saveDirect: (index: number, mode: 'new' | 'resume' | 'restart' | 'direct-only') => void;
+  discardCheckpoint: () => void;
   retryTransfer: () => void;
   skipTransfer: () => void;
   cancelTransfer: () => void;

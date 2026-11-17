@@ -1,6 +1,8 @@
 import { AnimatePresence } from 'motion/react';
 import { ErrorBoundary } from 'react-error-boundary';
 import { AppProvider } from '../../stores/AppProvider';
+import { Button } from '../ui/Button';
+import { formatBytes } from '../../lib/format';
 import { useAppStore } from '../../stores/appStore';
 import { SiteNav, SiteFooter } from '../layout';
 import {
@@ -42,6 +44,17 @@ function AppShell() {
           >
             {state.sessionNotice}
           </p>
+        )}
+        {state.directError && <p role="alert" className="mb-4 max-w-lg text-sm text-error">{state.directError}</p>}
+        {state.checkpoint && (
+          <div className="mb-4 w-full max-w-lg border border-border px-4 py-3">
+            <p role="status" className="break-words text-sm text-text-2">
+              Local partial for {state.checkpoint.file.name} ({formatBytes(state.checkpoint.offset)}).
+              To resume, join a session where the sender has selected this file again.
+            </p>
+            <Button size="sm" variant="muted" className="mt-2" onClick={actions.discardCheckpoint}
+              disabled={state.checkpointBusy || state.directIndex !== null}>Discard partial</Button>
+          </div>
         )}
         <h1 className="sr-only">AuraShare — peer-to-peer file transfer</h1>
 

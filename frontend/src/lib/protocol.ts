@@ -40,23 +40,23 @@ function isIndex(value: unknown): value is number {
 }
 
 /** A file descriptor as announced by a peer. */
-function isFileDescriptor(value: unknown): value is FileDescriptor {
+function isFileDescriptor(value: unknown, limit = MAX_TRANSFER_BYTES): value is FileDescriptor {
   if (!isRecord(value)) return false;
   if (typeof value.name !== 'string' || value.name.length === 0) return false;
   if (value.name.length > MAX_NAME_LENGTH) return false;
   if (typeof value.size !== 'number' || !Number.isFinite(value.size) || value.size < 0) return false;
-  if (value.size > MAX_TRANSFER_BYTES) return false;
+  if (value.size > limit) return false;
   if (typeof value.type !== 'string' || value.type.length > MAX_NAME_LENGTH) return false;
   if (value.index !== undefined && !isIndex(value.index)) return false;
   return true;
 }
 
 /** Validate the `files` array of a file-descriptors message. */
-export function parseFileDescriptors(value: unknown): FileDescriptor[] | null {
+export function parseFileDescriptors(value: unknown, limit = MAX_TRANSFER_BYTES): FileDescriptor[] | null {
   if (!Array.isArray(value) || value.length > MAX_FILES_PER_TRANSFER) return null;
   const files: FileDescriptor[] = [];
   for (const entry of value) {
-    if (!isFileDescriptor(entry)) return null;
+    if (!isFileDescriptor(entry, limit)) return null;
     files.push({
       name: sanitizeFilename(entry.name),
       size: entry.size,
@@ -246,7 +246,9 @@ const CRC32_TABLES = (() => {
  * transfer rather than computed in one burst at the end.
  */
 export class Crc32 {
-  private state = 0xffffffff;
+  private state: number;
+
+  constructor(previousValue = 0) { this.state = (previousValue ^ 0xffffffff) >>> 0; }
 
   update(bytes: Uint8Array): void {
     let crc = this.state;

@@ -1,3 +1,4 @@
+import type { DirectSave } from './direct-save';
 /** Owns one cancellable peer session, including serialized TURN renewal. */
 import { SignalingChannel, fetchPeerIce, mintRoom, type IceConfig } from './signaling';
 import type { WireSignal } from '../types';
@@ -286,8 +287,9 @@ export class P2PManager {
   }
   sendMeta(files: FileList | File[]): void { this.transfer?.sendMeta(files); }
   sendText(text: string): void { this.transfer?.sendText(text); }
-  requestFile(index: number): void { this.transfer?.requestFile(index); }
+  requestFile(index: number, destination?: DirectSave): boolean { return this.transfer?.requestFile(index, destination) ?? false; }
   cancelTransfer(): void { this.transfer?.cancelCurrent(); }
+  discardPartial(): void { this.transfer?.discardPartial(); }
   close(): void {
     if (this.closed) return;
     this.closed = true; this.lifetime.abort();

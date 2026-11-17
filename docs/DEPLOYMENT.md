@@ -463,3 +463,10 @@ The generic audit/testing skills in `.opencode/` still describe mandatory tests
 and an older directory layout. The repository's `AGENTS.md` takes precedence:
 no tests, approved `shared/` contracts and root configuration. Those protected
 skill files were not edited as part of these application fixes.
+
+## Offline fallback
+
+The production app registers a service worker that caches only `/offline.html`.
+Navigation uses the network first; API responses, transfers, and app assets are
+not cached by the service worker. See `docs/MANUAL_ACCEPTANCE.md` for the manual
+browser and device checklist.

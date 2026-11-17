@@ -6,7 +6,7 @@
  * line states something a reader can verify.
  */
 
-import { MAX_FILE_SIZE_LABEL } from './validation';
+import { MAX_DIRECT_FILE_SIZE_LABEL, MAX_FILE_SIZE_LABEL } from './validation';
 
 export const NAV_LINKS = [
   { label: 'How it works', href: '#how-it-works' },
@@ -25,7 +25,7 @@ export const HERO = {
   /** Short factual facts, not marketing badges. */
   specs: [
     { label: 'Account', value: 'Not required' },
-    { label: 'Max file', value: MAX_FILE_SIZE_LABEL },
+    { label: 'Max file', value: MAX_DIRECT_FILE_SIZE_LABEL },
     { label: 'Encryption', value: 'End-to-end' },
   ],
 } as const;
@@ -99,7 +99,7 @@ export const COMPARISON = {
     },
     {
       label: 'Max file size',
-      values: [MAX_FILE_SIZE_LABEL, '3 GB', '5 TB', 'Limited by device'],
+      values: [MAX_DIRECT_FILE_SIZE_LABEL, '3 GB', '5 TB', 'Limited by device'],
     },
     {
       label: 'Cost',
@@ -150,7 +150,7 @@ export const FAQS = [
   {
     id: 'size',
     q: 'How big can files be?',
-    a: `Up to ${MAX_FILE_SIZE_LABEL} per file. Files are assembled in memory on the receiving device.`,
+    a: `Up to ${MAX_DIRECT_FILE_SIZE_LABEL} per file with direct save in a supported receiver. In-memory receiving supports up to ${MAX_FILE_SIZE_LABEL} per file.`,
   },
   {
     id: 'security',

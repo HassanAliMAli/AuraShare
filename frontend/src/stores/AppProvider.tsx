@@ -2,10 +2,12 @@ import { useReducer, useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { P2PManager } from '../lib/webrtc';
 import { MAX_TEXT_BYTES } from '../lib/protocol';
-import { validateFileList } from '../lib/validation';
+import { MAX_FILE_SIZE, validateFileList } from '../lib/validation';
 import { downloadBudget } from '../lib/download-budget';
 import type { PreparedDownload } from '../lib/download-budget';
 import { isRoomCode, normalizeRoomCode, ROOM_CODE_HINT } from '../lib/roomCode';
+import { DirectSave, discardSavedPartial, savedPartial, saveError } from '../lib/direct-save';
+import { newTransferId } from '../lib/transfer-protocol';
 import { AppContext, appReducer, initialState } from './appStore';
 import type { AppActions } from './appStore';
 
@@ -39,6 +41,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const pendingTextRef = useRef<string | null>(null);
   const connectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastRequestedIndexRef = useRef<number | null>(null);
+  const directOpening = useRef<AbortController | null>(null);
+  const checkpointRead = useRef(0);
   const preparedDownloadsRef = useRef(new Map<number, PreparedDownload>());
 
   // Single source of truth for the download queue: when `downloadingFileIndex`
@@ -88,12 +92,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => {
       if (connectTimeoutRef.current) clearTimeout(connectTimeoutRef.current);
       requestWaitRef.current?.abort();
+      directOpening.current?.abort();
       managerRef.current?.close();
       managerRef.current = null;
       for (const download of prepared.values()) downloadBudget.discard(download);
       prepared.clear();
     };
   }, []);
+
+  async function refreshCheckpoint(): Promise<void> {
+    const read = ++checkpointRead.current;
+    try {
+      const checkpoint = await savedPartial();
+      if (read === checkpointRead.current) dispatch({ type: 'CHECKPOINT', checkpoint });
+    } catch (error) {
+      if (read === checkpointRead.current) dispatch({ type: 'DIRECT_ERROR', message: saveError(error) });
+    }
+  }
+
+  useEffect(() => { void refreshCheckpoint(); }, []);
+
+  useEffect(() => {
+    if (!state.checkpoint) return;
+    const timer = setTimeout(() => { void refreshCheckpoint(); }, Math.max(0, state.checkpoint.expires - Date.now()));
+    return () => clearTimeout(timer);
+  }, [state.checkpoint]);
 
   function clearConnectTimeout(): void {
     if (connectTimeoutRef.current !== null) clearTimeout(connectTimeoutRef.current);
@@ -106,6 +129,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     requestWaitRef.current = null;
     const previous = managerRef.current;
     managerRef.current = null;
+    directOpening.current?.abort();
+    directOpening.current = null;
     previous?.close();
     pendingFilesRef.current = null;
     pendingTextRef.current = null;
@@ -159,6 +184,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       requestWaitRef.current?.abort();
       requestWaitRef.current = null;
       managerRef.current = null;
+      directOpening.current?.abort();
+      directOpening.current = null;
       mgr.close();
     };
     const fail = (message: string) => {
@@ -218,6 +245,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (!current() || role !== 'receiver') return;
         delivered.expectedFiles = files.length;
         dispatch({ type: 'RECEIVE_DESCRIPTORS', files });
+      },
+      onDirectAvailability: (available) => {
+        if (current() && role === 'receiver') dispatch({ type: 'DIRECT_AVAILABLE', available });
+      },
+      onDirectSettled: (message) => {
+        if (message) dispatch({ type: 'DIRECT_ERROR', message });
+        void refreshCheckpoint();
+      },
+      onDirectSaved: (index, warning) => {
+        void refreshCheckpoint();
+        if (!current()) return;
+        delivered.files.add(index);
+        dispatch({ type: 'DIRECT_SAVED', index, warning });
       },
       onFileComplete: (index, file) => {
         if (!current() || role !== 'receiver') return;
@@ -335,23 +375,63 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
 
     downloadSelected: () => {
-      if (state.downloadingFileIndex !== null || state.failedFileIndex !== null) return;
+      if (state.directIndex !== null || state.downloadingFileIndex !== null || state.failedFileIndex !== null) return;
       const indices = Array.from(state.selectedFiles)
-        .filter((index) => !state.downloadedFiles.has(index) && !state.readyFiles.has(index));
+        .filter((index) => !state.downloadedFiles.has(index) && !state.readyFiles.has(index) &&
+          !state.savedFiles.has(index) && (state.receivedFiles[index]?.size ?? Infinity) <= MAX_FILE_SIZE);
       if (indices.length === 0) return;
       dispatch({ type: 'DOWNLOAD_START', indices });
     },
 
     saveFile: (index) => saveDownload(index),
-    saveAll: () => {
-      for (const index of Array.from(state.readyFiles).sort((a, b) => a - b)) {
-        saveDownload(index);
-      }
+
+    saveDirect: (index, mode) => {
+      const manager = managerRef.current;
+      const file = state.receivedFiles[index];
+      if (!manager || !file || !state.directAvailable || directOpening.current ||
+          state.directIndex !== null || state.downloadingFileIndex !== null || state.checkpointBusy ||
+          (state.failedFileIndex !== null && !state.directFailed)) return;
+      if (state.savedFiles.has(index) || state.downloadedFiles.has(index) || state.readyFiles.has(index)) return;
+      if (mode === 'resume' && !state.checkpoint) return;
+      const opening = new AbortController();
+      directOpening.current = opening;
+      dispatch({ type: 'DIRECT_OPEN', index });
+      void DirectSave.open(file, newTransferId(), mode === 'resume' ? state.checkpoint?.id : undefined,
+        mode === 'restart' ? state.checkpoint?.id : undefined, mode === 'direct-only', opening.signal)
+        .then(async (destination) => {
+          if (opening.signal.aborted || managerRef.current !== manager || !manager.requestFile(index, destination)) {
+            await destination.abort();
+            if (!opening.signal.aborted && managerRef.current === manager) {
+              dispatch({ type: 'DIRECT_CLOSE', message: 'The receiver could not request the file. Reconnect and try again.' });
+            }
+          } else if (mode === 'restart') dispatch({ type: 'CHECKPOINT', checkpoint: null });
+        }).catch((error: unknown) => {
+          if (managerRef.current === manager && !opening.signal.aborted) dispatch({ type: 'DIRECT_CLOSE', message: saveError(error) });
+          void refreshCheckpoint();
+        }).finally(() => {
+          if (directOpening.current === opening) directOpening.current = null;
+        });
+    },
+
+    discardCheckpoint: () => {
+      if (!state.checkpoint || state.checkpointBusy || state.directIndex !== null) return;
+      dispatch({ type: 'CHECKPOINT_BUSY', busy: true });
+      void discardSavedPartial(state.checkpoint.id)
+        .catch((error: unknown) => dispatch({ type: 'DIRECT_ERROR', message: saveError(error) }))
+        .finally(async () => {
+          await refreshCheckpoint();
+          dispatch({ type: 'CHECKPOINT_BUSY', busy: false });
+        });
     },
 
     retryTransfer: () => { lastRequestedIndexRef.current = null; dispatch({ type: 'RETRY_TRANSFER' }); },
-    skipTransfer: () => dispatch({ type: 'SKIP_TRANSFER' }),
+    skipTransfer: () => { managerRef.current?.discardPartial(); dispatch({ type: 'SKIP_TRANSFER' }); },
     cancelTransfer: () => {
+      if (directOpening.current) {
+        directOpening.current.abort();
+        dispatch({ type: 'DIRECT_CLOSE', message: 'Save cancelled.' });
+        return;
+      }
       if (requestWaitRef.current && state.downloadingFileIndex !== null) {
         requestWaitRef.current.abort();
         requestWaitRef.current = null;

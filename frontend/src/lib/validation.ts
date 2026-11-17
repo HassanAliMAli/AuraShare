@@ -14,6 +14,9 @@ export const MAX_FILES_PER_TRANSFER = 32;
 export const MAX_FILE_SIZE = 256 * 1024 * 1024; // 256 MiB
 export const MAX_FILE_SIZE_LABEL = `${MAX_FILE_SIZE / (1024 * 1024)} MiB`;
 
+export const MAX_DIRECT_FILE_SIZE = 2 * 1024 * 1024 * 1024;
+export const MAX_DIRECT_FILE_SIZE_LABEL = '2 GiB';
+
 const ALLOWED_MIME_PREFIXES = [
   'image/',
   'video/',
@@ -41,13 +44,13 @@ export function validateFile(file: File): Result<File, ValidationError> {
   if (file.size === 0) {
     return { success: false, error: { code: 'empty', message: 'File is empty' } };
   }
-  if (file.size > MAX_FILE_SIZE) {
+  if (file.size > MAX_DIRECT_FILE_SIZE) {
     return {
       success: false,
       error: {
         code: 'too_large',
-        message: `File exceeds ${formatMaxSize()} limit`,
-        maxSize: MAX_FILE_SIZE,
+        message: `File exceeds ${MAX_DIRECT_FILE_SIZE_LABEL} limit`,
+        maxSize: MAX_DIRECT_FILE_SIZE,
         actualSize: file.size,
       },
     };
@@ -99,9 +102,4 @@ export function sanitizeFilename(name: string): string {
     .replace(/\.\.+/g, '.')
     .substring(0, 255);
   return sanitized;
-}
-
-function formatMaxSize(): string {
-  const mb = Math.round(MAX_FILE_SIZE / (1024 * 1024));
-  return `${mb} MiB`;
 }

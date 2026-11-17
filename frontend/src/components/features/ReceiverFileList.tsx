@@ -5,11 +5,14 @@ import { FileIcon } from '../ui/FileIcon';
 import { formatBytes } from '../../lib/format';
 import { viewVariants } from '../../lib/motion';
 import { Button } from '../ui/Button';
+import { MAX_FILE_SIZE } from '../../lib/validation';
+import { matchesPartial } from '../../lib/direct-save';
 import { Panel } from '../ui/Panel';
 
 /** Connected receiver screen: file list with selection, per-file progress, download. */
 export function ReceiverFileList() {
   const { state, actions } = useAppStore();
+  const busy = state.downloadingFileIndex !== null || state.directIndex !== null || state.checkpointBusy;
   const totalBytes = state.receivedFiles.reduce((s, f) => s + f.size, 0);
 
   return (
@@ -49,13 +52,13 @@ export function ReceiverFileList() {
                         type="checkbox"
                         checked={state.selectedFiles.has(i)}
                         onChange={(e) => {
-                          if (state.downloadedFiles.has(i) || state.readyFiles.has(i)) return;
+                          if (state.downloadedFiles.has(i) || state.readyFiles.has(i) || state.savedFiles.has(i)) return;
                           actions.toggleFileSelected(i, e.target.checked);
                         }}
                         disabled={
                           state.downloadedFiles.has(i) ||
                           state.readyFiles.has(i) ||
-                          state.downloadingFileIndex !== null
+                          busy || state.savedFiles.has(i) || file.size > MAX_FILE_SIZE
                         }
                         aria-label={`Select ${file.name}`}
                         className="h-4 w-4 accent-(--color-accent)"
@@ -70,10 +73,15 @@ export function ReceiverFileList() {
                       <div className="truncate text-sm text-text">{file.name}</div>
                       <div className="font-mono text-xs text-text-3">{formatBytes(file.size)}</div>
                     </div>
-                    {state.downloadedFiles.has(i) ? (
+                    {state.savedFiles.has(i) ? (
+                      <span className="flex shrink-0 items-center gap-1.5 text-xs text-success" role="status">
+                        <Check className="h-4 w-4" aria-hidden="true" />
+                        Saved to disk
+                      </span>
+                    ) : state.downloadedFiles.has(i) ? (
                       <span className="flex shrink-0 items-center gap-1.5 text-xs text-success">
                         <Check className="h-4 w-4" aria-hidden="true" />
-                        Saved
+                        Download started
                       </span>
                     ) : state.readyFiles.has(i) ? (
                       <Button
@@ -84,7 +92,7 @@ export function ReceiverFileList() {
                       >
                         Save
                       </Button>
-                    ) : state.downloadingFileIndex === i ? (
+                    ) : (state.downloadingFileIndex === i || state.directIndex === i) ? (
                       <motion.div
                         className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-border-strong border-t-accent"
                         initial={{ opacity: 0 }}
@@ -96,11 +104,34 @@ export function ReceiverFileList() {
                     )}
                   </div>
 
-                  {state.downloadingFileIndex === i && (
+                  {state.directAvailable && !state.savedFiles.has(i) && !state.downloadedFiles.has(i) &&
+                    !state.readyFiles.has(i) && (
+                    <div className="ml-7 mt-2 flex flex-wrap gap-2">
+                      {state.checkpoint && matchesPartial(state.checkpoint, file) ? (
+                        <>
+                          <Button size="sm" variant="secondary" disabled={busy || (state.failedFileIndex !== null && !state.directFailed)}
+                            aria-label={`Resume ${file.name}`} onClick={() => actions.saveDirect(i, 'resume')}>Resume</Button>
+                          <Button size="sm" variant="muted" disabled={busy || (state.failedFileIndex !== null && !state.directFailed)}
+                            aria-label={`Start ${file.name} over`} onClick={() => actions.saveDirect(i, 'restart')}>Start over</Button>
+                        </>
+                      ) : (
+                        <Button size="sm" variant="secondary" disabled={busy || (state.failedFileIndex !== null && !state.directFailed)}
+                          aria-label={`Save ${file.name} directly`}
+                          onClick={() => actions.saveDirect(i, state.checkpoint ? 'direct-only' : 'new')}>Save directly</Button>
+                      )}
+                      {(state.directFailed || state.directError) && (!state.checkpoint || matchesPartial(state.checkpoint, file)) && (
+                        <Button size="sm" variant="muted" disabled={busy || (state.failedFileIndex !== null && !state.directFailed)}
+                          aria-label={`Save ${file.name} without a checkpoint`}
+                          onClick={() => actions.saveDirect(i, 'direct-only')}>Save without checkpoint</Button>
+                      )}
+                    </div>
+                  )}
+                  {file.size > MAX_FILE_SIZE && <p className="ml-7 mt-1 text-xs text-text-2">Requires direct save.</p>}
+                  {(state.downloadingFileIndex === i || state.directIndex === i) && (
                     <div
                       className="ml-7 mt-2 h-0.5 w-full overflow-hidden rounded-full bg-border"
                       role="progressbar"
-                      aria-label={`Downloading ${file.name}`}
+                      aria-label={`Receiving ${file.name}`}
                       aria-valuenow={Math.round(state.transferProgress)}
                       aria-valuemin={0}
                       aria-valuemax={100}
@@ -118,6 +149,16 @@ export function ReceiverFileList() {
           </>
         )}
 
+        {state.receivedFiles.length > 0 && !state.directAvailable && (
+          <p role="status" className="mt-4 text-sm text-text-2">
+            Direct saving is unavailable with this browser or peer. You can receive files up to 256 MiB and save them individually.
+          </p>
+        )}
+        {state.directIndex !== null && state.transferProgress === 0 && (
+          <p role="status" className="mt-4 text-sm text-text-2">
+            Preparing the destination and verifying the file before transfer.
+          </p>
+        )}
         {state.waitingForMemory && (
           <p role="status" className="mt-4 text-sm text-text-2">
             Waiting for memory. Save a received file to free the space it holds.
@@ -128,32 +169,27 @@ export function ReceiverFileList() {
             <p className="text-sm text-error">{state.transferError}</p>
             {state.failedFileIndex !== null && (
               <div className="mt-3 flex gap-3">
-                <Button onClick={actions.retryTransfer}>Retry file</Button>
+                {!state.directFailed && <Button onClick={actions.retryTransfer}>Retry file</Button>}
                 <Button onClick={actions.skipTransfer}>Skip file</Button>
               </div>
             )}
           </div>
         )}
-        {state.downloadingFileIndex !== null && (
+        {(state.downloadingFileIndex !== null || state.directIndex !== null) && (
           <Button variant="muted" className="mt-4" onClick={actions.cancelTransfer}>Cancel current file</Button>
         )}
         {state.readyFiles.size > 0 && (
           <p role="status" className="mt-4 text-sm text-text-2">
             Received files stay in memory until you save them.
-            {state.readyFiles.size > 1 && ' Your browser may ask to allow multiple downloads.'}
+            {' '}Use Save on each file to start its download. Your browser controls where it is saved.
           </p>
         )}
         <div className="mt-5 flex flex-wrap gap-3">
-          {state.readyFiles.size > 0 && (
-            <Button variant="primary" onClick={actions.saveAll} className="flex-1">
-              Save all ({state.readyFiles.size})
-            </Button>
-          )}
           {state.selectedFiles.size > 0 && (
             <Button
               variant={state.readyFiles.size > 0 ? 'secondary' : 'primary'}
               onClick={actions.downloadSelected}
-              disabled={state.downloadingFileIndex !== null || state.failedFileIndex !== null}
+              disabled={busy || state.failedFileIndex !== null}
               className="flex-1"
             >
               Receive ({state.selectedFiles.size})
